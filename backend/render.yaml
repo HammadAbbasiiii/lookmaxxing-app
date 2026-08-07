@@ -51,9 +51,10 @@ services:
     plan: starter
     maxmemoryPolicy: noeviction
 
-  - type: postgres
+  - type: database
     name: lookmaxx-db
     region: frankfurt
     plan: starter
     databaseName: lookmaxx
     user: lookmaxx_user
+    ipAllowList: []
