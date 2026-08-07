@@ -51,7 +51,7 @@ services:
     plan: starter
     maxmemoryPolicy: noeviction
 
-  - type: postgresql
+  - type: postgres
     name: lookmaxx-db
     region: frankfurt
     plan: starter
