@@ -76,6 +76,9 @@ class Photo(Base):
     strengths = Column(JSON, nullable=True)  # Array of strengths
     weaknesses = Column(JSON, nullable=True)  # Array of weaknesses
     
+    # Analysis status
+    analysis_status = Column(String(20), default="pending")  # pending | processing | completed | failed
+
     # Tracking
     is_baseline = Column(Boolean, default=False)  # First photo = baseline
     week_number = Column(Integer, default=1)  # Which week of the plan

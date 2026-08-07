@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, status, Depends, File, UploadFile,
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import User, Photo, Plan
-from app.schemas import PhotoUploadResponse, APIResponse
+from app.schemas import PhotoUploadResponse, PhotoStatusResponse, APIResponse
 from app.dependencies import get_current_user
 from app.services.upload_service import upload_to_cloudinary, delete_from_cloudinary
 from app.services.face_service import (
@@ -19,6 +19,7 @@ from app.services.ai_service import analyze_face_with_deepseek, generate_fallbac
 from app.services.plan_generator_service import generate_action_plan, generate_fallback_plan
 from app.services.score_labels import get_score_label
 from app.services.prediction_service import prediction_service
+from app.services.background_analysis import run_analysis_background
 from app.config import settings
 import uuid
 from datetime import datetime
@@ -35,14 +36,16 @@ router = APIRouter(prefix="/photos", tags=["Photos"])
 async def upload_photo(
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
+    background_tasks: BackgroundTasks = None,
     db: Session = Depends(get_db)
 ):
     """
-    Upload a photo for analysis.
-    
+    Upload a photo for analysis.  Analysis runs in the background;
+    the response returns immediately (~1.5 s instead of ~8.8 s).
+
     - Supported formats: JPG, PNG, HEIC
     - Max size: 10MB
-    - Returns photo ID and URL
+    - Returns photo ID and URL with analysis_status="processing"
     """
     # ⏱️ Start timing
     timings = {}
@@ -56,7 +59,7 @@ async def upload_photo(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Unsupported file format. Allowed: {', '.join(allowed_extensions)}"
         )
-    
+
     # 1. ⏱️ Time to read file from client
     read_start = time.perf_counter()
     file_size = 0
@@ -86,7 +89,7 @@ async def upload_photo(
             detail=f"Upload failed: {str(e)}"
         )
     timings["cloudinary_upload_ms"] = round((time.perf_counter() - cloudinary_start) * 1000, 2)
-    
+
     # Check if this is the user's first photo (baseline)
     existing_photos = db.query(Photo).filter(Photo.user_id == current_user.id).count()
     is_baseline = existing_photos == 0
@@ -100,7 +103,7 @@ async def upload_photo(
     )
     week_number = plan.current_week if (plan and plan.current_week) else 1
 
-    # Save to database
+    # ── Save photo record (analysis_status will default to "pending") ──
     new_photo = Photo(
         id=str(uuid.uuid4()),
         user_id=current_user.id,
@@ -109,39 +112,49 @@ async def upload_photo(
         file_type=file_ext,
         is_baseline=is_baseline,
         week_number=week_number,
+        analysis_status="processing",  # will be set to "completed"/"failed" by background task
     )
 
-    # 3. ⏱️ Time for ML prediction
-    ml_start = time.perf_counter()
-    try:
-        gender = getattr(current_user, "gender", None) or "male"
-        prediction = prediction_service.predict(file_content, gender=gender)
-        score = prediction.get("score_100", None)
-        if score is not None:
-            new_photo.score = score
-    except Exception as e:
-        logger.warning(f"Prediction failed for photo {new_photo.id}: {e}")
-    timings["ml_prediction_ms"] = round((time.perf_counter() - ml_start) * 1000, 2)
-
-    # 4. ⏱️ Time for database write
+    # 3. ⏱️ Time for database write (only the INSERT — ML is now background)
     db_start = time.perf_counter()
     db.add(new_photo)
     db.commit()
     db.refresh(new_photo)
     timings["database_save_ms"] = round((time.perf_counter() - db_start) * 1000, 2)
 
-    # 5. ⏱️ Total time
+    # 4. ⏱️ Total time (no ML inline timing needed)
     timings["total_ms"] = round((time.perf_counter() - start_total) * 1000, 2)
-    print(f"⏱️ Upload timings: {timings}")
+    print(f"⏱️ Upload timings (analysis queued): {timings}")
+
+    # ── Fire background analysis (7-8 s ML work) ──────────────────
+    gender = getattr(current_user, "gender", None) or "male"
+    if background_tasks:
+        background_tasks.add_task(
+            run_analysis_background,
+            photo_id=new_photo.id,
+            user_id=current_user.id,
+            image_bytes=file_content,
+            gender=gender,
+        )
+    else:
+        # Fallback: run inline if background tasks unavailable (e.g., testing)
+        logger.warning("BackgroundTasks not available — running analysis inline")
+        run_analysis_background(
+            photo_id=new_photo.id,
+            user_id=current_user.id,
+            image_bytes=file_content,
+            gender=gender,
+        )
 
     return {
         "id": new_photo.id,
         "user_id": new_photo.user_id,
         "file_url": new_photo.file_url,
-        "score": new_photo.score,
+        "score": None,  # not yet available
         "is_baseline": new_photo.is_baseline,
         "week_number": new_photo.week_number,
         "captured_at": new_photo.captured_at,
+        "analysis_status": new_photo.analysis_status,
         "debug_timings": timings,
     }
 
@@ -186,6 +199,43 @@ async def delete_photo(
     db.commit()
     
     return {"message": "Photo deleted successfully"}
+
+
+@router.get("/{photo_id}/status", response_model=PhotoStatusResponse)
+async def get_analysis_status(
+    photo_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Poll the analysis status of a photo.
+
+    Returns:
+    - analysis_status: "pending" | "processing" | "completed" | "failed"
+    - score: the overall score (None if not yet computed)
+    - category_breakdown, strengths, weaknesses: available once completed
+    """
+    photo = db.query(Photo).filter(
+        Photo.id == photo_id, Photo.user_id == current_user.id
+    ).first()
+    if not photo:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Photo not found",
+        )
+
+    category_breakdown = None
+    if photo.analysis_details:
+        category_breakdown = photo.analysis_details.get("category_breakdown")
+
+    return {
+        "id": photo.id,
+        "analysis_status": photo.analysis_status or "pending",
+        "score": photo.score,
+        "category_breakdown": category_breakdown,
+        "strengths": photo.strengths,
+        "weaknesses": photo.weaknesses,
+    }
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

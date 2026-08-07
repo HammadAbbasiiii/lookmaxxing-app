@@ -72,7 +72,19 @@ class PhotoUploadResponse(BaseModel):
     is_baseline: bool
     week_number: Optional[int] = None
     captured_at: datetime
+    analysis_status: Optional[str] = None
     debug_timings: Optional[dict] = None
+
+    class Config:
+        from_attributes = True
+
+class PhotoStatusResponse(BaseModel):
+    id: str
+    analysis_status: str  # pending | processing | completed | failed
+    score: Optional[float] = None
+    category_breakdown: Optional[dict] = None
+    strengths: Optional[list] = None
+    weaknesses: Optional[list] = None
 
     class Config:
         from_attributes = True
