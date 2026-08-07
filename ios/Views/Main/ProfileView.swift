@@ -20,16 +20,16 @@ struct ProfileView: View {
                                 Circle()
                                     .fill(LXColor.deepNavy)
                                     .frame(width: 80, height: 80)
-                                Text(String((appState.user?.username ?? "U").prefix(1).uppercased()))
+                                Text(String((appState.currentUser?.username ?? "U").prefix(1).uppercased()))
                                     .font(.system(size: 32, weight: .bold))
                                     .foregroundColor(LXColor.gold)
                             }
 
-                            Text(appState.user?.username ?? "Maxxer")
+                            Text(appState.currentUser?.username ?? "Maxxer")
                                 .lxH2()
                                 .foregroundColor(LXColor.white)
 
-                            if let tier = appState.user?.subscriptionTier {
+                            if let tier = appState.currentUser?.subscriptionTier {
                                 Text(tier.rawValue.uppercased())
                                     .font(LXFont.caption())
                                     .foregroundColor(LXColor.gold)
@@ -43,9 +43,9 @@ struct ProfileView: View {
 
                         // Stats
                         HStack(spacing: 16) {
-                            StatCard(value: "\(appState.user?.daysActive ?? 0)", label: "Days Active")
-                            StatCard(value: "\(appState.user?.longestStreak ?? 0)", label: "Best Streak")
-                            StatCard(value: "\(appState.user?.photosUploaded ?? 0)", label: "Uploads")
+                            StatCard(value: "\(appState.currentUser?.daysActive ?? 0)", label: "Days Active")
+                            StatCard(value: "\(appState.currentUser?.longestStreak ?? 0)", label: "Best Streak")
+                            StatCard(value: "\(appState.currentUser?.photosUploaded ?? 0)", label: "Uploads")
                         }
                         .padding(.horizontal, LXConstants.standardPadding)
 

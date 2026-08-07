@@ -6,7 +6,6 @@ import SwiftUI
 /// Phase progress gives immediate next action, not just a score.
 struct PlanView: View {
     @EnvironmentObject var appState: AppState
-    @StateObject private var viewModel = PlanViewModel()
     @State private var expandedPhaseId: String?
 
     var body: some View {
@@ -14,14 +13,14 @@ struct PlanView: View {
             ZStack {
                 LXColor.black.ignoresSafeArea()
 
-                if viewModel.isLoading && viewModel.plan == nil {
+                if case .loading = appState.planState, appState.currentPlan == nil {
                     VStack(spacing: 16) {
                         ProgressView().tint(LXColor.gold)
                         Text("Loading your plan...")
                             .lxBody()
                             .foregroundColor(LXColor.white)
                     }
-                } else if let plan = viewModel.plan {
+                } else if let plan = appState.currentPlan {
                     ScrollView {
                         VStack(spacing: 24) {
                             Text("Your 90-Day\nTransformation")
@@ -57,20 +56,47 @@ struct PlanView: View {
                                         expandedPhaseId = expandedPhaseId == phase.id ? nil : phase.id
                                     }
                                 } onToggleTask: { task in
-                                    viewModel.toggleTask(task)
+                                    Task {
+                                        await appState.markTaskComplete(taskID: task.id)
+                                    }
                                 }
+                            }
+
+                            // Error handling
+                            if case .error(let err) = appState.planState {
+                                Text(err)
+                                    .lxCaption()
+                                    .foregroundColor(LXColor.red)
+                                    .padding()
                             }
 
                             Spacer().frame(height: 40)
                         }
                     }
+                    .refreshable {
+                        await appState.fetchPlan()
+                    }
+                } else {
+                    // No plan yet
+                    VStack(spacing: 16) {
+                        Text("No plan yet")
+                            .lxH3()
+                            .foregroundColor(LXColor.white.opacity(0.5))
+                        Text("Take a photo to get your personalized plan")
+                            .lxBody()
+                            .foregroundColor(LXColor.white.opacity(0.4))
+                            .multilineTextAlignment(.center)
+                        Button("Retry") {
+                            Task { await appState.fetchPlan() }
+                        }
+                        .lxBody()
+                        .foregroundColor(LXColor.gold)
+                    }
                 }
             }
-            .onAppear { viewModel.loadPlan(appState: appState) }
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Done") { /* dismiss */ }
-                        .foregroundColor(LXColor.gold)
+            .onAppear {
+                if appState.currentPlan == nil {
+                    Task { await appState.fetchPlan() }
                 }
             }
         }
@@ -103,10 +129,10 @@ struct PhaseCard: View {
                     }
                     Spacer()
                     VStack(alignment: .trailing, spacing: 4) {
-                        Text("\(phase.weeks) weeks")
+                        Text("\(phase.weeks)")
                             .lxCaption()
                             .foregroundColor(LXColor.white.opacity(0.5))
-                        Text("\(completedTasks(phase))/\(phase.tasks.count) tasks")
+                        Text("\(completedTasks)/\(phase.tasks.count) tasks")
                             .lxCaption()
                             .foregroundColor(LXColor.gold)
                     }
@@ -138,7 +164,7 @@ struct PhaseCard: View {
         .padding(.horizontal, LXConstants.standardPadding)
     }
 
-    private func completedTasks(_ phase: Phase) -> Int {
+    private var completedTasks: Int {
         phase.tasks.filter(\.isCompleted).count
     }
 }

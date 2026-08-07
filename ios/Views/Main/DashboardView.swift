@@ -6,7 +6,6 @@ import SwiftUI
 /// Shows streak, today's tasks, and quick actions.
 struct DashboardView: View {
     @EnvironmentObject var appState: AppState
-    @StateObject private var viewModel = DashboardViewModel()
     @State private var showCamera = false
 
     var body: some View {
@@ -14,7 +13,7 @@ struct DashboardView: View {
             ZStack {
                 LXColor.black.ignoresSafeArea()
 
-                if viewModel.isLoading && viewModel.data == nil {
+                if case .loading = appState.dashboardState, appState.dashboardData == nil {
                     VStack(spacing: 16) {
                         ProgressView().tint(LXColor.gold)
                         Text("Loading...")
@@ -47,8 +46,7 @@ struct DashboardView: View {
                             .padding(.horizontal, LXConstants.standardPadding)
                             .padding(.top, 16)
 
-                            // Streak card
-                            if let data = viewModel.data {
+                            if let data = appState.dashboardData {
                                 HStack(spacing: 16) {
                                     // Streak
                                     VStack(spacing: 4) {
@@ -87,10 +85,11 @@ struct DashboardView: View {
                                 .padding(.horizontal, LXConstants.standardPadding)
 
                                 // Score delta
-                                if let delta = viewModel.scoreDelta {
+                                if let baseline = data.baselineScore, let current = data.currentScore {
+                                    let delta = current - baseline
                                     HStack {
                                         Image(systemName: delta >= 0 ? "arrow.up.right" : "arrow.down.right")
-                                        Text(viewModel.scoreDeltaText)
+                                        Text(delta >= 0 ? "+\(String(format: "%.1f", delta)) from baseline" : "\(String(format: "%.1f", delta)) from baseline")
                                     }
                                     .lxCaption()
                                     .foregroundColor(delta >= 0 ? LXColor.green : LXColor.red)
@@ -185,12 +184,27 @@ struct DashboardView: View {
                                 }
                             }
 
+                            // Error state
+                            if case .error(let err) = appState.dashboardState {
+                                Text(err)
+                                    .lxCaption()
+                                    .foregroundColor(LXColor.red)
+                                    .padding()
+                            }
+
                             Spacer().frame(height: 40)
                         }
                     }
+                    .refreshable {
+                        await appState.fetchDashboard()
+                    }
                 }
             }
-            .onAppear { viewModel.load(appState: appState) }
+            .onAppear {
+                if appState.dashboardData == nil {
+                    Task { await appState.fetchDashboard() }
+                }
+            }
             .sheet(isPresented: $showCamera) {
                 CameraView()
             }
@@ -198,7 +212,7 @@ struct DashboardView: View {
     }
 
     private var userFirstName: String {
-        appState.user?.username ?? "Maxxer"
+        appState.currentUser?.username ?? "Maxxer"
     }
 }
 

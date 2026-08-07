@@ -6,7 +6,6 @@ import SwiftUI
 /// See others' transformations and discover recommended products.
 struct ExploreView: View {
     @EnvironmentObject var appState: AppState
-    @StateObject private var viewModel = ExploreViewModel()
     @State private var selectedSegment = 0
 
     var body: some View {
@@ -14,14 +13,28 @@ struct ExploreView: View {
             ZStack {
                 LXColor.black.ignoresSafeArea()
 
-                if viewModel.isLoading && viewModel.data == nil {
+                if case .loading = appState.exploreState, appState.exploreData == nil {
                     VStack(spacing: 16) {
                         ProgressView().tint(LXColor.gold)
                         Text("Loading...")
                             .lxBody()
                             .foregroundColor(LXColor.white)
                     }
-                } else {
+                } else if case .error(let err) = appState.exploreState, appState.exploreData == nil {
+                    VStack(spacing: 16) {
+                        Text("Something went wrong")
+                            .lxH3()
+                            .foregroundColor(LXColor.white)
+                        Text(err)
+                            .lxCaption()
+                            .foregroundColor(LXColor.white.opacity(0.5))
+                        Button("Retry") {
+                            Task { await appState.fetchExplore() }
+                        }
+                        .lxBody()
+                        .foregroundColor(LXColor.gold)
+                    }
+                } else if let data = appState.exploreData {
                     ScrollView {
                         VStack(spacing: 24) {
                             Text("Explore")
@@ -41,31 +54,49 @@ struct ExploreView: View {
                             .padding(.horizontal, LXConstants.standardPadding)
 
                             if selectedSegment == 0 {
-                                transformationsSection
+                                transformationsSection(data)
                             } else if selectedSegment == 1 {
-                                productsSection
+                                productsSection(data)
                             } else {
-                                articlesSection
+                                articlesSection(data)
                             }
 
                             Spacer().frame(height: 40)
                         }
                     }
+                    .refreshable {
+                        await appState.fetchExplore()
+                    }
+                } else {
+                    VStack(spacing: 16) {
+                        Text("No content")
+                            .lxH3()
+                            .foregroundColor(LXColor.white.opacity(0.5))
+                        Button("Load") {
+                            Task { await appState.fetchExplore() }
+                        }
+                        .lxBody()
+                        .foregroundColor(LXColor.gold)
+                    }
                 }
             }
-            .onAppear { viewModel.load(appState: appState) }
+            .onAppear {
+                if appState.exploreData == nil {
+                    Task { await appState.fetchExplore() }
+                }
+            }
         }
     }
 
     // MARK: - Transformations ----------------------------------------------
 
-    private var transformationsSection: some View {
+    private func transformationsSection(_ data: ExploreData) -> some View {
         LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-            ForEach(viewModel.data?.transformations ?? []) { tx in
+            ForEach(data.transformations) { tx in
                 VStack(spacing: 8) {
                     HStack(spacing: 4) {
-                        if let url = tx.beforeImageURL {
-                            AsyncImage(url: URL(string: url)) { img in
+                        if let url = tx.beforeImageURL, let u = URL(string: url) {
+                            AsyncImage(url: u) { img in
                                 img.resizable().aspectRatio(contentMode: .fit)
                             } placeholder: {
                                 Rectangle().fill(LXColor.deepNavy)
@@ -74,8 +105,8 @@ struct ExploreView: View {
                             .cornerRadius(8)
                         }
 
-                        if let url = tx.afterImageURL {
-                            AsyncImage(url: URL(string: url)) { img in
+                        if let url = tx.afterImageURL, let u = URL(string: url) {
+                            AsyncImage(url: u) { img in
                                 img.resizable().aspectRatio(contentMode: .fit)
                             } placeholder: {
                                 Rectangle().fill(LXColor.deepNavy)
@@ -111,12 +142,12 @@ struct ExploreView: View {
 
     // MARK: - Products -----------------------------------------------------
 
-    private var productsSection: some View {
+    private func productsSection(_ data: ExploreData) -> some View {
         LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-            ForEach(viewModel.data?.products ?? []) { product in
+            ForEach(data.products) { product in
                 VStack(alignment: .leading, spacing: 8) {
-                    if let url = product.imageURL {
-                        AsyncImage(url: URL(string: url)) { img in
+                    if let url = product.imageURL, let u = URL(string: url) {
+                        AsyncImage(url: u) { img in
                             img.resizable().aspectRatio(contentMode: .fill)
                         } placeholder: {
                             Rectangle().fill(LXColor.deepNavy)
@@ -162,17 +193,17 @@ struct ExploreView: View {
 
     // MARK: - Articles -----------------------------------------------------
 
-    private var articlesSection: some View {
+    private func articlesSection(_ data: ExploreData) -> some View {
         LazyVStack(spacing: 12) {
-            ForEach(viewModel.data?.articles ?? []) { article in
+            ForEach(data.articles) { article in
                 Button(action: {
                     if let url = URL(string: article.url) {
                         UIApplication.shared.open(url)
                     }
                 }) {
                     HStack(spacing: 12) {
-                        if let url = article.imageURL {
-                            AsyncImage(url: URL(string: url)) { img in
+                        if let url = article.imageURL, let u = URL(string: url) {
+                            AsyncImage(url: u) { img in
                                 img.resizable().aspectRatio(contentMode: .fill)
                             } placeholder: {
                                 Rectangle().fill(LXColor.deepNavy)
@@ -203,35 +234,6 @@ struct ExploreView: View {
             }
         }
         .padding(.horizontal, LXConstants.standardPadding)
-    }
-}
-
-// MARK: - Explore ViewModel ------------------------------------------------
-
-final class ExploreViewModel: ObservableObject {
-    @Published var data: ExploreData?
-    @Published var isLoading = false
-    @Published var errorMessage: String?
-
-    func load(appState: AppState) {
-        if let cached = CacheService.shared.cachedExplore() {
-            data = cached
-        }
-
-        isLoading = true
-        Task {
-            do {
-                let d = try await APIService.shared.getExplore()
-                await MainActor.run {
-                    data = d
-                    appState.exploreData = d
-                    isLoading = false
-                    CacheService.shared.setExplore(d)
-                }
-            } catch {
-                await MainActor.run { isLoading = false }
-            }
-        }
     }
 }
 

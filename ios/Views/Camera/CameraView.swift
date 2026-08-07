@@ -6,7 +6,6 @@ import SwiftUI
 /// Photo upload should feel like the start of an adventure, not a chore.
 struct CameraView: View {
     @EnvironmentObject var appState: AppState
-    @StateObject private var viewModel = PhotoViewModel()
     @State private var showPhotoPicker = false
     @State private var navigateToPreview = false
     @State private var pulse = false
@@ -76,18 +75,18 @@ struct CameraView: View {
                 }
             }
             .sheet(isPresented: $showPhotoPicker) {
-                PHPickerSwiftUI(selectedImage: $viewModel.selectedImage) { _ in
+                PHPickerSwiftUI(selectedImage: $appState.currentPhoto) { _ in
                     navigateToPreview = true
                 }
             }
             .navigationDestination(isPresented: $navigateToPreview) {
-                PhotoPreviewView(viewModel: viewModel)
+                PhotoPreviewView()
             }
         }
     }
 }
 
-// MARK: - PhotoPicker wrapper (uses PHPickerViewController) -----------------
+// MARK: - PhotoPicker wrapper (uses UIImagePickerController) -----------------
 
 struct PHPickerSwiftUI: UIViewControllerRepresentable {
     @Binding var selectedImage: UIImage?
@@ -133,8 +132,8 @@ struct PHPickerSwiftUI: UIViewControllerRepresentable {
 ///
 /// Psychology: Build anticipation, give user control.
 struct PhotoPreviewView: View {
-    @ObservedObject var viewModel: PhotoViewModel
     @EnvironmentObject var appState: AppState
+    @Environment(\.dismiss) private var dismiss
     @State private var navigateToProcessing = false
 
     var body: some View {
@@ -147,7 +146,7 @@ struct PhotoPreviewView: View {
                     .foregroundColor(LXColor.white)
                     .multilineTextAlignment(.center)
 
-                if let img = viewModel.selectedImage {
+                if let img = appState.currentPhoto {
                     Image(uiImage: img)
                         .resizable()
                         .aspectRatio(contentMode: .fit)
@@ -157,7 +156,7 @@ struct PhotoPreviewView: View {
                 }
 
                 HStack(spacing: 20) {
-                    Button(action: { /* dismiss back to camera */ }) {
+                    Button(action: { dismiss() }) {
                         HStack(spacing: 6) {
                             Image(systemName: "arrow.counterclockwise")
                             Text("Retake")
@@ -171,12 +170,22 @@ struct PhotoPreviewView: View {
                     }
 
                     Button(action: {
-                        viewModel.upload(appState: appState)
-                        navigateToProcessing = true
+                        Task {
+                            if let img = appState.currentPhoto {
+                                let success = await appState.uploadPhoto(image: img)
+                                if success {
+                                    navigateToProcessing = true
+                                }
+                            }
+                        }
                     }) {
                         HStack(spacing: 6) {
-                            Text("🚀")
-                            Text("Analyze & Discover")
+                            if appState.isUploading {
+                                ProgressView().tint(LXColor.black)
+                            } else {
+                                Text("🚀")
+                            }
+                            Text(appState.isUploading ? "Uploading..." : "Analyze & Discover")
                         }
                         .font(LXFont.h3())
                         .frame(maxWidth: .infinity)
@@ -185,6 +194,7 @@ struct PhotoPreviewView: View {
                         .foregroundColor(LXColor.black)
                         .cornerRadius(LXConstants.cornerRadius)
                     }
+                    .disabled(appState.isUploading)
                 }
                 .padding(.horizontal, LXConstants.standardPadding)
             }

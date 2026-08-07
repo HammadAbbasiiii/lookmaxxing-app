@@ -9,6 +9,8 @@ struct ProcessingView: View {
     @State private var factIndex = 0
     @State private var progress = 0.0
     @State private var navigateToScore = false
+    @State private var showError = false
+    @State private var errorMessage = ""
     private let timer = Timer.publish(every: 2.5, on: .main, in: .common).autoconnect()
 
     var body: some View {
@@ -36,7 +38,7 @@ struct ProcessingView: View {
                         .foregroundColor(LXColor.gold)
                 }
 
-                Text("Analyzing your photo...")
+                Text(appState.isAnalyzing ? "Analyzing your photo..." : "Processing...")
                     .lxH2()
                     .foregroundColor(LXColor.white)
 
@@ -45,19 +47,24 @@ struct ProcessingView: View {
                     .foregroundColor(LXColor.white.opacity(0.6))
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, LXConstants.standardPadding)
-                    .id(factIndex)  // forces transition
+                    .id(factIndex)
                     .transition(.asymmetric(insertion: .move(edge: .trailing), removal: .move(edge: .leading)))
                     .animation(.easeInOut(duration: 0.5), value: factIndex)
 
-                // Upload error
-                if let err = appState.uploadError {
-                    Text(err)
+                // Error state with retry
+                if showError {
+                    Text(errorMessage)
                         .lxCaption()
                         .foregroundColor(LXColor.red)
-                        .padding()
-                        Button("Retry") { /* back to camera */ }
-                        .lxBody()
-                        .foregroundColor(LXColor.gold)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, LXConstants.standardPadding)
+
+                    Button("Retry") {
+                        showError = false
+                        startAnalysis()
+                    }
+                    .lxBody()
+                    .foregroundColor(LXColor.gold)
                 }
 
                 Spacer()
@@ -66,12 +73,34 @@ struct ProcessingView: View {
                 factIndex += 1
                 progress = min(0.95, progress + 0.12)
             }
-            .onChange(of: appState.currentScore) { score in
-                if score != nil { navigateToScore = true }
+            .onAppear {
+                startAnalysis()
             }
         }
         .fullScreenCover(isPresented: $navigateToScore) {
             ScoreView()
+        }
+    }
+
+    private func startAnalysis() {
+        guard let photoID = appState.currentPhotoID else {
+            errorMessage = "No photo to analyze. Please go back and try again."
+            showError = true
+            return
+        }
+
+        Task {
+            let result = await appState.pollForResults(photoID: photoID)
+            if result != nil {
+                progress = 1.0
+                // Small delay to show completed progress bar
+                try? await Task.sleep(nanoseconds: 500_000_000)
+                navigateToScore = true
+            } else {
+                errorMessage = "Analysis timed out. Please try again."
+                showError = true
+                progress = 0
+            }
         }
     }
 }
@@ -135,7 +164,7 @@ struct ScoreView: View {
                         }
 
                         // Category scores
-                        if let categories = appState.currentScore?.categoryScores {
+                        if let categories = appState.currentScore?.categoryScores, !categories.isEmpty {
                             VStack(spacing: 12) {
                                 Text("Category Breakdown")
                                     .lxH3()

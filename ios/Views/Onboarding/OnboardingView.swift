@@ -6,7 +6,9 @@ import SwiftUI
 /// "What will my score be?"
 struct OnboardingView: View {
     @EnvironmentObject var appState: AppState
-    @StateObject private var authVM = AuthViewModel()
+    @State private var email = ""
+    @State private var password = ""
+    @State private var fullName = ""
     @State private var showSignUp = false
 
     var body: some View {
@@ -55,19 +57,23 @@ struct OnboardingView: View {
                 // Lazy sign-up flow
                 if showSignUp {
                     VStack(spacing: 16) {
-                        LXTextField(placeholder: "Email", text: $authVM.email, keyboardType: .emailAddress)
-                        LXTextField(placeholder: "Username", text: $authVM.username)
-                        LXTextField(placeholder: "Password", text: $authVM.password, isSecure: true)
+                        LXTextField(placeholder: "Full Name (optional)", text: $fullName)
+                        LXTextField(placeholder: "Email", text: $email, keyboardType: .emailAddress)
+                        LXTextField(placeholder: "Password", text: $password, isSecure: true)
 
-                        if let err = authVM.errorMessage {
+                        if case .error(let err) = appState.authState {
                             Text(err)
                                 .lxCaption()
                                 .foregroundColor(LXColor.red)
                                 .multilineTextAlignment(.center)
                         }
 
-                        Button(action: { authVM.signUp(appState: appState) }) {
-                            Text(authVM.isLoading ? "Creating Account..." : "Create Account")
+                        Button(action: {
+                            Task {
+                                await appState.signUp(email: email, password: password, fullName: fullName.isEmpty ? nil : fullName)
+                            }
+                        }) {
+                            Text(isLoading ? "Creating Account..." : "Create Account")
                                 .lxH3()
                                 .frame(maxWidth: .infinity)
                                 .frame(height: LXConstants.buttonHeight)
@@ -75,11 +81,14 @@ struct OnboardingView: View {
                                 .foregroundColor(LXColor.black)
                                 .cornerRadius(LXConstants.cornerRadius)
                         }
-                        .disabled(authVM.isLoading)
+                        .disabled(isLoading)
 
                         Button("Already have an account? Log in") {
-                            authVM.login(appState: appState)
+                            Task {
+                                await appState.login(email: email, password: password)
+                            }
                         }
+                        .disabled(isLoading)
                         .lxCaption()
                         .foregroundColor(LXColor.white.opacity(0.6))
                     }
@@ -97,6 +106,12 @@ struct OnboardingView: View {
                 Spacer()
             }
         }
+        .animation(.easeInOut(duration: 0.3), value: showSignUp)
+    }
+
+    private var isLoading: Bool {
+        if case .loading = appState.authState { return true }
+        return false
     }
 }
 

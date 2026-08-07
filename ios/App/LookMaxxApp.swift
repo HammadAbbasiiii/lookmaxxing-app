@@ -37,7 +37,7 @@ struct MainTabView: View {
             DashboardView()
                 .tabItem { Label("Home", systemImage: "house.fill") }
 
-            ProgressView_()
+            PlanView()
                 .tabItem { Label("Progress", systemImage: "chart.line.uptrend.xyaxis") }
 
             ExploreView()
@@ -47,16 +47,5 @@ struct MainTabView: View {
                 .tabItem { Label("Profile", systemImage: "person.fill") }
         }
         .accentColor(LXColor.gold)
-    }
-}
-
-// Placeholder — replaced in its own file
-struct ProgressView_: View {
-    var body: some View {
-        Text("Progress")
-            .font(LXFont.h2())
-            .foregroundColor(LXColor.white)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(LXColor.black.ignoresSafeArea())
     }
 }
