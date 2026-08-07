@@ -62,12 +62,15 @@ def upload_to_cloudinary(file_content: bytes, filename: str) -> str:
     # Compress before uploading to Cloudinary — saves 5-6s on upload time
     compressed = compress_for_upload(file_content)
 
-    # Upload to Cloudinary
+    # Upload to Cloudinary with auto-optimization
     result = cloudinary.uploader.upload(
         compressed,
         folder="lookmaxx/photos",
         public_id=f"user_{uuid.uuid4().hex[:8]}",
-        resource_type="image"
+        resource_type="image",
+        quality="auto",          # Cloudinary auto-optimizes quality
+        fetch_format="auto",     # Converts to WebP when supported
+        flags="attachment",      # Enables further optimization
     )
 
     return result.get("secure_url")
