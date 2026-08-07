@@ -12,6 +12,7 @@ Architecture:
 import io
 import time
 import logging
+import threading
 
 import numpy as np
 from PIL import Image, ImageEnhance, ImageOps
@@ -72,55 +73,56 @@ class PredictionService:
     """Loads RankInfoNet once and reuses for all predictions."""
 
     def __init__(self) -> None:
-        self.model: object | None = None
-        self.device = None
-        self.model_loaded: bool = False
+        self._model: object | None = None
+        self._device: object | None = None
+        self._loaded: bool = False
+        self._lock = threading.Lock()
 
-    # ── Model loading (called from main.py startup) ──────────────────────
-    def load_model(self, model_path: str | None = None) -> bool:
-        """Load the trained RankInfoNet model. Returns True on success."""
-        from app.config import settings
-        path = model_path or settings.MODEL_PATH
+    # ── Lazy model loading (called on first predict, not at startup) ───
+    def _load_model(self) -> bool:
+        """Thread-safe lazy load of RankInfoNet. Returns True on success."""
+        if self._loaded:
+            return self._model is not None
+        with self._lock:
+            if self._loaded:
+                return self._model is not None
+            from app.config import settings
+            path = settings.MODEL_PATH
 
-        if not _ensure_torch():
-            logger.warning("PyTorch unavailable — skipping model load")
-            self.model = None
-            self.model_loaded = False
-            return False
+            if not _ensure_torch():
+                logger.warning("PyTorch unavailable — skipping model load")
+                self._loaded = True
+                return False
 
-        try:
-            self.device = _torch.device("cuda" if _torch.cuda.is_available() else "cpu")
+            try:
+                print("⏳ Loading PyTorch model (first request, may take a few seconds)...")
+                self._device = _torch.device("cuda" if _torch.cuda.is_available() else "cpu")
 
-            # Model was trained in a Jupyter notebook where RankInfoNet
-            # lives in __main__ — patch __main__ so unpickling works.
-            import __main__
-            __main__.RankInfoNet = _RankInfoNet
+                import __main__
+                __main__.RankInfoNet = _RankInfoNet
 
-            checkpoint = _torch.load(path, map_location=self.device, weights_only=False)
+                checkpoint = _torch.load(str(path), map_location=self._device, weights_only=False)
 
-            # The file may contain the full model or just state_dict
-            if isinstance(checkpoint, dict):
-                model = _RankInfoNet()
-                model.load_state_dict(checkpoint)
-            else:
-                model = checkpoint
+                if isinstance(checkpoint, dict):
+                    model = _RankInfoNet()
+                    model.load_state_dict(checkpoint)
+                else:
+                    model = checkpoint
 
-            model.to(self.device)
-            model.eval()
-            self.model = model
-            self.model_loaded = True
-            logger.info(f"✅ RankInfoNet model loaded on {self.device} from {path}")
-            return True
-        except FileNotFoundError:
-            logger.warning(f"❌ Model file not found at {path}. Using mock predictions.")
-            self.model = None
-            self.model_loaded = False
-            return False
-        except Exception as exc:
-            logger.warning(f"❌ Failed to load model: {exc}. Using mock predictions.")
-            self.model = None
-            self.model_loaded = False
-            return False
+                model.to(self._device)
+                model.eval()
+                self._model = model
+                self._loaded = True
+                print(f"✅ PyTorch model loaded on {self._device}")
+                return True
+            except FileNotFoundError:
+                logger.warning(f"❌ Model file not found at {path}. Using mock predictions.")
+                self._loaded = True
+                return False
+            except Exception as exc:
+                logger.warning(f"❌ Failed to load model: {exc}. Using mock predictions.")
+                self._loaded = True
+                return False
 
     # ── Main prediction entry point ────────────────────────────────────
     def predict(self, image_bytes: bytes, gender: str | None = None) -> dict:
@@ -164,17 +166,17 @@ class PredictionService:
             landmarks = face_result.get("landmarks", [])
             face_loc = self._landmarks_to_bbox(landmarks, img.size) if landmarks else None
 
-        # Model inference or mock
-        if self.model is not None and face_loc is not None:
+        # Model inference or mock (lazy-loads model on first call)
+        if self._load_model() and self._model is not None and face_loc is not None:
             try:
                 processed = self._preprocess_image(img, face_loc)
                 transform_fn = _get_transform()
                 if transform_fn is None:
                     raise RuntimeError("Torch transforms not available")
-                tensor = transform_fn(processed).unsqueeze(0).to(self.device)
+                tensor = transform_fn(processed).unsqueeze(0).to(self._device)
 
                 with _torch.no_grad():
-                    score = float(self.model(tensor).item())
+                    score = float(self._model(tensor).item())
 
                 score_100 = self._raw_to_100(score)
                 model_used = True

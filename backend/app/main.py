@@ -6,27 +6,18 @@ from app.routes import profile, progress, dashboard
 from app.middleware.rate_limit import rate_limit_middleware
 from app.database import engine
 from app.models import Base
-from app.services.prediction_service import prediction_service
-
 # ── Startup (minimal to stay under 512 MB Render limit) ────────────
 print("🚀 LookMaxx API starting …")
 
-# Database tables
+# Database tables (only thing loaded at boot to stay under 512 MB)
 try:
     Base.metadata.create_all(bind=engine)
     print("✅ DB tables ready")
 except Exception as e:
     print(f"⚠️ DB failed: {e}")
 
-# ML prediction model (lightweight PyTorch model)
-try:
-    prediction_service.load_model()
-    print("✅ ML model loaded")
-except Exception as e:
-    print(f"⚠️ ML model failed (using mocks): {e}")
-
-# MediaPipe & Redis are lazy-loaded on demand to save memory
-# (MediaPipe alone uses 200+ MB, would OOM on Render starter tier if loaded at boot)
+# PyTorch model, MediaPipe & Redis are all lazy-loaded on first request.
+# Loading the 94MB model at boot consumes 200-300MB and OOMs Render starter tier.
 
 app = FastAPI(
     title="LookMaxx API",
