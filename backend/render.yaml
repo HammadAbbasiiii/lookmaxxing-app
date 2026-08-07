@@ -1,0 +1,59 @@
+services:
+  - type: web
+    name: lookmaxx-api
+    runtime: python
+    repo: https://github.com/HammadAbbasiiii/lookmaxxing-app
+    plan: starter
+    region: frankfurt
+    buildCommand: |
+      cd backend
+      python -m venv venv
+      source venv/bin/activate
+      pip install --upgrade pip
+      pip install -r requirements.txt
+    startCommand: |
+      cd backend
+      source venv/bin/activate
+      uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.10.0
+      - key: DATABASE_URL
+        fromDatabase:
+          name: lookmaxx-db
+          property: connectionString
+      - key: DEEPSEEK_API_KEY
+        sync: false
+      - key: DEEPSEEK_BASE_URL
+        value: https://api.deepseek.com
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
+      - key: SECRET_KEY
+        sync: false
+      - key: ALGORITHM
+        value: HS256
+      - key: ACCESS_TOKEN_EXPIRE_MINUTES
+        value: 30
+      - key: REDIS_URL
+        sync: false
+      - key: MODEL_PATH
+        value: app/ml/rank_info_net_full.pth
+      - key: ENVIRONMENT
+        value: production
+
+  - type: redis
+    name: lookmaxx-redis
+    region: frankfurt
+    plan: starter
+    maxmemoryPolicy: noeviction
+
+  - type: postgresql
+    name: lookmaxx-db
+    region: frankfurt
+    plan: starter
+    databaseName: lookmaxx
+    user: lookmaxx_user
