@@ -6,10 +6,65 @@ Each category returns a score (0-100) and a description label.
 import cv2
 import numpy as np
 import math
+import os
+import urllib.request
 import logging
 from typing import Dict, List, Any, Optional, Tuple
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# MediaPipe Task API model (face_landmarker.task)
+# ---------------------------------------------------------------------------
+MODEL_URL = (
+    "https://storage.googleapis.com/mediapipe-models/"
+    "face_landmarker/face_landmarker/float16/latest/face_landmarker.task"
+)
+MODEL_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "ml")
+MODEL_PATH = os.path.join(MODEL_DIR, "face_landmarker.task")
+
+
+def download_mediapipe_model() -> bool:
+    """Download the MediaPipe face landmarker model if missing."""
+    if os.path.exists(MODEL_PATH):
+        logger.info("✅ MediaPipe model already present (%s)", MODEL_PATH)
+        return True
+
+    try:
+        os.makedirs(MODEL_DIR, exist_ok=True)
+        logger.info("📥 Downloading MediaPipe model from %s …", MODEL_URL)
+        urllib.request.urlretrieve(MODEL_URL, MODEL_PATH)
+        logger.info("✅ MediaPipe model downloaded to %s", MODEL_PATH)
+        return True
+    except Exception as exc:
+        logger.error("❌ Failed to download MediaPipe model: %s", exc)
+        return False
+
+
+def load_face_landmarker():
+    """
+    Attempt to load the face_landmarker.task model via the MediaPipe Task API.
+    Returns a FaceLandmarker instance on success, or None.
+    """
+    if not os.path.exists(MODEL_PATH):
+        if not download_mediapipe_model():
+            return None
+    try:
+        from mediapipe.tasks.python import vision
+        from mediapipe.tasks.python import BaseOptions
+
+        options = vision.FaceLandmarkerOptions(
+            base_options=BaseOptions(model_asset_path=MODEL_PATH),
+            running_mode=vision.RunningMode.IMAGE,
+            num_faces=1,
+            min_detection_confidence=0.5,
+        )
+        landmarker = vision.FaceLandmarker.create_from_options(options)
+        logger.info("✅ MediaPipe model loaded — using real landmarks")
+        return landmarker
+    except Exception as exc:
+        logger.warning("⚠️ Could not load MediaPipe Task model: %s", exc)
+        return None
 
 # ---------------------------------------------------------------------------
 # MediaPipe FaceMesh (legacy API - works without model downloads)

@@ -22,6 +22,7 @@ from app.services.prediction_service import prediction_service
 from app.config import settings
 import uuid
 from datetime import datetime
+import time
 import logging
 
 logger = logging.getLogger(__name__)
@@ -177,6 +178,8 @@ async def analyze_photo(
     4. Generate 90-day action plan
     5. Save results to database
     """
+    start_time = time.perf_counter()
+
     # Get photo from DB
     photo = db.query(Photo).filter(Photo.id == photo_id, Photo.user_id == current_user.id).first()
     if not photo:
@@ -302,8 +305,13 @@ async def analyze_photo(
     # Build response
     deepseek_data = deepseek_result.get("data", {}) if deepseek_result.get("success") else {}
 
+    end_time = time.perf_counter()
+    elapsed_ms = (end_time - start_time) * 1000
+    print(f"⏱️ Analysis completed in {elapsed_ms:.0f}ms")
+
     return {
         "success": True,
+        "processing_time_ms": round(elapsed_ms, 2),
         "photo_id": photo.id,
         "analysis": {
             "overall_score": overall_score,

@@ -40,12 +40,17 @@ def _get_redis() -> redis.Redis:
     """Return a cached Redis connection."""
     global _redis
     if _redis is None:
-        try:
-            _redis = redis.Redis.from_url(settings.REDIS_URL, decode_responses=True)
-            _redis.ping()
-            logger.info("Redis connected for DeepSeek caching.")
-        except Exception as exc:
-            logger.warning(f"Redis unavailable — caching disabled: {exc}")
+        redis_url = settings.REDIS_URL
+        if redis_url and redis_url != "redis://localhost:6379":
+            try:
+                _redis = redis.Redis.from_url(redis_url, decode_responses=True, socket_connect_timeout=5)
+                _redis.ping()
+                logger.info("✅ Redis connected — caching enabled")
+            except Exception as exc:
+                logger.warning(f"⚠️ Redis connection failed: {exc}")
+                _redis = None
+        else:
+            logger.info("⚠️ Redis unavailable — caching disabled (no REDIS_URL set)")
             _redis = None
     return _redis
 
@@ -292,6 +297,7 @@ def generate_personalized_content(
             ],
             temperature=0.7,
             max_tokens=2048,
+            timeout=25.0,
         )
 
         raw_content = response.choices[0].message.content or ""
@@ -343,6 +349,14 @@ def generate_personalized_content(
 
         return {"success": True, "data": parsed}
 
+    except TimeoutError:
+        logger.warning("⚠️ DeepSeek API timeout — using fallback plan")
+        return {
+            "success": True,
+            "data": _build_fallback(score, gender, weakest_categories),
+            "fallback": True,
+            "error_detail": "API timed out after 25s",
+        }
     except Exception as exc:
         logger.error(f"DeepSeek API call failed: {exc}")
         # Return fallback on any error so the app keeps working
