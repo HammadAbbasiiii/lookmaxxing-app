@@ -72,6 +72,7 @@ class PhotoUploadResponse(BaseModel):
     is_baseline: bool
     week_number: Optional[int] = None
     captured_at: datetime
+    debug_timings: Optional[dict] = None
 
     class Config:
         from_attributes = True

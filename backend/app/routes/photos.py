@@ -44,6 +44,10 @@ async def upload_photo(
     - Max size: 10MB
     - Returns photo ID and URL
     """
+    # ⏱️ Start timing
+    timings = {}
+    start_total = time.perf_counter()
+
     # Validate file type
     allowed_extensions = [".jpg", ".jpeg", ".png", ".heic"]
     file_ext = f".{file.filename.split('.')[-1].lower()}"
@@ -53,7 +57,8 @@ async def upload_photo(
             detail=f"Unsupported file format. Allowed: {', '.join(allowed_extensions)}"
         )
     
-    # Validate file size
+    # 1. ⏱️ Time to read file from client
+    read_start = time.perf_counter()
     file_size = 0
     file_content = b""
     chunk_size = 1024 * 1024  # 1MB chunks
@@ -65,15 +70,22 @@ async def upload_photo(
                 status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
                 detail=f"File too large. Max size: {settings.MAX_FILE_SIZE_MB}MB"
             )
-    
+    timings["read_from_client_ms"] = round((time.perf_counter() - read_start) * 1000, 2)
+
+    # 📄 Log file size
+    file_size_kb = len(file_content) / 1024
+    print(f"📄 File received: {file_size_kb:.2f} KB ({file.filename})")
+
+    # 2. ⏱️ Time to upload to Cloudinary
+    cloudinary_start = time.perf_counter()
     try:
-        # Upload to Cloudinary
         file_url = upload_to_cloudinary(file_content, file.filename)
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Upload failed: {str(e)}"
         )
+    timings["cloudinary_upload_ms"] = round((time.perf_counter() - cloudinary_start) * 1000, 2)
     
     # Check if this is the user's first photo (baseline)
     existing_photos = db.query(Photo).filter(Photo.user_id == current_user.id).count()
@@ -99,7 +111,8 @@ async def upload_photo(
         week_number=week_number,
     )
 
-    # 🔮 Run ML prediction on uploaded image
+    # 3. ⏱️ Time for ML prediction
+    ml_start = time.perf_counter()
     try:
         gender = getattr(current_user, "gender", None) or "male"
         prediction = prediction_service.predict(file_content, gender=gender)
@@ -108,20 +121,29 @@ async def upload_photo(
             new_photo.score = score
     except Exception as e:
         logger.warning(f"Prediction failed for photo {new_photo.id}: {e}")
+    timings["ml_prediction_ms"] = round((time.perf_counter() - ml_start) * 1000, 2)
 
+    # 4. ⏱️ Time for database write
+    db_start = time.perf_counter()
     db.add(new_photo)
     db.commit()
     db.refresh(new_photo)
+    timings["database_save_ms"] = round((time.perf_counter() - db_start) * 1000, 2)
 
-    return PhotoUploadResponse(
-        id=new_photo.id,
-        user_id=new_photo.user_id,
-        file_url=new_photo.file_url,
-        score=new_photo.score,
-        is_baseline=new_photo.is_baseline,
-        week_number=new_photo.week_number,
-        captured_at=new_photo.captured_at,
-    )
+    # 5. ⏱️ Total time
+    timings["total_ms"] = round((time.perf_counter() - start_total) * 1000, 2)
+    print(f"⏱️ Upload timings: {timings}")
+
+    return {
+        "id": new_photo.id,
+        "user_id": new_photo.user_id,
+        "file_url": new_photo.file_url,
+        "score": new_photo.score,
+        "is_baseline": new_photo.is_baseline,
+        "week_number": new_photo.week_number,
+        "captured_at": new_photo.captured_at,
+        "debug_timings": timings,
+    }
 
 @router.get("/all", response_model=list[PhotoUploadResponse])
 async def get_all_photos(
