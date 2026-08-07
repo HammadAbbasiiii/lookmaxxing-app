@@ -37,12 +37,23 @@ def _get_memory_usage() -> dict | None:
 @router.get("/health")
 async def health_check():
     """Health check — used by Render to verify service liveness."""
+    import os
+    # Check if MediaPipe model file exists
+    model_paths = [
+        os.path.join(os.path.dirname(__file__), "..", "ml", "face_landmarker.task"),
+        "/opt/render/project/src/backend/app/ml/face_landmarker.task",
+    ]
+    mediapipe_available = any(os.path.exists(p) for p in model_paths)
+    model_path = next((p for p in model_paths if os.path.exists(p)), None)
+
     return {
         "status": "healthy",
         "timestamp": datetime.utcnow().isoformat(),
         "service": "lookmaxx-api",
         "redis": _get_redis_status(),
         "memory": _get_memory_usage(),
+        "mediapipe_available": mediapipe_available,
+        "mediapipe_model_path": model_path,
     }
 
 

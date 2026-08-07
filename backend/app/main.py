@@ -20,6 +20,17 @@ except Exception as e:
 # PyTorch model, MediaPipe & Redis are all lazy-loaded on first request.
 # Loading the 94MB model at boot consumes 200-300MB and OOMs Render starter tier.
 
+# ── Verify MediaPipe model file exists (don't load, just check) ──
+import os
+_model_paths = [
+    os.path.join(os.path.dirname(__file__), "ml", "face_landmarker.task"),
+    "/opt/render/project/src/backend/app/ml/face_landmarker.task",
+]
+if any(os.path.exists(p) for p in _model_paths):
+    print(f"✅ MediaPipe model file found at startup")
+else:
+    print("⚠️ MediaPipe model file MISSING at startup — predictions will use mock landmarks")
+
 app = FastAPI(
     title="LookMaxx API",
     description="AI-powered looks analysis and improvement platform",
