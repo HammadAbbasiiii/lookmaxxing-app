@@ -822,4 +822,5 @@ def generate_fallback_plan(
         score_data={"score": overall_score},
         category_breakdown=category_breakdown,
         user_profile={"gender": gender},
+        skip_deepseek=True,
     )

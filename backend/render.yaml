@@ -11,6 +11,11 @@ services:
       source venv/bin/activate
       pip install --upgrade pip
       pip install -r requirements.txt
+      # Download MediaPipe face landmarker model
+      mkdir -p app/ml
+      curl -fsSL -o app/ml/face_landmarker.task \
+        https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/latest/face_landmarker.task
+      echo "✅ MediaPipe model pre-downloaded"
     startCommand: |
       cd backend
       source venv/bin/activate
