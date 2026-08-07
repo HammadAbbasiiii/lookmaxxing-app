@@ -25,6 +25,7 @@ from datetime import datetime
 import time
 import logging
 import json
+import numpy as np
 
 logger = logging.getLogger(__name__)
 
@@ -362,6 +363,43 @@ async def analyze_photo(
             current_week=1,
         )
         db.add(new_plan)
+
+    # ── Convert any NumPy types to Python native types ────────────
+    # Face-service helpers (calculate_symmetry, etc.) may return
+    # np.float64 / np.int64, which SQLAlchemy misinterprets as
+    # PostgreSQL schema references ("np" schema).
+    def _py(val):
+        """Convert NumPy scalar/array to a plain Python value."""
+        if val is None:
+            return None
+        if isinstance(val, (np.integer, np.floating)):
+            return val.item()
+        if isinstance(val, np.ndarray):
+            return val.tolist()
+        return val
+
+    photo.score = _py(photo.score)
+    photo.symmetry_score = _py(photo.symmetry_score)
+    photo.skin_score = _py(photo.skin_score)
+    photo.jawline_score = _py(photo.jawline_score)
+    photo.eye_score = _py(photo.eye_score)
+    photo.nose_score = _py(photo.nose_score) if hasattr(photo, "nose_score") else photo.nose_score
+    photo.lips_score = _py(photo.lips_score) if hasattr(photo, "lips_score") else photo.lips_score
+
+    # Deep-clean any JSON fields so nested np scalars are purged
+    def _json_safe(obj):
+        if isinstance(obj, dict):
+            return {k: _json_safe(v) for k, v in obj.items()}
+        if isinstance(obj, list):
+            return [_json_safe(item) for item in obj]
+        if isinstance(obj, (np.integer, np.floating)):
+            return obj.item()
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        return obj
+
+    photo.analysis_details = _json_safe(photo.analysis_details)
+    # ──────────────────────────────────────────────────────────────
 
     db.commit()
     db.refresh(photo)
