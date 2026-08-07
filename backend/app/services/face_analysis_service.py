@@ -7,7 +7,6 @@ import cv2
 import numpy as np
 import math
 import os
-import urllib.request
 import logging
 from typing import Dict, List, Any, Optional, Tuple
 
@@ -16,72 +15,51 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # MediaPipe Task API model (face_landmarker.task)
 # ---------------------------------------------------------------------------
-MODEL_URL = (
-    "https://storage.googleapis.com/mediapipe-models/"
-    "face_landmarker/face_landmarker/float16/latest/face_landmarker.task"
-)
-MODEL_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "ml")
-MODEL_PATH = os.path.join(MODEL_DIR, "face_landmarker.task")
+MODEL_PATH = os.path.join(os.path.dirname(__file__), "..", "ml", "face_landmarker.task")
+if not os.path.exists(MODEL_PATH):
+    MODEL_PATH = "/opt/render/project/src/backend/app/ml/face_landmarker.task"
+
+_mediapipe_available = False
+_face_landmarker = None
 
 
-def download_mediapipe_model() -> bool:
-    """Download the MediaPipe face landmarker model if missing."""
-    if os.path.exists(MODEL_PATH):
-        logger.info("✅ MediaPipe model already present (%s)", MODEL_PATH)
-        return True
-
+def _load_mediapipe():
+    """Load the MediaPipe FaceLandmarker Task API model at module import."""
+    global _mediapipe_available, _face_landmarker
     try:
-        os.makedirs(MODEL_DIR, exist_ok=True)
-        logger.info("📥 Downloading MediaPipe model from %s …", MODEL_URL)
-        urllib.request.urlretrieve(MODEL_URL, MODEL_PATH)
-        logger.info("✅ MediaPipe model downloaded to %s", MODEL_PATH)
-        return True
-    except Exception as exc:
-        logger.error("❌ Failed to download MediaPipe model: %s", exc)
-        return False
-
-
-def load_face_landmarker():
-    """
-    Attempt to load the face_landmarker.task model via the MediaPipe Task API.
-    Returns a FaceLandmarker instance on success, or None.
-    """
-    if not os.path.exists(MODEL_PATH):
-        if not download_mediapipe_model():
-            return None
-    try:
+        if not os.path.exists(MODEL_PATH):
+            print(f"⚠️ MediaPipe model not found: {MODEL_PATH}")
+            logger.warning("⚠️ MediaPipe model not found: %s", MODEL_PATH)
+            return
+        from mediapipe.tasks import python
         from mediapipe.tasks.python import vision
-        from mediapipe.tasks.python import BaseOptions
 
+        base_options = python.BaseOptions(model_asset_path=MODEL_PATH)
         options = vision.FaceLandmarkerOptions(
-            base_options=BaseOptions(model_asset_path=MODEL_PATH),
-            running_mode=vision.RunningMode.IMAGE,
+            base_options=base_options,
+            output_face_blendshapes=True,
+            output_facial_transformation_matrixes=True,
             num_faces=1,
+            running_mode=vision.RunningMode.IMAGE,
             min_detection_confidence=0.5,
         )
-        landmarker = vision.FaceLandmarker.create_from_options(options)
-        logger.info("✅ MediaPipe model loaded — using real landmarks")
-        return landmarker
-    except Exception as exc:
-        logger.warning("⚠️ Could not load MediaPipe Task model: %s", exc)
-        return None
+        _face_landmarker = vision.FaceLandmarker.create_from_options(options)
+        _mediapipe_available = True
+        print(f"✅ MediaPipe loaded from: {MODEL_PATH}")
+        logger.info("✅ MediaPipe model loaded — using real landmarks from %s", MODEL_PATH)
+    except Exception as e:
+        print(f"⚠️ MediaPipe loading failed: {e}")
+        logger.warning("⚠️ Could not load MediaPipe Task model: %s", e)
+        _mediapipe_available = False
 
-# ---------------------------------------------------------------------------
-# MediaPipe FaceMesh (legacy API - works without model downloads)
-# ---------------------------------------------------------------------------
-try:
-    import mediapipe as mp
-    _face_mesh = mp.solutions.face_mesh.FaceMesh(
-        static_image_mode=True,
-        max_num_faces=1,
-        refine_landmarks=True,
-        min_detection_confidence=0.5,
-    )
-    MEDIAPIPE_AVAILABLE = True
-except Exception:
-    logger.warning("MediaPipe not available. Category scores will use fallback estimation.")
-    _face_mesh = None
-    MEDIAPIPE_AVAILABLE = False
+
+# Load immediately at module import
+_load_mediapipe()
+
+
+def is_mediapipe_available() -> bool:
+    """Return whether MediaPipe FaceLandmarker was successfully loaded."""
+    return _mediapipe_available
 
 # ---------------------------------------------------------------------------
 # MediaPipe landmark indices (FaceMesh topology)
@@ -121,7 +99,7 @@ MIDLINE_NOSE_BRIDGE = 6  # Nose bridge
 # ---------------------------------------------------------------------------
 def extract_face_landmarks(image_bytes: bytes) -> Dict[str, Any]:
     """
-    Extract 468 facial landmarks using MediaPipe FaceMesh.
+    Extract 468 facial landmarks using MediaPipe FaceLandmarker Task API.
 
     Args:
         image_bytes: Raw image bytes (JPEG, PNG, etc.)
@@ -130,7 +108,7 @@ def extract_face_landmarks(image_bytes: bytes) -> Dict[str, Any]:
         dict with success (bool), landmarks (list of {x, y, z}), face_count (int),
         and optional mock (bool) if fallback was used.
     """
-    if MEDIAPIPE_AVAILABLE and _face_mesh is not None:
+    if _mediapipe_available and _face_landmarker is not None:
         try:
             nparr = np.frombuffer(image_bytes, np.uint8)
             img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
@@ -140,15 +118,17 @@ def extract_face_landmarks(image_bytes: bytes) -> Dict[str, Any]:
             img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
             h, w = img.shape[:2]
 
-            results = _face_mesh.process(img_rgb)
+            import mediapipe as mp
+            mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=img_rgb)
+            results = _face_landmarker.detect(mp_image)
 
-            if not results.multi_face_landmarks:
+            if not results.face_landmarks:
                 return {"success": False, "error": "No face detected", "fallback": True}
 
             # Take the first face
-            face_lm = results.multi_face_landmarks[0]
+            face_lm = results.face_landmarks[0]
             landmarks = []
-            for lm in face_lm.landmark:
+            for lm in face_lm:
                 landmarks.append({
                     "x": float(lm.x),
                     "y": float(lm.y),
@@ -158,7 +138,7 @@ def extract_face_landmarks(image_bytes: bytes) -> Dict[str, Any]:
             return {
                 "success": True,
                 "landmarks": landmarks,
-                "face_count": len(results.multi_face_landmarks),
+                "face_count": len(results.face_landmarks),
                 "image_dims": (h, w),
             }
         except Exception as exc:
