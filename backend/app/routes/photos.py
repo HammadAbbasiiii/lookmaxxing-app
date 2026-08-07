@@ -383,8 +383,7 @@ async def analyze_photo(
     photo.skin_score = _py(photo.skin_score)
     photo.jawline_score = _py(photo.jawline_score)
     photo.eye_score = _py(photo.eye_score)
-    photo.nose_score = _py(photo.nose_score) if hasattr(photo, "nose_score") else photo.nose_score
-    photo.lips_score = _py(photo.lips_score) if hasattr(photo, "lips_score") else photo.lips_score
+    # nose_score and lips_score are stored in analysis_details JSON only
 
     # Deep-clean any JSON fields so nested np scalars are purged
     def _json_safe(obj):
