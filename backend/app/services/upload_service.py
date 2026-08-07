@@ -17,6 +17,7 @@ cloudinary.config(
 
 UPLOAD_MAX_PX = 1200    # max dimension before upload (was 2000)
 UPLOAD_QUALITY = 70     # JPEG quality (was 85)
+UPLOAD_WEBP_QUALITY = 75  # WebP quality (25-35% smaller than JPEG at same quality)
 
 
 def compress_for_upload(image_bytes: bytes) -> bytes:
@@ -52,6 +53,29 @@ def compress_for_upload(image_bytes: bytes) -> bytes:
         return compressed
     except Exception as exc:
         logger.warning(f"Image compression failed, returning original: {exc}")
+        return image_bytes
+
+
+def convert_to_webp(image_bytes: bytes, quality: int = UPLOAD_WEBP_QUALITY) -> bytes:
+    """
+    Convert image to WebP format for better compression.
+    WebP is 25-35% smaller than JPEG at equivalent visual quality.
+    All major browsers and iOS 14+ support WebP.
+    """
+    try:
+        img = Image.open(io.BytesIO(image_bytes))
+        if img.mode in ("RGBA", "LA", "P"):
+            img = img.convert("RGB")
+        buf = io.BytesIO()
+        img.save(buf, format="WEBP", quality=quality, optimize=True)
+        webp_bytes = buf.getvalue()
+        logger.info(
+            f"🖼 WebP conversion: {len(image_bytes) // 1024}KB → {len(webp_bytes) // 1024}KB "
+            f"({(1 - len(webp_bytes) / len(image_bytes)) * 100:.0f}% smaller)"
+        )
+        return webp_bytes
+    except Exception as e:
+        logger.warning(f"WebP conversion failed, returning original: {e}")
         return image_bytes
 
 
