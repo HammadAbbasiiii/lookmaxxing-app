@@ -8,49 +8,25 @@ from app.database import engine
 from app.models import Base
 from app.services.prediction_service import prediction_service
 
-# ── Startup initialisation ─────────────────────────────────────────
-print("🚀 LookMaxx API starting up …")
+# ── Startup (minimal to stay under 512 MB Render limit) ────────────
+print("🚀 LookMaxx API starting …")
 
-# 1. Database tables
+# Database tables
 try:
     Base.metadata.create_all(bind=engine)
-    print("✅ Database tables created/verified")
+    print("✅ DB tables ready")
 except Exception as e:
-    print(f"⚠️ Database connection failed: {e}")
+    print(f"⚠️ DB failed: {e}")
 
-# 2. ML prediction model
+# ML prediction model (lightweight PyTorch model)
 try:
     prediction_service.load_model()
-    print("✅ ML prediction model loaded")
+    print("✅ ML model loaded")
 except Exception as e:
-    print(f"⚠️ Model loading failed (will use mock predictions): {e}")
+    print(f"⚠️ ML model failed (using mocks): {e}")
 
-# 3. Redis (lazy init — just test the connection once)
-try:
-    from app.config import settings
-    redis_url = settings.REDIS_URL
-    if redis_url and redis_url != "redis://localhost:6379":
-        import redis as redis_lib
-        r = redis_lib.Redis.from_url(redis_url, socket_connect_timeout=5)
-        r.ping()
-        r.close()
-        print("✅ Redis connected — caching enabled")
-    else:
-        print("⚠️ REDIS_URL not set — caching disabled")
-except Exception as e:
-    print(f"⚠️ Redis connection failed: {e}")
-
-# 4. MediaPipe face landmarker (download + load)
-try:
-    from app.services.face_analysis_service import download_mediapipe_model, load_face_landmarker
-    download_mediapipe_model()
-    landmarker = load_face_landmarker()
-    if landmarker:
-        print("✅ MediaPipe model loaded — real facial landmarks active")
-    else:
-        print("⚠️ MediaPipe model not available — will use fallback landmarks")
-except Exception as e:
-    print(f"⚠️ MediaPipe initialisation failed: {e}")
+# MediaPipe & Redis are lazy-loaded on demand to save memory
+# (MediaPipe alone uses 200+ MB, would OOM on Render starter tier if loaded at boot)
 
 app = FastAPI(
     title="LookMaxx API",
