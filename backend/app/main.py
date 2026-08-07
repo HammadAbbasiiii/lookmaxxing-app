@@ -4,6 +4,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 from app.routes import health, auth, photos, analysis, plan, products
 from app.routes import profile, progress, dashboard
 from app.middleware.rate_limit import rate_limit_middleware
+from app.middleware.error_handler import global_error_handler
 from app.database import engine
 from app.models import Base
 # ── Startup (minimal to stay under 512 MB Render limit) ────────────
@@ -36,6 +37,9 @@ app.add_middleware(
 
 # GZip compression — compress responses > 1KB
 app.add_middleware(GZipMiddleware, minimum_size=500)
+
+# Global error handler — outermost middleware, catches all unhandled exceptions
+app.middleware("http")(global_error_handler)
 
 # Rate limiting — prevent API abuse
 app.middleware("http")(rate_limit_middleware)
