@@ -659,9 +659,9 @@ def generate_action_plan(
     for i in range(4):
         week_num = i + 1
         if i < len(phase_1_themes):
-            theme, goal = phase_1_themes[i]
+            _, theme, goal = phase_1_themes[i]
         else:
-            theme, goal = phase_1_themes[-1]
+            _, theme, goal = phase_1_themes[-1]
 
         daily_tasks = _build_weekly_tasks(category_breakdown, user_profile, "phase_1", week_num)
 
@@ -684,9 +684,9 @@ def generate_action_plan(
     for i in range(4):
         week_num = i + 5
         if i < len(phase_2_themes):
-            theme, goal = phase_2_themes[i]
+            _, theme, goal = phase_2_themes[i]
         else:
-            theme, goal = phase_2_themes[-1]
+            _, theme, goal = phase_2_themes[-1]
 
         daily_tasks = _build_weekly_tasks(category_breakdown, user_profile, "phase_2", week_num)
 
@@ -709,9 +709,9 @@ def generate_action_plan(
     for i in range(4):
         week_num = i + 9
         if i < len(phase_3_themes):
-            theme, goal = phase_3_themes[i]
+            _, theme, goal = phase_3_themes[i]
         else:
-            theme, goal = phase_3_themes[-1]
+            _, theme, goal = phase_3_themes[-1]
 
         daily_tasks = _build_weekly_tasks(category_breakdown, user_profile, "phase_3", week_num)
 
