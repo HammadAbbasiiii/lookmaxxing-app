@@ -48,4 +48,5 @@ services:
     region: frankfurt
     plan: starter
     maxmemoryPolicy: noeviction
+    ipAllowList: []
 
