@@ -623,6 +623,7 @@ def generate_action_plan(
     score_data: Dict[str, Any],
     category_breakdown: Dict[str, Any],
     user_profile: Optional[Dict[str, Any]] = None,
+    skip_deepseek: bool = False,
 ) -> Dict[str, Any]:
     """
     Generate a personalised 90-day transformation action plan.
@@ -631,6 +632,7 @@ def generate_action_plan(
         score_data: dict with overall score (e.g. {"score": 72.5} or {"overall_score": 72.5})
         category_breakdown: dict with 6 category scores from face_analysis_service
         user_profile: dict with age, gender, goals (optional)
+        skip_deepseek: if True, skip the DeepSeek API call entirely (instant template)
 
     Returns:
         Full 90-day plan dict with phases, tasks, milestones, products, motivational content.
@@ -643,8 +645,11 @@ def generate_action_plan(
 
     plan_id = str(uuid.uuid4())
 
-    # --- Attempt DeepSeek personalisation ---
-    deepseek_personalisation = _personalise_with_deepseek(category_breakdown, score_data, user_profile)
+    # --- Attempt DeepSeek personalisation (skip if requested) ---
+    if skip_deepseek:
+        deepseek_personalisation = None
+    else:
+        deepseek_personalisation = _personalise_with_deepseek(category_breakdown, score_data, user_profile)
 
     # --- Build Phase 1 (Days 1-30) ---
     phase_1_weekly = []

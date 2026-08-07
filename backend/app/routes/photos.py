@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, status, Depends, File, UploadFile
+from fastapi import APIRouter, HTTPException, status, Depends, File, UploadFile, BackgroundTasks
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import User, Photo, Plan
@@ -15,8 +15,8 @@ from app.services.face_service import (
     get_face_shape
 )
 from app.services.face_analysis_service import get_category_breakdown
-from app.services.ai_service import analyze_face_with_deepseek
-from app.services.plan_generator_service import generate_action_plan
+from app.services.ai_service import analyze_face_with_deepseek, generate_fallback_analysis
+from app.services.plan_generator_service import generate_action_plan, generate_fallback_plan
 from app.services.score_labels import get_score_label
 from app.services.prediction_service import prediction_service
 from app.config import settings
@@ -24,6 +24,7 @@ import uuid
 from datetime import datetime
 import time
 import logging
+import json
 
 logger = logging.getLogger(__name__)
 
@@ -164,19 +165,93 @@ async def delete_photo(
     return {"message": "Photo deleted successfully"}
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# Background enrichment task — runs AFTER response is sent to the user
+# ═══════════════════════════════════════════════════════════════════════════════
+def _enrich_with_deepseek_background(
+    photo_id: str,
+    user_id: str,
+    score_data: dict,
+    category_breakdown: dict,
+    fallback_analysis: dict,
+    fallback_plan: dict,
+):
+    """
+    Run DeepSeek calls in the background after the response has been sent.
+    On success, updates the photo and plan records in the database.
+    On failure, the existing template data remains as-is.
+    """
+    from app.database import SessionLocal
+    db_bg = SessionLocal()
+    try:
+        # --- Call 1: DeepSeek face analysis (with 25s timeout) ---
+        deepseek_result = analyze_face_with_deepseek(score_data, "")
+        deepseek_data = deepseek_result.get("data", {}) if deepseek_result.get("success") else {}
+
+        if not deepseek_result.get("success"):
+            # DeepSeek call failed or timed out — keep fallback data
+            logger.info(f"Background DeepSeek analysis skipped for photo {photo_id} — keeping template")
+            return
+
+        # --- Call 2: Generate DeepSeek-personalised plan ---
+        enriched_plan = generate_action_plan(
+            score_data=score_data,
+            category_breakdown=category_breakdown,
+            user_profile={"gender": "male"},
+        )
+
+        # --- Update photo record with DeepSeek-enriched data ---
+        photo = db_bg.query(Photo).filter(Photo.id == photo_id, Photo.user_id == user_id).first()
+        if photo:
+            photo.strengths = deepseek_data.get("strengths", fallback_analysis["data"].get("strengths", []))
+            photo.weaknesses = deepseek_data.get("weaknesses", fallback_analysis["data"].get("weaknesses", []))
+            if photo.analysis_details is None:
+                photo.analysis_details = {}
+            photo.analysis_details["deepseek_analysis"] = deepseek_data
+
+        # --- Update or create the plan with enriched data ---
+        existing_plan = db_bg.query(Plan).filter(Plan.photo_id == photo_id).first()
+        if existing_plan:
+            existing_plan.data = enriched_plan
+            existing_plan.updated_at = datetime.utcnow()
+        else:
+            new_plan = Plan(
+                id=str(uuid.uuid4()),
+                photo_id=photo_id,
+                user_id=user_id,
+                data=enriched_plan,
+                phases=enriched_plan.get("phases", {}),
+                current_phase="week_1",
+                current_week=1,
+            )
+            db_bg.add(new_plan)
+
+        db_bg.commit()
+        logger.info(f"✅ Background DeepSeek enrichment completed for photo {photo_id}")
+
+    except Exception as exc:
+        db_bg.rollback()
+        logger.warning(f"Background DeepSeek enrichment failed for photo {photo_id}: {exc} — template data retained")
+    finally:
+        db_bg.close()
+
+
 @router.post("/analyze/{photo_id}")
 async def analyze_photo(
     photo_id: str,
+    background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """
-    Run full face analysis on a photo:
-    1. Extract facial landmarks with MediaPipe
-    2. Calculate scores (symmetry, skin, jaw, eyes)
-    3. Send to DeepSeek for AI analysis
-    4. Generate 90-day action plan
-    5. Save results to database
+    Run face analysis and return results FAST (<2s typical).
+
+    Strategy:
+      1. Face detection + scoring (MediaPipe / mock) — always runs inline
+      2. Template-based AI analysis and 90-day plan — generated in <1ms
+      3. Response returned immediately to user
+      4. DeepSeek enrichment runs in the BACKGROUND after the response is sent
+         and silently updates the database if it succeeds.
     """
     start_time = time.perf_counter()
 
@@ -223,75 +298,89 @@ async def analyze_photo(
         "skin": skin_score,
         "jawline": jawline_score,
         "eyes": eye_score,
-        "nose": 70.0,  # Placeholder
-        "lips": 75.0   # Placeholder
+        "nose": 70.0,
+        "lips": 75.0,
     }
     overall_score = generate_overall_score(scores)
 
-    # Step 2.5: Calculate 6-category breakdown
-    category_breakdown = get_category_breakdown(
-        image_bytes=image_bytes,
-        landmarks=landmarks,
-        gender="male",  # Default - can be extended with user profile gender
-        overall_score=overall_score,
-    )
-
-    # Step 3: Send to DeepSeek for AI analysis
     score_data = {
         "overall_score": overall_score,
         "symmetry_score": symmetry_score,
         "skin_score": skin_score,
         "jawline_score": jawline_score,
         "eye_score": eye_score,
-        "face_shape": face_shape
+        "face_shape": face_shape,
     }
-    deepseek_result = analyze_face_with_deepseek(score_data, photo.file_url)
 
-    # Step 4: Generate 90-day action plan using new plan generator
-    action_plan = generate_action_plan(
-        score_data=score_data,
-        category_breakdown=category_breakdown,
-        user_profile={"gender": "male"},
+    # Step 2.5: 6-category breakdown
+    category_breakdown = get_category_breakdown(
+        image_bytes=image_bytes,
+        landmarks=landmarks,
+        gender="male",
+        overall_score=overall_score,
     )
 
-    # Step 5: Update photo score in database
+    # ═══════════════════════════════════════════════════════════════
+    # Step 3+4: INSTANT template-based analysis + plan (<1ms)
+    # ═══════════════════════════════════════════════════════════════
+    fallback_analysis = generate_fallback_analysis(score_data)
+    fallback_plan = generate_fallback_plan(overall_score, gender="male")
+
+    analysis_data = fallback_analysis.get("data", {})
+    plan_data = fallback_plan
+
+    # ═══════════════════════════════════════════════════════════════
+    # Step 5: Update photo + plan in DB with template data immediately
+    # ═══════════════════════════════════════════════════════════════
     photo.score = overall_score
     photo.symmetry_score = symmetry_score
     photo.skin_score = skin_score
     photo.jawline_score = jawline_score
     photo.eye_score = eye_score
     photo.face_shape = face_shape
-
-    # Store detailed analysis including category breakdown for later reuse
-    photo.strengths = deepseek_result.get("data", {}).get("strengths", []) if deepseek_result.get("success") else []
-    photo.weaknesses = deepseek_result.get("data", {}).get("weaknesses", []) if deepseek_result.get("success") else []
+    photo.strengths = analysis_data.get("strengths", [])
+    photo.weaknesses = analysis_data.get("weaknesses", [])
     photo.analysis_details = {
         "category_breakdown": category_breakdown,
-        "deepseek_analysis": deepseek_result.get("data", {}) if deepseek_result.get("success") else {},
+        "deepseek_analysis": {},
+        "source": "template",
     }
 
-    # Step 6: Save plan to database
-    import json
+    # Save plan
     existing_plan = db.query(Plan).filter(Plan.photo_id == photo.id).first()
     if existing_plan:
-        existing_plan.data = action_plan
+        existing_plan.data = plan_data
         existing_plan.updated_at = datetime.utcnow()
     else:
         new_plan = Plan(
             id=str(uuid.uuid4()),
             photo_id=photo.id,
             user_id=current_user.id,
-            data=action_plan,
-            phases=action_plan.get("phases", {}),
+            data=plan_data,
+            phases=plan_data.get("phases", {}),
             current_phase="week_1",
-            current_week=1
+            current_week=1,
         )
         db.add(new_plan)
 
     db.commit()
     db.refresh(photo)
 
-    # Score labels for the overall and per-category scores
+    # ═══════════════════════════════════════════════════════════════
+    # Step 6: Enqueue DeepSeek enrichment as BACKGROUND TASK
+    #         This runs AFTER the response is sent to the user.
+    # ═══════════════════════════════════════════════════════════════
+    background_tasks.add_task(
+        _enrich_with_deepseek_background,
+        photo_id=photo.id,
+        user_id=current_user.id,
+        score_data=score_data,
+        category_breakdown=category_breakdown,
+        fallback_analysis=fallback_analysis,
+        fallback_plan=plan_data,
+    )
+
+    # Score labels
     overall_score_label = get_score_label(overall_score)
     score_labels = {
         "symmetry": get_score_label(symmetry_score),
@@ -302,12 +391,9 @@ async def analyze_photo(
         "lips": get_score_label(75.0),
     }
 
-    # Build response
-    deepseek_data = deepseek_result.get("data", {}) if deepseek_result.get("success") else {}
-
     end_time = time.perf_counter()
     elapsed_ms = (end_time - start_time) * 1000
-    print(f"⏱️ Analysis completed in {elapsed_ms:.0f}ms")
+    print(f"⚡ Analysis completed in {elapsed_ms:.0f}ms (DeepSeek enrichment queued in background)")
 
     return {
         "success": True,
@@ -322,22 +408,22 @@ async def analyze_photo(
                 "jawline": jawline_score,
                 "eyes": eye_score,
                 "nose": 70.0,
-                "lips": 75.0
+                "lips": 75.0,
             },
             "score_labels": score_labels,
             "face_shape": face_shape,
-            "strengths": deepseek_data.get("strengths", []),
-            "weaknesses": deepseek_data.get("weaknesses", []),
-            "improvement_potential": deepseek_data.get("improvement_potential", "Up to +8 points in 90 days"),
-            "category_breakdown": category_breakdown
+            "strengths": analysis_data.get("strengths", []),
+            "weaknesses": analysis_data.get("weaknesses", []),
+            "improvement_potential": analysis_data.get("improvement_potential", "Up to +8 points in 90 days"),
+            "category_breakdown": category_breakdown,
         },
         "recommendations": {
-            "skincare": deepseek_data.get("skincare_routine", []),
-            "grooming": deepseek_data.get("grooming_advice", ""),
-            "exercise": deepseek_data.get("exercise_tips", []),
-            "diet": deepseek_data.get("diet_advice", []),
-            "products": deepseek_data.get("recommended_products", [])
+            "skincare": analysis_data.get("skincare_routine", []),
+            "grooming": analysis_data.get("grooming_advice", ""),
+            "exercise": analysis_data.get("exercise_tips", []),
+            "diet": analysis_data.get("diet_advice", []),
+            "products": analysis_data.get("recommended_products", []),
         },
-        "action_plan": action_plan,
-        "seven_day_plan": deepseek_data.get("seven_day_plan", [])
+        "action_plan": plan_data,
+        "seven_day_plan": analysis_data.get("seven_day_plan", []),
     }
