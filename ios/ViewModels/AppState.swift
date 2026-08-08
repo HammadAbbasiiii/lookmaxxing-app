@@ -13,7 +13,9 @@ final class AppState: ObservableObject {
     @Published var currentScore: Score?
     @Published var isUploading = false
     @Published var isAnalyzing = false
+    @Published var isPolling = false
     @Published var uploadProgress: Double = 0
+    @Published var uploadError: String?
 
     // MARK: - Plan -----------------------------------------------------------
     @Published var currentPlan: Plan?
@@ -23,6 +25,7 @@ final class AppState: ObservableObject {
 
     // MARK: - Explore --------------------------------------------------------
     @Published var exploreData: ExploreData?
+    @Published var dashboard: DashboardData?
 
     // MARK: - Loading States -------------------------------------------------
     @Published var authState: AppLoadingState = .idle
@@ -59,9 +62,10 @@ final class AppState: ObservableObject {
             } catch {
                 // If /me fails, construct minimal user from token response
                 currentUser = User(
-                    id: token.userID ?? "",
-                    email: token.email ?? email,
+                    id: "",
+                    email: email,
                     username: nil,
+                    createdAt: Date(),
                     subscriptionTier: .free,
                     daysActive: 0,
                     longestStreak: 0,
@@ -143,12 +147,12 @@ final class AppState: ObservableObject {
         for _ in 0..<30 {
             do {
                 let status = try await APIService.shared.getPhotoStatus(photoId: photoID)
-                if status.analysisStatus == "completed" {
+                if status.analysis_status == "completed" {
                     let score = status.toScore(photoId: photoID)
                     currentScore = score
                     isAnalyzing = false
                     return score
-                } else if status.analysisStatus == "failed" {
+                } else if status.analysis_status == "failed" {
                     isAnalyzing = false
                     // Return a fallback score instead of nil so the flow continues
                     let fallback = Score(

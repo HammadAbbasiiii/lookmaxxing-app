@@ -19,7 +19,7 @@ final class AuthViewModel: ObservableObject {
 
         Task {
             do {
-                let token = try await APIService.shared.login(username: username, password: password)
+                let token = try await APIService.shared.login(email: username, password: password)
                 await MainActor.run {
                     APIService.shared.accessToken = token.accessToken
                     appState.isAuthenticated = true
@@ -44,7 +44,8 @@ final class AuthViewModel: ObservableObject {
 
         Task {
             do {
-                let token = try await APIService.shared.signUp(email: email, username: username, password: password)
+                _ = try await APIService.shared.signUp(email: email, password: password, fullName: username)
+                let token = try await APIService.shared.login(email: email, password: password)
                 await MainActor.run {
                     APIService.shared.accessToken = token.accessToken
                     appState.isAuthenticated = true
@@ -118,9 +119,10 @@ final class PhotoViewModel: ObservableObject {
 
         for _ in 0..<LXConstants.statusPollMaxAttempts {
             do {
-                let score = try await APIService.shared.getPhotoStatus(photoId: photoId)
-                if score.analysisStatus == "completed" {
+                let status = try await APIService.shared.getPhotoStatus(photoId: photoId)
+                if status.analysis_status == "completed" {
                     await MainActor.run {
+                        let score = status.toScore(photoId: photoId)
                         appState.currentScore = score
                         appState.isPolling = false
                         CacheService.shared.setScore(score)

@@ -91,7 +91,7 @@ final class PhotoUploadViewModel: ObservableObject {
             }
             let decoder = JSONDecoder()
             let status = try decoder.decode(PhotoStatusResponse.self, from: data)
-            switch status.analysisStatus {
+            switch status.analysis_status {
             case "completed", "failed":
                 return status
             default:
@@ -136,30 +136,9 @@ final class PhotoUploadViewModel: ObservableObject {
     }
 }
 
-// ── DTOs (mirrors backend schemas) ──────────────────────────────
-
-struct PhotoUploadResponse: Codable {
-    let id: String
-    let userId: String
-    let fileUrl: String
-    let score: Double?
-    let isBaseline: Bool
-    let weekNumber: Int?
-    let capturedAt: Date
-    let analysisStatus: String?
-    let debugTimings: [String: Double]?
-
-    enum CodingKeys: String, CodingKey {
-        case id, score, isBaseline = "is_baseline", weekNumber = "week_number"
-        case capturedAt = "captured_at", analysisStatus = "analysis_status"
-        case debugTimings = "debug_timings"
-        case userId = "user_id", fileUrl = "file_url"
-    }
-}
-
 struct PhotoStatusResponse: Codable {
     let id: String
-    let analysisStatus: String
+    let analysis_status: String
     let score: Double?
     let categoryBreakdown: [String: AnyCodable]?
     let strengths: [String]?
@@ -167,7 +146,7 @@ struct PhotoStatusResponse: Codable {
 
     enum CodingKeys: String, CodingKey {
         case id, score, strengths, weaknesses
-        case analysisStatus = "analysis_status"
+        case analysis_status = "analysis_status"
         case categoryBreakdown = "category_breakdown"
     }
 }

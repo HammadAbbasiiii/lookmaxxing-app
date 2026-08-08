@@ -117,7 +117,7 @@ struct Plan: Codable {
     let userID: String
     let startDate: Date
     let currentDay: Int
-    let phases: [Phase]
+    var phases: [Phase]
     let progressPhotos: [ProgressPhotoRecord]
 
     enum CodingKeys: String, CodingKey {
@@ -136,7 +136,7 @@ struct Phase: Codable, Identifiable {
     let title: String
     let description: String
     let weeks: String
-    let tasks: [PlanTask]
+    var tasks: [PlanTask]
 }
 
 struct PlanTask: Codable, Identifiable {

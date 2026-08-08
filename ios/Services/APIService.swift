@@ -156,6 +156,7 @@ final class APIService {
                 id: id,
                 email: email,
                 username: full_name,
+                createdAt: Date(),
                 subscriptionTier: SubscriptionTier(rawValue: subscription_tier ?? "free") ?? .free,
                 daysActive: total_checkins ?? 0,
                 longestStreak: longest_streak ?? 0,
