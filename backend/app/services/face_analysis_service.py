@@ -15,24 +15,39 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # MediaPipe Task API model (face_landmarker.task)
 # ---------------------------------------------------------------------------
-MODEL_PATH = os.path.join(os.path.dirname(__file__), "..", "ml", "face_landmarker.task")
-if not os.path.exists(MODEL_PATH):
-    MODEL_PATH = "/opt/render/project/src/backend/app/ml/face_landmarker.task"
+# Absolute path used on Render; fall back to relative for local dev
+_RENDER_MODEL_PATH = "/opt/render/project/src/backend/app/ml/face_landmarker.task"
+_LOCAL_MODEL_PATH = os.path.join(os.path.dirname(__file__), "..", "ml", "face_landmarker.task")
+
+if os.path.exists(_RENDER_MODEL_PATH):
+    MODEL_PATH = _RENDER_MODEL_PATH
+elif os.path.exists(_LOCAL_MODEL_PATH):
+    MODEL_PATH = _LOCAL_MODEL_PATH
+else:
+    MODEL_PATH = _RENDER_MODEL_PATH  # keep for error messages
 
 _mediapipe_available = False
 _face_landmarker = None
+_last_load_error = None
 
 
 def _load_mediapipe():
     """Load the MediaPipe FaceLandmarker Task API model at module import."""
-    global _mediapipe_available, _face_landmarker
+    global _mediapipe_available, _face_landmarker, _last_load_error
     try:
         if not os.path.exists(MODEL_PATH):
-            print(f"⚠️ MediaPipe model not found: {MODEL_PATH}")
-            logger.warning("⚠️ MediaPipe model not found: %s", MODEL_PATH)
+            msg = f"⚠️ MediaPipe model not found: {MODEL_PATH}"
+            _last_load_error = msg
+            print(msg)
+            logger.warning(msg)
             return
+
+        import mediapipe as _mp
         from mediapipe.tasks import python
         from mediapipe.tasks.python import vision
+
+        print(f"🔍 MediaPipe version: {_mp.__version__}")
+        print(f"🔍 Loading model from: {MODEL_PATH} (exists={os.path.exists(MODEL_PATH)}, size={os.path.getsize(MODEL_PATH)} bytes)")
 
         base_options = python.BaseOptions(model_asset_path=MODEL_PATH)
         options = vision.FaceLandmarkerOptions(
@@ -45,21 +60,33 @@ def _load_mediapipe():
         )
         _face_landmarker = vision.FaceLandmarker.create_from_options(options)
         _mediapipe_available = True
+        _last_load_error = None
         print(f"✅ MediaPipe loaded from: {MODEL_PATH}")
         logger.info("✅ MediaPipe model loaded — using real landmarks from %s", MODEL_PATH)
     except Exception as e:
+        _mediapipe_available = False
+        _last_load_error = str(e)
         print(f"⚠️ MediaPipe loading failed: {e}")
         logger.warning("⚠️ Could not load MediaPipe Task model: %s", e)
-        _mediapipe_available = False
-
-
-# Load immediately at module import
-_load_mediapipe()
 
 
 def is_mediapipe_available() -> bool:
     """Return whether MediaPipe FaceLandmarker was successfully loaded."""
     return _mediapipe_available
+
+
+def get_mediapipe_status() -> dict:
+    """Return detailed MediaPipe status for health checks."""
+    return {
+        "available": _mediapipe_available,
+        "model_path": MODEL_PATH,
+        "model_path_exists": os.path.exists(MODEL_PATH),
+        "error": _last_load_error,
+    }
+
+
+# Load immediately at module import
+_load_mediapipe()
 
 # ---------------------------------------------------------------------------
 # MediaPipe landmark indices (FaceMesh topology)

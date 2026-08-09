@@ -6,6 +6,7 @@ final class AppState: ObservableObject {
     // MARK: - Auth -----------------------------------------------------------
     @Published var isAuthenticated = false
     @Published var currentUser: User?
+    @Published var shouldShowCamera = false   // True after signup/login — navigate to Camera
 
     // MARK: - Photo & Analysis -----------------------------------------------
     @Published var currentPhoto: UIImage?
@@ -43,10 +44,12 @@ final class AppState: ObservableObject {
             _ = try await APIService.shared.login(email: email, password: password)
             currentUser = response.toUser()
             isAuthenticated = true
+            shouldShowCamera = true
             authState = .loaded
             return true
         } catch {
-            authState = .error(error.localizedDescription)
+            // Translate server errors into user-friendly messages
+            authState = .error(friendlyMessage(for: error))
             return false
         }
     }
@@ -54,7 +57,7 @@ final class AppState: ObservableObject {
     func login(email: String, password: String) async -> Bool {
         authState = .loading
         do {
-            let token = try await APIService.shared.login(email: email, password: password)
+            _ = try await APIService.shared.login(email: email, password: password)
             // Fetch user profile after login
             do {
                 let user = try await APIService.shared.getCurrentUser()
@@ -73,12 +76,37 @@ final class AppState: ObservableObject {
                 )
             }
             isAuthenticated = true
+            shouldShowCamera = true
             authState = .loaded
             return true
         } catch {
-            authState = .error(error.localizedDescription)
+            // Translate server errors into user-friendly messages
+            authState = .error(friendlyMessage(for: error))
             return false
         }
+    }
+
+    /// Converts raw API errors into user-friendly messages.
+    /// "No face detected" / 422 errors are only relevant during photo analysis,
+    /// never during authentication.
+    private func friendlyMessage(for error: Error) -> String {
+        if let apiError = error as? APIError {
+            switch apiError {
+            case .serverError(422, _):
+                // This should never happen during auth — if it does, the backend
+                // has a bug. Show a generic message instead of "No face detected".
+                return "Something went wrong. Please try again."
+            case .notAuthenticated:
+                return "Session expired. Please log in again."
+            case .networkError:
+                return "No internet connection. Please check your network."
+            case .timeout:
+                return "Request timed out. Please try again."
+            default:
+                return apiError.localizedDescription
+            }
+        }
+        return error.localizedDescription
     }
 
     func restoreFromCache() {
@@ -101,6 +129,7 @@ final class AppState: ObservableObject {
     func signOut() {
         APIService.shared.logout()
         isAuthenticated = false
+        shouldShowCamera = false
         currentUser = nil
         currentPhoto = nil
         currentPhotoID = nil

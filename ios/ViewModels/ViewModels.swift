@@ -72,10 +72,12 @@ final class PhotoViewModel: ObservableObject {
     func upload(appState: AppState) {
         guard let img = selectedImage else { return }
 
-        appState.isUploading = true
-        appState.uploadError = nil
-
         Task {
+            await MainActor.run {
+                appState.isUploading = true
+                appState.uploadError = nil
+            }
+
             // 1. Compress
             await MainActor.run { isCompressing = true }
             guard let compressed = await compress(img: img) else {
@@ -153,7 +155,9 @@ final class PlanViewModel: ObservableObject {
         // Use cache if available
         if let cached = CacheService.shared.cachedPlan() {
             plan = cached
-            appState.currentPlan = cached
+            Task { @MainActor in
+                appState.currentPlan = cached
+            }
         }
 
         isLoading = true
@@ -177,31 +181,31 @@ final class PlanViewModel: ObservableObject {
 
     func toggleTask(_ task: PlanTask) {
         guard var p = plan else { return }
-        if let idx = p.phases.flatMap(\.tasks).firstIndex(where: { $0.id == task.id }) {
-            // Find the phase that contains the task so we can mutate it
-            for (phaseIdx, phase) in p.phases.enumerated() {
-                if let taskIdx = phase.tasks.firstIndex(where: { $0.id == task.id }) {
-                    p.phases[phaseIdx].tasks[taskIdx].isCompleted.toggle()
+        guard p.phases.flatMap(\.tasks).contains(where: { $0.id == task.id }) else { return }
 
-                    Task {
-                        do {
-                            if p.phases[phaseIdx].tasks[taskIdx].isCompleted {
-                                try await APIService.shared.markTaskComplete(taskId: task.id)
-                            }
-                            await MainActor.run {
-                                plan = p
-                                CacheService.shared.setPlan(p)
-                            }
-                        } catch {
-                            // revert
-                            await MainActor.run {
-                                errorMessage = "Could not update. Try again."
-                                p.phases[phaseIdx].tasks[taskIdx].isCompleted.toggle()
-                            }
+        // Find the phase that contains the task so we can mutate it
+        for (phaseIdx, phase) in p.phases.enumerated() {
+            if let taskIdx = phase.tasks.firstIndex(where: { $0.id == task.id }) {
+                p.phases[phaseIdx].tasks[taskIdx].isCompleted.toggle()
+                let capturedPlan = p  // immutable copy for safe concurrency capture
+
+                Task {
+                    do {
+                        if capturedPlan.phases[phaseIdx].tasks[taskIdx].isCompleted {
+                            _ = try await APIService.shared.markTaskComplete(taskId: task.id)
+                        }
+                        await MainActor.run {
+                            plan = capturedPlan
+                            CacheService.shared.setPlan(capturedPlan)
+                        }
+                    } catch {
+                        // revert
+                        await MainActor.run {
+                            errorMessage = "Could not update. Try again."
                         }
                     }
-                    return
                 }
+                return
             }
         }
     }

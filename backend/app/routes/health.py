@@ -37,9 +37,9 @@ def _get_memory_usage() -> dict | None:
 @router.get("/health")
 async def health_check():
     """Health check — used by Render to verify service liveness."""
-    from app.services.face_analysis_service import is_mediapipe_available, MODEL_PATH
+    from app.services.face_analysis_service import get_mediapipe_status
 
-    mediapipe_available = is_mediapipe_available()
+    mp_status = get_mediapipe_status()
 
     return {
         "status": "healthy",
@@ -47,8 +47,7 @@ async def health_check():
         "service": "lookmaxx-api",
         "redis": _get_redis_status(),
         "memory": _get_memory_usage(),
-        "mediapipe_available": mediapipe_available,
-        "model_path": MODEL_PATH,
+        "mediapipe": mp_status,
     }
 
 

@@ -20,16 +20,28 @@ except Exception as e:
 # PyTorch model, MediaPipe & Redis are all lazy-loaded on first request.
 # Loading the 94MB model at boot consumes 200-300MB and OOMs Render starter tier.
 
-# ── Verify MediaPipe model file exists (don't load, just check) ──
+# ── Verify MediaPipe model file exists and attempt lightweight import check ──
 import os
 _model_paths = [
     os.path.join(os.path.dirname(__file__), "ml", "face_landmarker.task"),
     "/opt/render/project/src/backend/app/ml/face_landmarker.task",
 ]
-if any(os.path.exists(p) for p in _model_paths):
+_model_found = any(os.path.exists(p) for p in _model_paths)
+if _model_found:
     print(f"✅ MediaPipe model file found at startup")
 else:
     print("⚠️ MediaPipe model file MISSING at startup — predictions will use mock landmarks")
+
+# Attempt to load MediaPipe early so we can see errors in Render logs
+if _model_found:
+    try:
+        import mediapipe as _mp
+        print(f"🔍 MediaPipe version: {_mp.__version__}")
+        from mediapipe.tasks import python as _mp_tasks
+        from mediapipe.tasks.python import vision as _mp_vision
+        print(f"✅ MediaPipe Task API imports successful")
+    except Exception as _mp_e:
+        print(f"⚠️ MediaPipe import failed at startup: {_mp_e}")
 
 app = FastAPI(
     title="LookMaxx API",
