@@ -78,7 +78,7 @@ final class PhotoUploadViewModel: ObservableObject {
     }
 
     /// Poll for analysis status until completed or failed.
-    func pollStatus(photoID: String, maxAttempts: Int = 15, interval: TimeInterval = 1.5) async throws -> PhotoStatusResponse {
+    func pollStatus(photoID: String, maxAttempts: Int = 15, interval: TimeInterval = 1.5) async throws -> APIService.PhotoStatusResponse {
         let url = URL(string: "\(apiBaseURL)/photos/\(photoID)/status")!
         var request = URLRequest(url: url)
         request.setValue("Bearer \(authToken)", forHTTPHeaderField: "Authorization")
@@ -90,7 +90,7 @@ final class PhotoUploadViewModel: ObservableObject {
                 throw UploadError.serverError(code: (response as? HTTPURLResponse)?.statusCode ?? 0)
             }
             let decoder = JSONDecoder()
-            let status = try decoder.decode(PhotoStatusResponse.self, from: data)
+            let status = try decoder.decode(APIService.PhotoStatusResponse.self, from: data)
             switch status.analysis_status {
             case "completed", "failed":
                 return status
@@ -136,39 +136,3 @@ final class PhotoUploadViewModel: ObservableObject {
     }
 }
 
-struct PhotoStatusResponse: Codable {
-    let id: String
-    let analysis_status: String
-    let score: Double?
-    let categoryBreakdown: [String: AnyCodable]?
-    let strengths: [String]?
-    let weaknesses: [String]?
-
-    enum CodingKeys: String, CodingKey {
-        case id, score, strengths, weaknesses
-        case analysis_status = "analysis_status"
-        case categoryBreakdown = "category_breakdown"
-    }
-}
-
-/// Simple wrapper so arbitrary JSON dicts can be Codable.
-struct AnyCodable: Codable {
-    let value: Any
-    init(_ value: Any) { self.value = value }
-    init(from decoder: Decoder) throws {
-        let container = try decoder.singleValueContainer()
-        if let intVal = try? container.decode(Int.self) { value = intVal }
-        else if let dblVal = try? container.decode(Double.self) { value = dblVal }
-        else if let strVal = try? container.decode(String.self) { value = strVal }
-        else if let boolVal = try? container.decode(Bool.self) { value = boolVal }
-        else { value = "unknown" }
-    }
-    func encode(to encoder: Encoder) throws {
-        var container = encoder.singleValueContainer()
-        if let v = value as? Int { try container.encode(v) }
-        else if let v = value as? Double { try container.encode(v) }
-        else if let v = value as? String { try container.encode(v) }
-        else if let v = value as? Bool { try container.encode(v) }
-        else { try container.encode("unknown") }
-    }
-}
