@@ -56,7 +56,6 @@ def _load_mediapipe():
             output_facial_transformation_matrixes=True,
             num_faces=1,
             running_mode=vision.RunningMode.IMAGE,
-            min_detection_confidence=0.5,
         )
         _face_landmarker = vision.FaceLandmarker.create_from_options(options)
         _mediapipe_available = True
