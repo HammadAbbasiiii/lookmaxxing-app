@@ -336,6 +336,7 @@ final class APIService {
         let value: Double?
         let name: String?
         let label: String?
+        let heuristic: Bool?
     }
 
     // MARK: - Plan -----------------------------------------------------------
