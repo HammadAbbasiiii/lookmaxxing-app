@@ -292,13 +292,58 @@ final class APIService {
 
     // MARK: - Photo Status Response (from polling) --------------------------
 
-    struct PhotoStatusResponse: Codable {
+    struct PhotoStatusResponse: Decodable {
         let id: String
         let analysis_status: String
         let score: Double?
         let category_breakdown: [String: CategoryScore]?
         let strengths: [String]?
         let weaknesses: [String]?
+
+        enum CodingKeys: String, CodingKey {
+            case id, score, strengths, weaknesses
+            case analysis_status = "analysis_status"
+            case category_breakdown = "category_breakdown"
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            id = try container.decode(String.self, forKey: .id)
+            analysis_status = try container.decode(String.self, forKey: .analysis_status)
+            score = try container.decodeIfPresent(Double.self, forKey: .score)
+            strengths = try container.decodeIfPresent([String].self, forKey: .strengths)
+            weaknesses = try container.decodeIfPresent([String].self, forKey: .weaknesses)
+
+            // The backend may send "heuristic": false (a Bool) alongside real
+            // category objects in category_breakdown. Decode as a raw JSON
+            // dictionary and filter out any entries that aren't category objects.
+            let raw = try? container.decode([String: AnyDecodableValue].self, forKey: .category_breakdown)
+            if let raw = raw {
+                var filtered: [String: CategoryScore] = [:]
+                for (key, anyVal) in raw {
+                    guard case .dictionary(let dict) = anyVal else { continue }
+                    var scoreVal: Double?
+                    var valueVal: Double?
+                    var nameVal: String?
+                    var labelVal: String?
+                    for (k, v) in dict {
+                        switch k {
+                        case "score": if case .double(let d) = v { scoreVal = d }
+                        case "value": if case .double(let d) = v { valueVal = d }
+                        case "name":  if case .string(let s) = v { nameVal = s }
+                        case "label": if case .string(let s) = v { labelVal = s }
+                        default: break
+                        }
+                    }
+                    filtered[key] = CategoryScore(score: scoreVal, value: valueVal,
+                                                   name: nameVal, label: labelVal,
+                                                   heuristic: nil)
+                }
+                category_breakdown = filtered.isEmpty ? nil : filtered
+            } else {
+                category_breakdown = nil
+            }
+        }
 
         func toScore(photoId: String) -> Score {
             var categoryScores: [String: Double] = [:]
@@ -337,6 +382,33 @@ final class APIService {
         let name: String?
         let label: String?
         let heuristic: Bool?
+    }
+
+    /// A decodable wrapper for arbitrary JSON values.
+    /// Used to safely decode mixed-type dictionaries like the
+    /// category_breakdown response which may contain booleans
+    /// (e.g. "heuristic": false) alongside category objects.
+    fileprivate enum AnyDecodableValue: Decodable {
+        case double(Double)
+        case string(String)
+        case bool(Bool)
+        case dictionary([String: AnyDecodableValue])
+        case array([AnyDecodableValue])
+        case null
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.singleValueContainer()
+            if container.decodeNil() { self = .null; return }
+            if let v = try? container.decode(Double.self) { self = .double(v); return }
+            if let v = try? container.decode(String.self) { self = .string(v); return }
+            if let v = try? container.decode(Bool.self) { self = .bool(v); return }
+            if let v = try? container.decode([String: AnyDecodableValue].self) { self = .dictionary(v); return }
+            if let v = try? container.decode([AnyDecodableValue].self) { self = .array(v); return }
+            throw DecodingError.dataCorruptedError(
+                in: container,
+                debugDescription: "Unsupported JSON type"
+            )
+        }
     }
 
     // MARK: - Plan -----------------------------------------------------------
