@@ -57,8 +57,8 @@ final class APIService {
 
     private init() {
         let config = URLSessionConfiguration.default
-        config.timeoutIntervalForRequest = 30
-        config.timeoutIntervalForResource = 60
+        config.timeoutIntervalForRequest = 120
+        config.timeoutIntervalForResource = 300
         self.session = URLSession(configuration: config)
         // Restore cached token
         self.authToken = KeychainHelper.shared.getToken()
@@ -110,20 +110,35 @@ final class APIService {
     }
 
     private func perform<T: Decodable>(_ req: URLRequest) async throws -> T {
+        // ── Request logging ──────────────────────────────────────
+        print("📡 [API] \(req.httpMethod ?? "GET") \(req.url?.absoluteString ?? "?")")
+        if let headers = req.allHTTPHeaderFields, !headers.isEmpty {
+            print("   Headers: \(headers)")
+        }
+        if let body = req.httpBody, let bodyStr = String(data: body, encoding: .utf8) {
+            let truncated = bodyStr.count > 200 ? bodyStr.prefix(200) + "..." : bodyStr
+            print("   Body: \(truncated)")
+        }
+
         let data: Data
         let response: URLResponse
         do {
             (data, response) = try await session.data(for: req)
         } catch let err as URLError where err.code == .timedOut {
+            print("⏱️ [API] Request timed out: \(req.url?.absoluteString ?? "?")")
             throw APIError.timeout
         } catch {
+            print("❌ [API] Network error: \(error.localizedDescription)")
             throw APIError.networkError(error.localizedDescription)
         }
         guard let httpResponse = response as? HTTPURLResponse else {
             throw APIError.networkError("Invalid response")
         }
+        print("📡 [API] Response status: \(httpResponse.statusCode)")
+
         guard (200...299).contains(httpResponse.statusCode) else {
             let detail = (try? JSONDecoder().decode(LXError.self, from: data))?.detail ?? String(data: data, encoding: .utf8) ?? "Unknown error"
+            print("❌ [API] Server error \(httpResponse.statusCode): \(detail)")
             throw APIError.serverError(httpResponse.statusCode, detail)
         }
         let decoder = JSONDecoder()
@@ -228,25 +243,41 @@ final class APIService {
     }
 
     func uploadPhoto(data: Data, fileName: String) async throws -> PhotoUploadResponse {
-        guard let url = url("/photos/upload") else { throw APIError.invalidURL }
-        guard let token = authToken else { throw APIError.notAuthenticated }
+        let maxRetries = 3
+        var lastError: Error?
 
-        let boundary = "Boundary-\(UUID().uuidString)"
-        var req = URLRequest(url: url)
-        req.httpMethod = "POST"
-        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        req.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        for attempt in 1...maxRetries {
+            do {
+                guard let url = url("/photos/upload") else { throw APIError.invalidURL }
+                guard let token = authToken else { throw APIError.notAuthenticated }
 
-        var body = Data()
-        body.append("--\(boundary)\r\n".data(using: .utf8)!)
-        body.append("Content-Disposition: form-data; name=\"file\"; filename=\"\(fileName)\"\r\n".data(using: .utf8)!)
-        body.append("Content-Type: image/jpeg\r\n\r\n".data(using: .utf8)!)
-        body.append(data)
-        body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
-        req.httpBody = body
+                let boundary = "Boundary-\(UUID().uuidString)"
+                var req = URLRequest(url: url)
+                req.httpMethod = "POST"
+                req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+                req.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
 
-        let nested: NestedPhotoUploadResponse = try await perform(req)
-        return nested.toUploadResponse()
+                var body = Data()
+                body.append("--\(boundary)\r\n".data(using: .utf8)!)
+                body.append("Content-Disposition: form-data; name=\"file\"; filename=\"\(fileName)\"\r\n".data(using: .utf8)!)
+                body.append("Content-Type: image/jpeg\r\n\r\n".data(using: .utf8)!)
+                body.append(data)
+                body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
+                req.httpBody = body
+
+                let nested: NestedPhotoUploadResponse = try await perform(req)
+                return nested.toUploadResponse()
+            } catch {
+                lastError = error
+                print("🔄 [API] Upload attempt \(attempt)/\(maxRetries) failed: \(error.localizedDescription)")
+                if attempt < maxRetries {
+                    // Exponential backoff: 2s, 4s, ...
+                    let delay = UInt64(2_000_000_000 * (1 << (attempt - 1)))
+                    try? await Task.sleep(nanoseconds: delay)
+                }
+            }
+        }
+        throw lastError ?? APIError.networkError("Upload failed after \(maxRetries) attempts")
     }
 
     func getPhotoStatus(photoId: String) async throws -> PhotoStatusResponse {
