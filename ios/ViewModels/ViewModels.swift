@@ -229,7 +229,7 @@ final class DashboardViewModel: ObservableObject {
                 let d = try await APIService.shared.getDashboard()
                 await MainActor.run {
                     data = d
-                    appState.dashboard = d
+                    appState.dashboardData = d
                     isLoading = false
                     CacheService.shared.setDashboard(d)
                 }

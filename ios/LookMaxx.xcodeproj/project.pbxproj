@@ -7,9 +7,11 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		007B4F59A377EE396CEEDC09 /* KeychainManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE6F45E932E51497D53A41E1 /* KeychainManager.swift */; };
 		067B964C6B8CFCEFC93B8A95 /* CameraView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD558A84CAFFCB66A3255E97 /* CameraView.swift */; };
 		0FE8FBB1417B2F82A5651B6F /* ImageCompressor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 778887E3319DE94B2BF7B8CD /* ImageCompressor.swift */; };
 		23F77EFC240EC590A637C1A1 /* LookMaxxApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = DAECC4A4393114CF9C0B8756 /* LookMaxxApp.swift */; };
+		2C8E4EB915AD771EE2ED598E /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A47635FACB2B7F2CC81DADAA /* SettingsView.swift */; };
 		2D6CC60E06852CDF7EBF0281 /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DAD3E879091BACDB5395EECF /* DashboardView.swift */; };
 		53AB56A7997434604F175623 /* ViewModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 55E47FC9F246B2905ABB01EF /* ViewModels.swift */; };
 		5C684C02EE725A3BAF8FC5AA /* PlanView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 810749C38BF3BE290B97EC18 /* PlanView.swift */; };
@@ -33,7 +35,7 @@
 		0D5F52B354CEE26C92E8889C /* AppConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppConfig.swift; sourceTree = "<group>"; };
 		2C480CCA77578416EFBAD949 /* ProcessingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProcessingView.swift; sourceTree = "<group>"; };
 		2EEDF7C4E4B5B6EF406AAB1C /* ExploreView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExploreView.swift; sourceTree = "<group>"; };
-		31979350797F0E15C453CE48 /* LookMaxx.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = LookMaxx.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		31979350797F0E15C453CE48 /* LookMaxx.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = LookMaxx.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		40451FEBBF6E2CF787941A5E /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
 		4EC7E48B3C59E259496DB89D /* Animations.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Animations.swift; sourceTree = "<group>"; };
 		55E47FC9F246B2905ABB01EF /* ViewModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewModels.swift; sourceTree = "<group>"; };
@@ -44,12 +46,14 @@
 		976CB73E1CA1BC2DBDEA13E1 /* Colors.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Colors.swift; sourceTree = "<group>"; };
 		995577ECE96CFA45DD0674C1 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
 		A02AC3EC41A1D71D3B1D3EB8 /* Fonts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Fonts.swift; sourceTree = "<group>"; };
+		A47635FACB2B7F2CC81DADAA /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		B7CBEC772A14A038540B7060 /* CacheService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CacheService.swift; sourceTree = "<group>"; };
 		BD558A84CAFFCB66A3255E97 /* CameraView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraView.swift; sourceTree = "<group>"; };
 		C5A5C3C630F206F21DCE1556 /* Constants.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Constants.swift; sourceTree = "<group>"; };
 		DAD3E879091BACDB5395EECF /* DashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardView.swift; sourceTree = "<group>"; };
 		DAECC4A4393114CF9C0B8756 /* LookMaxxApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LookMaxxApp.swift; sourceTree = "<group>"; };
 		DB6207B291CC0761E0E2CE38 /* PhotoUploadViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoUploadViewModel.swift; sourceTree = "<group>"; };
+		DE6F45E932E51497D53A41E1 /* KeychainManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainManager.swift; sourceTree = "<group>"; };
 		F094475E86787682B16D72CD /* ProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileView.swift; sourceTree = "<group>"; };
 		FD47FD6309D3920087569509 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -67,6 +71,13 @@
 			isa = PBXGroup;
 			children = (
 				6BC43388824D929C68998D58 /* Info.plist */,
+				F3DA7B07B2C2CBAD5CBE1B85 /* App */,
+				A2BEAC9FF57BC1826CCEBDF6 /* Managers */,
+				AA9EA3F18DF26D19DF78D9D9 /* Models */,
+				B21B5FC6048378589B72F967 /* Services */,
+				6FF57AA4D36761CB4519CCC4 /* Utils */,
+				E471EDE722F8C56FA3F3D4D9 /* ViewModels */,
+				D9CAE8E785C3C57AE35C9030 /* Views */,
 			);
 			name = ios;
 			path = .;
@@ -90,6 +101,14 @@
 				778887E3319DE94B2BF7B8CD /* ImageCompressor.swift */,
 			);
 			path = Utils;
+			sourceTree = "<group>";
+		};
+		A2BEAC9FF57BC1826CCEBDF6 /* Managers */ = {
+			isa = PBXGroup;
+			children = (
+				DE6F45E932E51497D53A41E1 /* KeychainManager.swift */,
+			);
+			path = Managers;
 			sourceTree = "<group>";
 		};
 		AA9EA3F18DF26D19DF78D9D9 /* Models */ = {
@@ -132,8 +151,17 @@
 				236C687FE03B905D3B710206 /* Camera */,
 				F2AA807B68052AB37A45CDA0 /* Main */,
 				038E8F7682554373F8A93C34 /* Onboarding */,
+				DE33706A57C53472B8220C0A /* Settings */,
 			);
 			path = Views;
+			sourceTree = "<group>";
+		};
+		DE33706A57C53472B8220C0A /* Settings */ = {
+			isa = PBXGroup;
+			children = (
+				A47635FACB2B7F2CC81DADAA /* SettingsView.swift */,
+			);
+			path = Settings;
 			sourceTree = "<group>";
 		};
 		E43467D215954409660EEE10 = {
@@ -141,6 +169,7 @@
 			children = (
 				F3DA7B07B2C2CBAD5CBE1B85 /* App */,
 				1AB8BC996ADD4F909607DAB2 /* ios */,
+				A2BEAC9FF57BC1826CCEBDF6 /* Managers */,
 				AA9EA3F18DF26D19DF78D9D9 /* Models */,
 				B21B5FC6048378589B72F967 /* Services */,
 				6FF57AA4D36761CB4519CCC4 /* Utils */,
@@ -207,7 +236,7 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = YES;
-				LastUpgradeCheck = 2660;
+				LastUpgradeCheck = 1430;
 				TargetAttributes = {
 					0CD967BADAE8481D30C458F0 = {
 						DevelopmentTeam = "";
@@ -250,6 +279,7 @@
 				A5FCCD92E5F5109B9048B4FE /* ExploreView.swift in Sources */,
 				EE11A641573804192B525F28 /* Fonts.swift in Sources */,
 				0FE8FBB1417B2F82A5651B6F /* ImageCompressor.swift in Sources */,
+				007B4F59A377EE396CEEDC09 /* KeychainManager.swift in Sources */,
 				23F77EFC240EC590A637C1A1 /* LookMaxxApp.swift in Sources */,
 				7C11CF8ABB3160B2DD19F746 /* Models.swift in Sources */,
 				F737525C79BC07A90D52C7B4 /* OnboardingView.swift in Sources */,
@@ -257,6 +287,7 @@
 				5C684C02EE725A3BAF8FC5AA /* PlanView.swift in Sources */,
 				6E9619631499AC8E241E9A6A /* ProcessingView.swift in Sources */,
 				A1F835D46B81C0F4A7913C36 /* ProfileView.swift in Sources */,
+				2C8E4EB915AD771EE2ED598E /* SettingsView.swift in Sources */,
 				53AB56A7997434604F175623 /* ViewModels.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -301,7 +332,6 @@
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
 				GCC_DYNAMIC_NO_PIC = NO;
 				GCC_NO_COMMON_BLOCKS = YES;
@@ -321,7 +351,6 @@
 				ONLY_ACTIVE_ARCH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
-				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 5.0;
@@ -403,7 +432,6 @@
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
 				GCC_NO_COMMON_BLOCKS = YES;
 				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
@@ -416,7 +444,6 @@
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
-				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_COMPILATION_MODE = wholemodule;
 				SWIFT_OPTIMIZATION_LEVEL = "-O";
 				SWIFT_VERSION = 5.0;

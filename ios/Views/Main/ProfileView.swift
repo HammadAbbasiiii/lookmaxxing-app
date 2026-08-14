@@ -76,7 +76,11 @@ struct ProfileView: View {
                             Divider().background(LXColor.white.opacity(0.1))
                             settingsRow(icon: "photo.on.rectangle", title: "Progress Photos", action: {})
                             Divider().background(LXColor.white.opacity(0.1))
-                            settingsRow(icon: "gearshape.fill", title: "Settings", action: {})
+                            NavigationLink {
+                                SettingsView()
+                            } label: {
+                                settingsRow(icon: "gearshape.fill", title: "Settings", action: {})
+                            }
                             Divider().background(LXColor.white.opacity(0.1))
                             settingsRow(icon: "questionmark.circle", title: "Help & Support", action: {})
                         }

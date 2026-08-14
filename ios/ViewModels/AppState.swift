@@ -7,6 +7,7 @@ final class AppState: ObservableObject {
     @Published var isAuthenticated = false
     @Published var currentUser: User?
     @Published var shouldShowCamera = false   // True after signup/login — navigate to Camera
+    @Published var showSessionExpired = false // Triggers the session-expired alert
 
     // MARK: - Photo & Analysis -----------------------------------------------
     @Published var currentPhoto: UIImage?
@@ -26,13 +27,32 @@ final class AppState: ObservableObject {
 
     // MARK: - Explore --------------------------------------------------------
     @Published var exploreData: ExploreData?
-    @Published var dashboard: DashboardData?
 
     // MARK: - Loading States -------------------------------------------------
     @Published var authState: AppLoadingState = .idle
     @Published var dashboardState: AppLoadingState = .idle
     @Published var planState: AppLoadingState = .idle
     @Published var exploreState: AppLoadingState = .idle
+
+    // MARK: - Initialization ------------------------------------------------
+
+    init() {
+        // Restore session synchronously from Keychain-backed token storage.
+        // A guest session (no token) does not persist across launches.
+        if let token = KeychainManager.getToken(forKey: KeychainManager.accessTokenKey),
+           !KeychainManager.isTokenExpired(token) {
+            isAuthenticated = true
+        }
+    }
+
+    /// True when a valid, non-expired access token exists in the Keychain.
+    /// Used by Onboarding to decide whether to enter the app or show auth.
+    var hasValidToken: Bool {
+        guard let token = KeychainManager.getToken(forKey: KeychainManager.accessTokenKey) else {
+            return false
+        }
+        return !KeychainManager.isTokenExpired(token)
+    }
 
     // MARK: - Authentication ------------------------------------------------
 
@@ -130,6 +150,7 @@ final class AppState: ObservableObject {
         APIService.shared.logout()
         isAuthenticated = false
         shouldShowCamera = false
+        showSessionExpired = false
         currentUser = nil
         currentPhoto = nil
         currentPhotoID = nil
@@ -138,6 +159,15 @@ final class AppState: ObservableObject {
         dashboardData = nil
         exploreData = nil
         authState = .idle
+        dashboardState = .idle
+        planState = .idle
+        exploreState = .idle
+    }
+
+    /// Dismisses the session-expired alert and returns the user to onboarding.
+    /// Triggered by the "Log In" button on the alert.
+    func handleSessionExpired() {
+        signOut()
     }
 
     func deleteAccount() async -> Bool {
@@ -240,8 +270,30 @@ final class AppState: ObservableObject {
             dashboardData = try await APIService.shared.getDashboard()
             dashboardState = .loaded
         } catch {
-            dashboardState = .error(error.localizedDescription)
+            if isAuthError(error) {
+                // Token invalid/expired — surface a friendly alert instead of a
+                // permanent red error text on the dashboard.
+                showSessionExpired = true
+                dashboardState = .idle
+            } else {
+                dashboardState = .error(error.localizedDescription)
+            }
         }
+    }
+
+    /// Returns true for errors that indicate the session is no longer valid.
+    private func isAuthError(_ error: Error) -> Bool {
+        if let apiError = error as? APIError {
+            switch apiError {
+            case .notAuthenticated:
+                return true
+            case .serverError(401, _):
+                return true
+            default:
+                return false
+            }
+        }
+        return false
     }
 
     // MARK: - Explore Fetching -----------------------------------------------

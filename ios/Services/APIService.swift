@@ -61,7 +61,7 @@ final class APIService {
         config.timeoutIntervalForResource = 300
         self.session = URLSession(configuration: config)
         // Restore cached token
-        self.authToken = KeychainHelper.shared.getToken()
+        self.authToken = KeychainManager.getToken(forKey: KeychainManager.accessTokenKey)
     }
 
     var accessToken: String? {
@@ -69,9 +69,9 @@ final class APIService {
         set {
             authToken = newValue
             if let token = newValue {
-                KeychainHelper.shared.saveToken(token)
+                KeychainManager.saveToken(token, forKey: KeychainManager.accessTokenKey)
             } else {
-                KeychainHelper.shared.deleteToken()
+                KeychainManager.deleteToken(forKey: KeychainManager.accessTokenKey)
             }
         }
     }
@@ -687,46 +687,3 @@ final class APIService {
     }
 }
 
-// MARK: - Keychain Helper ----------------------------------------------------
-
-final class KeychainHelper {
-    static let shared = KeychainHelper()
-
-    private let service = "com.lookmaxx.token"
-    private let account = "authToken"
-
-    func saveToken(_ token: String) {
-        let data = Data(token.utf8)
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-            kSecValueData as String: data
-        ]
-        SecItemDelete(query as CFDictionary) // Delete existing
-        SecItemAdd(query as CFDictionary, nil)
-    }
-
-    func getToken() -> String? {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-            kSecReturnData as String: kCFBooleanTrue!,
-            kSecMatchLimit as String: kSecMatchLimitOne
-        ]
-        var item: CFTypeRef?
-        let status = SecItemCopyMatching(query as CFDictionary, &item)
-        guard status == errSecSuccess, let data = item as? Data else { return nil }
-        return String(data: data, encoding: .utf8)
-    }
-
-    func deleteToken() {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account
-        ]
-        SecItemDelete(query as CFDictionary)
-    }
-}
