@@ -281,7 +281,10 @@ final class APIService {
     }
 
     func getPhotoStatus(photoId: String) async throws -> PhotoStatusResponse {
-        let req = try authenticatedRequest(path: "/photos/\(photoId)/status")
+        var req = try authenticatedRequest(path: "/photos/\(photoId)/status")
+        // Fast-fail so the 2s retry loop recovers quickly instead of hanging
+        // on the global 300s request timeout.
+        req.timeoutInterval = 10
         return try await perform(req)
     }
 

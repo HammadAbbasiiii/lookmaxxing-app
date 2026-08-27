@@ -19,7 +19,7 @@ from app.services.ai_service import analyze_face_with_deepseek, generate_fallbac
 from app.services.plan_generator_service import generate_action_plan, generate_fallback_plan
 from app.services.score_labels import get_score_label
 from app.services.prediction_service import prediction_service
-from app.services.background_analysis import run_analysis_background
+from app.services.background_analysis import run_analysis_in_background
 from app.config import settings
 import uuid
 from datetime import datetime
@@ -126,20 +126,24 @@ async def upload_photo(
     timings["total_ms"] = round((time.perf_counter() - start_total) * 1000, 2)
     print(f"⏱️ Upload timings (analysis queued): {timings}")
 
-    # ── Fire background analysis (7-8 s ML work) ──────────────────
+    # ── Fire background analysis in a thread pool (7-8 s ML work) ──
+    # run_analysis_background is CPU-bound (torch/MediaPipe/PIL). Running it via
+    # run_in_executor keeps it off the event loop so status polling and other
+    # requests stay responsive while analysis runs.
     gender = getattr(current_user, "gender", None) or "male"
     if background_tasks:
         background_tasks.add_task(
-            run_analysis_background,
+            run_analysis_in_background,
             photo_id=new_photo.id,
             user_id=current_user.id,
             image_bytes=file_content,
             gender=gender,
         )
     else:
-        # Fallback: run inline if background tasks unavailable (e.g., testing)
-        logger.warning("BackgroundTasks not available — running analysis inline")
-        run_analysis_background(
+        # Fallback: run in a thread pool inline if background tasks are
+        # unavailable (e.g., testing).
+        logger.warning("BackgroundTasks not available — running analysis in thread pool")
+        await run_analysis_in_background(
             photo_id=new_photo.id,
             user_id=current_user.id,
             image_bytes=file_content,

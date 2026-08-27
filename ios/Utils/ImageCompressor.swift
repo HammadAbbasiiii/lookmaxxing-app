@@ -1,13 +1,13 @@
 import UIKit
 
-/// Compresses JPEG images to stay under 2MB while keeping dimensions large
+/// Compresses JPEG images to stay under 500 KB while keeping dimensions large
 /// enough for face detection (minimum 400 px on the shortest side).
 ///
 /// Strategy: scale down to max 2048 px, then binary search on JPEG quality.
 /// Never goes below 400 px so MediaPipe can detect faces reliably.
 enum ImageCompressor {
-    /// Maximum allowed upload size, in bytes.
-    static let maxUploadSize = 2_000_000
+    /// Maximum allowed upload size, in bytes (500 KB target — see LXConstants.maxUploadSizeKB).
+    static let maxUploadSize = LXConstants.maxUploadSizeKB * 1024
 
     /// Compress `img` to under `maxUploadSize`.
     /// - Returns: JPEG `Data` or `nil`

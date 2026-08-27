@@ -24,6 +24,7 @@ from app.services.ai_service import generate_fallback_analysis
 from app.services.plan_generator_service import generate_fallback_plan
 from app.services.score_labels import get_score_label
 import uuid
+import asyncio
 import logging
 import numpy as np
 from datetime import datetime
@@ -196,3 +197,19 @@ def run_analysis_background(photo_id: str, user_id: str, image_bytes: bytes, gen
             pass
     finally:
         db_bg.close()
+
+
+async def run_analysis_in_background(
+    photo_id: str, user_id: str, image_bytes: bytes, gender: str = "male"
+):
+    """Run the blocking ML analysis in a thread pool so it never blocks the event loop.
+
+    `run_analysis_background` does CPU-bound work (torch inference, MediaPipe,
+    PIL) that would otherwise stall every other request (status polling, plan
+    fetch) in the single-worker event loop. Offloading it to an executor keeps
+    the API responsive while analysis runs.
+    """
+    loop = asyncio.get_running_loop()
+    await loop.run_in_executor(
+        None, run_analysis_background, photo_id, user_id, image_bytes, gender
+    )
