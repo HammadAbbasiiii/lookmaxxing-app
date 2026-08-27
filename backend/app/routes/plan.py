@@ -14,8 +14,7 @@ from app.database import get_db
 from app.models import User, Photo, Plan, UserCheckin
 from app.dependencies import get_current_user
 from app.schemas import CheckinLogRequest
-from app.services.plan_generator_service import generate_fallback_plan, generate_action_plan
-from app.services.face_analysis_service import get_category_breakdown
+from app.services.plan_generator_service import generate_fallback_plan
 from datetime import datetime
 import uuid
 
@@ -34,13 +33,37 @@ async def get_my_plan(
     Get the current user's active 90-day action plan.
     Returns plan with current phase, current week, tasks, milestones, and motivational content.
     """
-    # Find the most recent active plan for this user
-    plan = (
-        db.query(Plan)
-        .filter(Plan.user_id == current_user.id, Plan.is_active == True)
-        .order_by(Plan.created_at.desc())
+    # Plan caching: a plan is tied to a specific photo. Find the user's most
+    # recent analysed photo, then return the plan already generated for it.
+    # This makes repeat GET /plan calls instant — no regeneration.
+    latest_photo = (
+        db.query(Photo)
+        .filter(Photo.user_id == current_user.id, Photo.score.isnot(None))
+        .order_by(Photo.captured_at.desc())
         .first()
     )
+
+    plan = None
+    if latest_photo:
+        plan = (
+            db.query(Plan)
+            .filter(
+                Plan.user_id == current_user.id,
+                Plan.photo_id == latest_photo.id,
+                Plan.is_active == True,
+            )
+            .order_by(Plan.created_at.desc())
+            .first()
+        )
+
+    # Fallback: most recent active plan (covers legacy plans without a photo link)
+    if not plan:
+        plan = (
+            db.query(Plan)
+            .filter(Plan.user_id == current_user.id, Plan.is_active == True)
+            .order_by(Plan.created_at.desc())
+            .first()
+        )
 
     if not plan:
         # No plan exists — return a hint that they need to analyse a photo first
@@ -223,68 +246,9 @@ async def daily_checkin(
 
     plan.updated_at = datetime.utcnow()
 
-    # ── Plan Regeneration: Check if new photo analysis exists ──────
-    # If the user uploaded and analyzed a new photo after the plan was
-    # last updated, regenerate the action plan based on new scores.
-    latest_analyzed_photo = (
-        db.query(Photo)
-        .filter(
-            Photo.user_id == current_user.id,
-            Photo.score.isnot(None),
-        )
-        .order_by(Photo.captured_at.desc())
-        .first()
-    )
-
-    plan_regenerated = False
-    if latest_analyzed_photo and latest_analyzed_photo.captured_at:
-        # Check if the latest analysis is newer than the plan's last update
-        last_plan_update = plan.updated_at or plan.created_at
-        if latest_analyzed_photo.captured_at > last_plan_update:
-            try:
-                # Download image bytes for category re-analysis
-                import requests as http_requests
-                resp = http_requests.get(latest_analyzed_photo.file_url, timeout=15)
-                if resp.status_code == 200:
-                    # Detect face landmarks for category breakdown
-                    from app.services.face_service import detect_face_landmarks
-                    face_result = detect_face_landmarks(resp.content)
-                    landmarks = face_result.get("landmarks") if face_result.get("success") else None
-
-                    # Get fresh category breakdown
-                    fresh_category_breakdown = None
-                    if landmarks:
-                        fresh_category_breakdown = get_category_breakdown(
-                            image_bytes=resp.content,
-                            landmarks=landmarks,
-                            gender=current_user.gender or "male",
-                            overall_score=latest_analyzed_photo.score or 75.0,
-                        )
-
-                    # Build score data from the latest photo
-                    score_data = {
-                        "overall_score": latest_analyzed_photo.score or 75.0,
-                        "symmetry_score": latest_analyzed_photo.symmetry_score or 65.0,
-                        "skin_score": latest_analyzed_photo.skin_score or 65.0,
-                        "jawline_score": latest_analyzed_photo.jawline_score or 65.0,
-                        "eye_score": latest_analyzed_photo.eye_score or 65.0,
-                        "face_shape": latest_analyzed_photo.face_shape or "oval",
-                    }
-
-                    # Regenerate plan
-                    new_action_plan = generate_action_plan(
-                        score_data=score_data,
-                        category_breakdown=fresh_category_breakdown or {},
-                        user_profile={"gender": current_user.gender or "male"},
-                    )
-
-                    # Update plan with new data, preserving day/week/phase progress
-                    plan.data = new_action_plan
-                    plan.phases = new_action_plan.get("phases", {})
-                    plan.photo_id = latest_analyzed_photo.id  # Link to latest photo
-                    plan_regenerated = True
-            except Exception:
-                pass  # Silently skip regeneration on error — don't break the check-in
+    # Plan regeneration now happens in the background-analysis pipeline, which
+    # creates a fresh plan per photo. The check-in endpoint only advances
+    # day/week/phase progress — it must never block on a slow AI regeneration.
 
     # Create check-in record
     checkin = UserCheckin(
@@ -332,9 +296,6 @@ async def daily_checkin(
         # Streak data for Loss Aversion hook
         "streak": new_day,
         "streak_message": f"{new_day} day streak — don't break it!" if new_day > 0 else "Start your streak today!",
-        # Plan regeneration info
-        "plan_regenerated": plan_regenerated,
-        "regeneration_photo_id": latest_analyzed_photo.id if plan_regenerated else None,
     }
 
 

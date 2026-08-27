@@ -240,7 +240,13 @@ final class AppState: ObservableObject {
                     currentScore = score
                     return score
                 } else if status.analysis_status == "failed" {
-                    // Return a fallback score instead of nil so the flow continues.
+                    // Pre-analysis validation failed (e.g. no face, blurry, too dark).
+                    // Surface the backend's user-facing message instead of showing a 0 score.
+                    if let reason = status.error ?? status.message {
+                        uploadError = reason
+                        return nil
+                    }
+                    // Generic failure with no message — return a fallback score so the flow continues.
                     let fallback = Score(
                         photoID: photoID,
                         overallScore: 0,

@@ -131,6 +131,14 @@ final class PhotoViewModel: ObservableObject {
                     }
                     return
                 }
+                if status.analysis_status == "failed" {
+                    await MainActor.run {
+                        appState.uploadError = status.error ?? status.message
+                            ?? "Analysis failed. Please try another photo."
+                        appState.isPolling = false
+                    }
+                    return
+                }
             } catch {
                 // continue polling on transient errors
             }

@@ -229,8 +229,10 @@ async def get_analysis_status(
         )
 
     category_breakdown = None
+    validation_error = None
     if photo.analysis_details:
         category_breakdown = photo.analysis_details.get("category_breakdown")
+        validation_error = photo.analysis_details.get("validation_error")
 
     return {
         "id": photo.id,
@@ -239,6 +241,8 @@ async def get_analysis_status(
         "category_breakdown": category_breakdown,
         "strengths": photo.strengths,
         "weaknesses": photo.weaknesses,
+        "error": validation_error,
+        "message": validation_error,
     }
 
 
@@ -261,7 +265,7 @@ def _enrich_with_deepseek_background(
     from app.database import SessionLocal
     db_bg = SessionLocal()
     try:
-        # --- Call 1: DeepSeek face analysis (with 25s timeout) ---
+        # --- Call 1: DeepSeek face analysis (with 15s timeout) ---
         deepseek_result = analyze_face_with_deepseek(score_data, "")
         deepseek_data = deepseek_result.get("data", {}) if deepseek_result.get("success") else {}
 
@@ -291,7 +295,14 @@ def _enrich_with_deepseek_background(
         if existing_plan:
             existing_plan.data = enriched_plan
             existing_plan.updated_at = datetime.utcnow()
+            existing_plan.is_active = True
         else:
+            # One active plan per user — deactivate older plans so GET /plan
+            # returns this photo's plan instantly.
+            db_bg.query(Plan).filter(
+                Plan.user_id == user_id, Plan.is_active == True
+            ).update({Plan.is_active: False}, synchronize_session=False)
+
             new_plan = Plan(
                 id=str(uuid.uuid4()),
                 photo_id=photo_id,
@@ -300,6 +311,7 @@ def _enrich_with_deepseek_background(
                 phases=enriched_plan.get("phases", {}),
                 current_phase="week_1",
                 current_week=1,
+                is_active=True,
             )
             db_bg.add(new_plan)
 

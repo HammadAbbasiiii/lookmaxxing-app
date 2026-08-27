@@ -124,6 +124,7 @@ struct ProcessingView: View {
         // Cancel any in-flight poll before starting a new one (Retry).
         analysisTask?.cancel()
         showError = false
+        appState.uploadError = nil
 
         analysisTask = Task {
             let result = await appState.pollForResults(photoID: photoID)
@@ -135,7 +136,9 @@ struct ProcessingView: View {
                 try? await Task.sleep(nanoseconds: 500_000_000)
                 navigateToScore = true
             } else {
-                errorMessage = "Analysis timed out. Please try again."
+                // Prefer the backend's specific validation message (no face,
+                // blurry, too dark) over a generic timeout message.
+                errorMessage = appState.uploadError ?? "Analysis timed out. Please try again."
                 showError = true
                 progress = 0
             }

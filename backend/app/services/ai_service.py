@@ -7,8 +7,9 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
-# Timeout in seconds for DeepSeek API calls
-DEEPSEEK_TIMEOUT_SECONDS = 25
+# Timeout in seconds for DeepSeek API calls (kept short so a slow AI response
+# falls back to the template plan instead of stalling the upload flow).
+DEEPSEEK_TIMEOUT_SECONDS = 15
 
 # Initialize OpenAI client for DeepSeek
 client = OpenAI(
@@ -22,7 +23,7 @@ def analyze_face_with_deepseek(score_data: dict, image_url: str) -> dict:
     """
     Send face analysis to DeepSeek for detailed breakdown.
 
-    Uses deepseek-chat (fast model) with 25s timeout.
+    Uses deepseek-chat (fast model) with 15s timeout.
     If DeepSeek is unavailable or times out, returns template-based fallback.
     """
     prompt = f"""

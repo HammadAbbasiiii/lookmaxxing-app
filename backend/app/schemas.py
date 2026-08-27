@@ -85,6 +85,8 @@ class PhotoStatusResponse(BaseModel):
     category_breakdown: Optional[dict] = None
     strengths: Optional[list] = None
     weaknesses: Optional[list] = None
+    error: Optional[str] = None
+    message: Optional[str] = None
 
     class Config:
         from_attributes = True

@@ -297,7 +297,7 @@ def generate_personalized_content(
             ],
             temperature=0.7,
             max_tokens=2048,
-            timeout=25.0,
+            timeout=15.0,
         )
 
         raw_content = response.choices[0].message.content or ""
@@ -355,7 +355,7 @@ def generate_personalized_content(
             "success": True,
             "data": _build_fallback(score, gender, weakest_categories),
             "fallback": True,
-            "error_detail": "API timed out after 25s",
+            "error_detail": "API timed out after 15s",
         }
     except Exception as exc:
         logger.error(f"DeepSeek API call failed: {exc}")

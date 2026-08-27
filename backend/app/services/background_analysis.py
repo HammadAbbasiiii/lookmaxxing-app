@@ -23,6 +23,7 @@ from app.services.face_analysis_service import get_category_breakdown
 from app.services.ai_service import generate_fallback_analysis
 from app.services.plan_generator_service import generate_fallback_plan
 from app.services.score_labels import get_score_label
+from app.services.validation_service import validate_image
 import uuid
 import asyncio
 import logging
@@ -51,6 +52,18 @@ def run_analysis_background(photo_id: str, user_id: str, image_bytes: bytes, gen
             return
         photo.analysis_status = "processing"
         db_bg.commit()
+
+        # ── 0. Pre-validation: reject unusable images before any AI work ──
+        validation = validate_image(image_bytes)
+        if not validation.get("valid"):
+            photo.analysis_status = "failed"
+            photo.analysis_details = {
+                "validation_error": validation.get("error"),
+                "valid": False,
+            }
+            db_bg.commit()
+            logger.info(f"❌ Photo {photo_id} rejected in pre-validation: {validation.get('error')}")
+            return
 
         # ── 1. ML prediction (holistic score) ─────────────────────
         score = None
@@ -169,7 +182,14 @@ def run_analysis_background(photo_id: str, user_id: str, image_bytes: bytes, gen
             if existing_plan:
                 existing_plan.data = plan_data
                 existing_plan.updated_at = datetime.utcnow()
+                existing_plan.is_active = True
             else:
+                # Plans are per-photo. Deactivate any older plans so only the
+                # latest photo's plan is active (GET /plan then returns it instantly).
+                db_bg.query(Plan).filter(
+                    Plan.user_id == user_id, Plan.is_active == True
+                ).update({Plan.is_active: False}, synchronize_session=False)
+
                 new_plan = Plan(
                     id=str(uuid.uuid4()),
                     photo_id=photo_id,
@@ -178,6 +198,7 @@ def run_analysis_background(photo_id: str, user_id: str, image_bytes: bytes, gen
                     phases=plan_data.get("phases", {}),
                     current_phase="week_1",
                     current_week=1,
+                    is_active=True,
                 )
                 db_bg.add(new_plan)
 

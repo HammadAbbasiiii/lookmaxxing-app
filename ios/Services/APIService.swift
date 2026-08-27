@@ -302,9 +302,11 @@ final class APIService {
         let category_breakdown: [String: CategoryScore]?
         let strengths: [String]?
         let weaknesses: [String]?
+        let error: String?
+        let message: String?
 
         enum CodingKeys: String, CodingKey {
-            case id, score, strengths, weaknesses
+            case id, score, strengths, weaknesses, error, message
             case analysis_status = "analysis_status"
             case category_breakdown = "category_breakdown"
         }
@@ -316,6 +318,8 @@ final class APIService {
             score = try container.decodeIfPresent(Double.self, forKey: .score)
             strengths = try container.decodeIfPresent([String].self, forKey: .strengths)
             weaknesses = try container.decodeIfPresent([String].self, forKey: .weaknesses)
+            error = try container.decodeIfPresent(String.self, forKey: .error)
+            message = try container.decodeIfPresent(String.self, forKey: .message)
 
             // The backend may send "heuristic": false (a Bool) alongside real
             // category objects in category_breakdown. Decode as a raw JSON

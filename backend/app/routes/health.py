@@ -36,18 +36,18 @@ def _get_memory_usage() -> dict | None:
 
 @router.get("/health")
 async def health_check():
-    """Health check — used by Render to verify service liveness."""
-    from app.services.face_analysis_service import get_mediapipe_status
+    """Health check — used by Render to verify service liveness.
 
-    mp_status = get_mediapipe_status()
-
+    Kept deliberately lightweight: the iOS app pings this during analysis to
+    keep the free-tier worker warm, so it must never trigger heavy imports
+    (MediaPipe / torch model loading) or slow DB work.
+    """
     return {
         "status": "healthy",
         "timestamp": datetime.utcnow().isoformat(),
         "service": "lookmaxx-api",
         "redis": _get_redis_status(),
         "memory": _get_memory_usage(),
-        "mediapipe": mp_status,
     }
 
 
