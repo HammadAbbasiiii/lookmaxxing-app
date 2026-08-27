@@ -74,7 +74,12 @@ struct ProcessingView: View {
                 progress = min(0.95, progress + 0.12)
             }
             .onAppear {
-                startAnalysis()
+                // Only start analysis if the current photo hasn't already been
+                // scored. Prevents re-polling (and re-showing "Processing...")
+                // when returning from ScoreView after tapping "View Your 90-Day Plan".
+                if appState.currentScore?.photoID != appState.currentPhotoID {
+                    startAnalysis()
+                }
             }
         }
         .fullScreenCover(isPresented: $navigateToScore) {

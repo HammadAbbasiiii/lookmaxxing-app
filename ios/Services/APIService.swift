@@ -57,8 +57,8 @@ final class APIService {
 
     private init() {
         let config = URLSessionConfiguration.default
-        config.timeoutIntervalForRequest = 120
-        config.timeoutIntervalForResource = 300
+        config.timeoutIntervalForRequest = 300
+        config.timeoutIntervalForResource = 600
         self.session = URLSession(configuration: config)
         // Restore cached token
         self.authToken = KeychainManager.getToken(forKey: KeychainManager.accessTokenKey)
@@ -446,6 +446,7 @@ final class APIService {
         struct PlanTaskItem: Codable {
             let name: String?
             let label: String?
+            let task: String?
             let details: String?
             let time: String?
             let completed: Bool?
@@ -494,7 +495,7 @@ final class APIService {
                     tasks.append(PlanTask(
                         id: "task_\(idx)",
                         order: idx,
-                        label: t.name ?? t.label ?? "Task \(idx + 1)",
+                        label: t.name ?? t.label ?? t.task ?? "Task \(idx + 1)",
                         timeOfDay: t.time ?? "Today",
                         isCompleted: t.completed ?? false
                     ))

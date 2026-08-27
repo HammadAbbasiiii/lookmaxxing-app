@@ -250,11 +250,32 @@ final class AppState: ObservableObject {
     func fetchPlan() async {
         planState = .loading
         do {
-            currentPlan = try await APIService.shared.getPlan()
+            currentPlan = try await fetchPlanWithRetry()
             planState = .loaded
         } catch {
-            planState = .error(error.localizedDescription)
+            planState = .error(friendlyPlanMessage(for: error))
         }
+    }
+
+    /// Fetches the 90-day plan with a single retry on transient failures
+    /// (timeouts / network blips). The `/plan` endpoint is normally fast,
+    /// but plan regeneration can occasionally take longer on first request.
+    private func fetchPlanWithRetry(maxAttempts: Int = 2) async throws -> Plan {
+        do {
+            return try await APIService.shared.getPlan()
+        } catch {
+            guard maxAttempts > 1 else { throw error }
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+            return try await fetchPlanWithRetry(maxAttempts: maxAttempts - 1)
+        }
+    }
+
+    /// User-friendly message for plan fetch failures (esp. timeouts).
+    private func friendlyPlanMessage(for error: Error) -> String {
+        if let apiError = error as? APIError, case .timeout = apiError {
+            return "Your plan is taking a little longer than expected. Tap Retry to try again."
+        }
+        return error.localizedDescription
     }
 
     func markTaskComplete(taskID: String) async {

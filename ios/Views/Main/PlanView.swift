@@ -7,6 +7,13 @@ import SwiftUI
 struct PlanView: View {
     @EnvironmentObject var appState: AppState
     @State private var expandedPhaseId: String?
+    @State private var loadingStep = 0
+    private let loadingSteps = [
+        "Analyzing your facial features...",
+        "Generating your personalized plan...",
+        "Almost ready..."
+    ]
+    private let stepTimer = Timer.publish(every: 4, on: .main, in: .common).autoconnect()
 
     var body: some View {
         NavigationStack {
@@ -16,10 +23,16 @@ struct PlanView: View {
                 if case .loading = appState.planState, appState.currentPlan == nil {
                     VStack(spacing: 16) {
                         ProgressView().tint(LXColor.gold)
-                        Text("Loading your plan...")
+                        Text(loadingSteps[min(loadingStep, loadingSteps.count - 1)])
                             .lxBody()
                             .foregroundColor(LXColor.white)
+                            .multilineTextAlignment(.center)
+                            .animation(.easeInOut(duration: 0.4), value: loadingStep)
+                        Text("This can take up to 30 seconds the first time.")
+                            .lxCaption()
+                            .foregroundColor(LXColor.white.opacity(0.5))
                     }
+                    .padding(.horizontal, LXConstants.standardPadding)
                 } else if let plan = appState.currentPlan {
                     ScrollView {
                         VStack(spacing: 24) {
@@ -77,8 +90,14 @@ struct PlanView: View {
                         await appState.fetchPlan()
                     }
                 } else {
-                    // No plan yet
+                    // No plan yet, or an error occurred while fetching
                     VStack(spacing: 16) {
+                        if case .error(let err) = appState.planState {
+                            Text(err)
+                                .lxBody()
+                                .foregroundColor(LXColor.red)
+                                .multilineTextAlignment(.center)
+                        }
                         Text("No plan yet")
                             .lxH3()
                             .foregroundColor(LXColor.white.opacity(0.5))
@@ -92,11 +111,18 @@ struct PlanView: View {
                         .lxBody()
                         .foregroundColor(LXColor.gold)
                     }
+                    .padding(.horizontal, LXConstants.standardPadding)
                 }
             }
             .onAppear {
+                loadingStep = 0
                 if appState.currentPlan == nil {
                     Task { await appState.fetchPlan() }
+                }
+            }
+            .onReceive(stepTimer) { _ in
+                if case .loading = appState.planState {
+                    loadingStep = min(loadingStep + 1, loadingSteps.count - 1)
                 }
             }
         }
