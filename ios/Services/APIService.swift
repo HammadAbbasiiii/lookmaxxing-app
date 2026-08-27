@@ -467,7 +467,7 @@ final class APIService {
         struct PlanProduct: Codable {
             let name: String?
             let description: String?
-            let price: Double?
+            let price: String?
             let rating: Double?
             let review_count: Int?
             let image_url: String?
@@ -666,7 +666,7 @@ final class APIService {
                     id: "prod_\(idx)",
                     name: item.name ?? "",
                     description: item.description ?? "",
-                    price: item.price ?? 0,
+                    price: Self.parsePrice(item.price),
                     rating: item.rating ?? 0,
                     reviewCount: item.review_count ?? 0,
                     imageURL: item.image_url,
@@ -679,6 +679,18 @@ final class APIService {
             products: products,
             articles: []
         )
+    }
+
+    /// Parses a price string like "$34" or "$1,234.99" into a Double.
+    /// The backend sends product prices as strings (e.g. "$34"), while the
+    /// `Product` model keeps `price` as a `Double` for display formatting.
+    private static func parsePrice(_ raw: String?) -> Double {
+        guard let raw = raw else { return 0 }
+        let cleaned = raw
+            .replacingOccurrences(of: "$", with: "")
+            .replacingOccurrences(of: ",", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return Double(cleaned) ?? 0
     }
 
     // MARK: - Logout ---------------------------------------------------------
