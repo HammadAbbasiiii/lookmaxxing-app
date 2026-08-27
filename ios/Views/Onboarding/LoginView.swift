@@ -75,9 +75,10 @@ struct LoginView: View {
 
                             // Toggle between sign up / login
                             Button(showSignUp ? "Already have an account? Log in" : "Don't have an account? Sign Up") {
-                                withAnimation(.easeInOut(duration: 0.3)) {
-                                    showSignUp.toggle()
-                                    appState.authState = .idle
+                                if showSignUp {
+                                    switchToLogin()
+                                } else {
+                                    switchToSignUp()
                                 }
                             }
                             .lxCaption()
@@ -108,6 +109,35 @@ struct LoginView: View {
     private var isLoading: Bool {
         if case .loading = appState.authState { return true }
         return false
+    }
+
+    // MARK: - Mode Switching ------------------------------------------------
+
+    /// Switches to Sign Up mode and clears any lingering state, so a previous
+    /// login error never leaks onto the sign-up form.
+    private func switchToSignUp() {
+        withAnimation(.easeInOut(duration: 0.3)) {
+            showSignUp = true
+        }
+        resetForm()
+    }
+
+    /// Switches to Login mode and clears any lingering state, so a previous
+    /// sign-up error never leaks onto the login form.
+    private func switchToLogin() {
+        withAnimation(.easeInOut(duration: 0.3)) {
+            showSignUp = false
+        }
+        resetForm()
+    }
+
+    /// Clears the shared error state and the form fields when changing modes
+    /// or after a successful action, preventing cross-mode error leakage.
+    private func resetForm() {
+        appState.authState = .idle
+        email = ""
+        password = ""
+        fullName = ""
     }
 
     private func submit() {
