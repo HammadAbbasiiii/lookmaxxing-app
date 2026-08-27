@@ -10,6 +10,7 @@ struct OnboardingView: View {
     @State private var password = ""
     @State private var fullName = ""
     @State private var showSignUp = false
+    @State private var showLogin = false
 
     var body: some View {
         ZStack {
@@ -96,8 +97,13 @@ struct OnboardingView: View {
                     .transition(.move(edge: .bottom).combined(with: .opacity))
                 } else {
                     Button("I'll do this later") {
-                        // Guest entry: proceed without auth
-                        appState.isAuthenticated = true
+                        if appState.isAuthenticated || appState.hasValidToken {
+                            // Already signed in — enter the home experience.
+                            appState.isAuthenticated = true
+                        } else {
+                            // Not authenticated — prompt for login.
+                            showLogin = true
+                        }
                     }
                     .lxCaption()
                     .foregroundColor(LXColor.white.opacity(0.5))
@@ -107,6 +113,10 @@ struct OnboardingView: View {
             }
         }
         .animation(.easeInOut(duration: 0.3), value: showSignUp)
+        .sheet(isPresented: $showLogin) {
+            LoginView()
+                .environmentObject(appState)
+        }
     }
 
     private var isLoading: Bool {

@@ -20,6 +20,11 @@ enum LXColor {
     static let green      = Color(hex: "#00C853")   // Growth, success
     static let darkPurple = Color(hex: "#2D1B69")   // Luxury, mystery
 
+    // ── Neutrals ────────────────────────────────────────────
+    static let warmWhite  = Color(hex: "#F5F5F5")   // Secondary text, subtle elements
+    static let softGray   = Color(hex: "#8E8E93")   // Placeholders, hints, disabled text
+    static let goldGlow   = Color(hex: "#FFE44D")   // Hover/active states, warm energy
+
     // ── Tier mapping ────────────────────────────────────────
     static func tierColour(for label: String) -> Color {
         switch label {

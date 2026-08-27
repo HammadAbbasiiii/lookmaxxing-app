@@ -20,6 +20,8 @@ struct DashboardView: View {
                             .lxBody()
                             .foregroundColor(LXColor.white)
                     }
+                } else if !hasAnalysisData {
+                    EmptyDashboardView(onUpload: { showCamera = true })
                 } else {
                     ScrollView {
                         VStack(spacing: 24) {
@@ -184,14 +186,6 @@ struct DashboardView: View {
                                 }
                             }
 
-                            // Error state
-                            if case .error(let err) = appState.dashboardState {
-                                Text(err)
-                                    .lxCaption()
-                                    .foregroundColor(LXColor.red)
-                                    .padding()
-                            }
-
                             Spacer().frame(height: 40)
                         }
                     }
@@ -208,7 +202,16 @@ struct DashboardView: View {
             .sheet(isPresented: $showCamera) {
                 CameraView()
             }
+            .alert("Session Expired", isPresented: $appState.showSessionExpired) {
+                Button("Log In", role: .destructive) { appState.signOut() }
+            } message: {
+                Text("Your session has expired. Please log in again.")
+            }
         }
+    }
+
+    private var hasAnalysisData: Bool {
+        appState.dashboardData?.currentScore != nil
     }
 
     private var userFirstName: String {

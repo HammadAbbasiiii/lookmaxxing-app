@@ -29,6 +29,12 @@ enum LXFont {
     }
 
     static func boldCaption() -> Font { .system(size: 13, weight: .semibold, design: .default) }
+
+    // ── Extended typography scale ───────────────────────────
+    static func hero() -> Font { .system(size: 64, weight: .bold, design: .default) }
+    static func bodyBold() -> Font { .system(size: 17, weight: .semibold, design: .default) }
+    static func captionBold() -> Font { .system(size: 13, weight: .semibold, design: .default) }
+    static func button() -> Font { .system(size: 17, weight: .bold, design: .default) }
 }
 
 // MARK: - Convenience ViewModifiers ---------------------------------------
@@ -53,6 +59,22 @@ struct LXCaptionModifier: ViewModifier {
     func body(content: Content) -> some View { content.font(LXFont.caption()) }
 }
 
+struct LXHeroModifier: ViewModifier {
+    func body(content: Content) -> some View { content.font(LXFont.hero()) }
+}
+
+struct LXBodyBoldModifier: ViewModifier {
+    func body(content: Content) -> some View { content.font(LXFont.bodyBold()) }
+}
+
+struct LXCaptionBoldModifier: ViewModifier {
+    func body(content: Content) -> some View { content.font(LXFont.captionBold()) }
+}
+
+struct LXButtonTextModifier: ViewModifier {
+    func body(content: Content) -> some View { content.font(LXFont.button()).kerning(0.5) }
+}
+
 // MARK: - View extensions -------------------------------------------------
 
 extension View {
@@ -61,4 +83,8 @@ extension View {
     func lxH3() -> some View { modifier(LXH3Modifier()) }
     func lxBody() -> some View { modifier(LXBodyModifier()) }
     func lxCaption() -> some View { modifier(LXCaptionModifier()) }
+    func lxHero() -> some View { modifier(LXHeroModifier()) }
+    func lxBodyBold() -> some View { modifier(LXBodyBoldModifier()) }
+    func lxCaptionBold() -> some View { modifier(LXCaptionBoldModifier()) }
+    func lxButtonText() -> some View { modifier(LXButtonTextModifier()) }
 }
