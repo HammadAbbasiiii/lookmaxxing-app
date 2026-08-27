@@ -6,10 +6,6 @@ import SwiftUI
 /// "What will my score be?"
 struct OnboardingView: View {
     @EnvironmentObject var appState: AppState
-    @State private var email = ""
-    @State private var password = ""
-    @State private var fullName = ""
-    @State private var showSignUp = false
     @State private var showLogin = false
 
     var body: some View {
@@ -40,8 +36,8 @@ struct OnboardingView: View {
                         .multilineTextAlignment(.center)
                 }
 
-                // CTA — Get My Score
-                Button(action: { showSignUp = true }) {
+                // CTA — Get My Score (opens auth sheet in Login mode)
+                Button(action: { showLogin = true }) {
                     HStack(spacing: 8) {
                         Text("🚀")
                         Text("GET MY SCORE")
@@ -55,73 +51,26 @@ struct OnboardingView: View {
                 }
                 .padding(.horizontal, LXConstants.standardPadding)
 
-                // Lazy sign-up flow
-                if showSignUp {
-                    VStack(spacing: 16) {
-                        LXTextField(placeholder: "Full Name (optional)", text: $fullName)
-                        LXTextField(placeholder: "Email", text: $email, keyboardType: .emailAddress)
-                        LXTextField(placeholder: "Password", text: $password, isSecure: true)
-
-                        if case .error(let err) = appState.authState {
-                            Text(err)
-                                .lxCaption()
-                                .foregroundColor(LXColor.red)
-                                .multilineTextAlignment(.center)
-                        }
-
-                        Button(action: {
-                            Task {
-                                await appState.signUp(email: email, password: password, fullName: fullName.isEmpty ? nil : fullName)
-                            }
-                        }) {
-                            Text(isLoading ? "Creating Account..." : "Create Account")
-                                .lxH3()
-                                .frame(maxWidth: .infinity)
-                                .frame(height: LXConstants.buttonHeight)
-                                .background(LXColor.gold)
-                                .foregroundColor(LXColor.black)
-                                .cornerRadius(LXConstants.cornerRadius)
-                        }
-                        .disabled(isLoading)
-
-                        Button("Already have an account? Log in") {
-                            Task {
-                                await appState.login(email: email, password: password)
-                            }
-                        }
-                        .disabled(isLoading)
-                        .lxCaption()
-                        .foregroundColor(LXColor.white.opacity(0.6))
+                // Low-commitment skip to login
+                Button("I'll do this later") {
+                    if appState.isAuthenticated || appState.hasValidToken {
+                        // Already signed in — enter the home experience.
+                        appState.isAuthenticated = true
+                    } else {
+                        // Not authenticated — prompt for login.
+                        showLogin = true
                     }
-                    .padding(.horizontal, LXConstants.standardPadding)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-                } else {
-                    Button("I'll do this later") {
-                        if appState.isAuthenticated || appState.hasValidToken {
-                            // Already signed in — enter the home experience.
-                            appState.isAuthenticated = true
-                        } else {
-                            // Not authenticated — prompt for login.
-                            showLogin = true
-                        }
-                    }
-                    .lxCaption()
-                    .foregroundColor(LXColor.white.opacity(0.5))
                 }
+                .lxCaption()
+                .foregroundColor(LXColor.white.opacity(0.5))
 
                 Spacer()
             }
         }
-        .animation(.easeInOut(duration: 0.3), value: showSignUp)
         .sheet(isPresented: $showLogin) {
             LoginView()
                 .environmentObject(appState)
         }
-    }
-
-    private var isLoading: Bool {
-        if case .loading = appState.authState { return true }
-        return false
     }
 }
 
