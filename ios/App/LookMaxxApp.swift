@@ -81,19 +81,25 @@ struct CameraFirstFlow: View {
 // MARK: - Main Tab Navigation ------------------------------------------------
 
 struct MainTabView: View {
+    @EnvironmentObject var appState: AppState
+
     var body: some View {
-        TabView {
+        TabView(selection: $appState.selectedTab) {
             DashboardView()
                 .tabItem { Label("Home", systemImage: "house.fill") }
+                .tag(MainTab.home)
 
             PlanView()
                 .tabItem { Label("Progress", systemImage: "chart.line.uptrend.xyaxis") }
+                .tag(MainTab.plan)
 
             ExploreView()
                 .tabItem { Label("Explore", systemImage: "magnifyingglass") }
+                .tag(MainTab.explore)
 
             ProfileView()
                 .tabItem { Label("Profile", systemImage: "person.fill") }
+                .tag(MainTab.profile)
         }
         .accentColor(LXColor.gold)
     }

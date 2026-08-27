@@ -388,7 +388,7 @@ final class APIService {
     /// Used to safely decode mixed-type dictionaries like the
     /// category_breakdown response which may contain booleans
     /// (e.g. "heuristic": false) alongside category objects.
-    fileprivate enum AnyDecodableValue: Decodable {
+    enum AnyDecodableValue: Decodable {
         case double(Double)
         case string(String)
         case bool(Bool)
@@ -544,7 +544,7 @@ final class APIService {
 
     // MARK: - Dashboard ------------------------------------------------------
 
-    struct DashboardAPIResponse: Codable {
+    struct DashboardAPIResponse: Decodable {
         let profile: ProfileBlock?
         let plan: PlanBlock?
         let progress: ProgressBlock?
@@ -575,11 +575,11 @@ final class APIService {
             let is_active: Bool?
         }
 
-        struct ProgressBlock: Codable {
+        struct ProgressBlock: Decodable {
             let initial_score: Double?
-            let initial_score_label: String?
+            let initial_score_label: AnyDecodableValue?
             let current_score: Double?
-            let current_score_label: String?
+            let current_score_label: AnyDecodableValue?
             let improvement: Double?
             let trend: String?
             let current_streak: Int?

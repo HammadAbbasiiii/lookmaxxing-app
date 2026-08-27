@@ -28,6 +28,11 @@ final class AppState: ObservableObject {
     // MARK: - Explore --------------------------------------------------------
     @Published var exploreData: ExploreData?
 
+    // MARK: - Navigation ------------------------------------------------------
+    /// Currently selected tab in the main `TabView`. Used to route the user
+    /// to the "Progress" (Plan) tab when they tap "View Your 90-Day Plan".
+    @Published var selectedTab: MainTab = .home
+
     // MARK: - Loading States -------------------------------------------------
     @Published var authState: AppLoadingState = .idle
     @Published var dashboardState: AppLoadingState = .idle
@@ -307,6 +312,15 @@ final class AppState: ObservableObject {
             exploreState = .error(error.localizedDescription)
         }
     }
+}
+
+// MARK: - Main Tab -----------------------------------------------------------
+
+enum MainTab: Hashable {
+    case home
+    case plan
+    case explore
+    case profile
 }
 
 // MARK: - App Loading State --------------------------------------------------

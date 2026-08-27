@@ -226,14 +226,13 @@ struct ScoreView: View {
                     }
                     .padding(.horizontal, LXConstants.standardPadding)
 
-                    // CTA — dismiss fullscreen cover and go to main app
+                    // CTA — dismiss fullscreen cover and go to the 90-day plan
                     Button(action: {
-                        // Dismiss this fullScreenCover
+                        // Dismiss this fullScreenCover and enter the main app,
+                        // routing directly to the Progress (Plan) tab.
+                        appState.shouldShowCamera = false
+                        appState.selectedTab = .plan
                         dismiss()
-                        // After a short delay, transition to MainTabView
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                            appState.shouldShowCamera = false
-                        }
                     }) {
                         HStack(spacing: 8) {
                             Text("📋")
