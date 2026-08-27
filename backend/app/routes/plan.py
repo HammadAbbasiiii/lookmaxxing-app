@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import User, Photo, Plan, UserCheckin
 from app.dependencies import get_current_user
+from app.schemas import CheckinLogRequest
 from app.services.plan_generator_service import generate_fallback_plan, generate_action_plan
 from app.services.face_analysis_service import get_category_breakdown
 from datetime import datetime
@@ -171,10 +172,9 @@ async def get_my_plan(
 # ---------------------------------------------------------------------------
 @router.post("/checkin")
 async def daily_checkin(
+    payload: CheckinLogRequest = None,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
-    completed_tasks: list[str] = None,
-    notes: str = None,
 ):
     """
     Log a daily/weekly check-in.
@@ -291,8 +291,8 @@ async def daily_checkin(
         id=str(uuid.uuid4()),
         user_id=current_user.id,
         week_number=plan.current_week,
-        completed_tasks=completed_tasks or [],
-        notes=notes or "",
+        completed_tasks=payload.completed_tasks if payload else [],
+        notes=payload.notes if payload else "",
     )
     db.add(checkin)
 
@@ -316,7 +316,7 @@ async def daily_checkin(
             break
 
     total_tasks = len(current_week_tasks.get("daily_tasks", [])) if current_week_tasks else 0
-    completed_count = len(completed_tasks) if completed_tasks else 0
+    completed_count = len(payload.completed_tasks) if payload and payload.completed_tasks else 0
     remaining_tasks = max(0, total_tasks - completed_count)
 
     return {
