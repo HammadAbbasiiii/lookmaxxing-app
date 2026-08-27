@@ -6,11 +6,13 @@ import SwiftUI
 /// Animated facts reduce perceived wait time.
 struct ProcessingView: View {
     @EnvironmentObject var appState: AppState
+    @Environment(\.dismiss) private var dismiss
     @State private var factIndex = 0
     @State private var progress = 0.0
     @State private var navigateToScore = false
     @State private var showError = false
     @State private var errorMessage = ""
+    @State private var analysisTask: Task<Void, Never>?
     private let timer = Timer.publish(every: 2.5, on: .main, in: .common).autoconnect()
 
     var body: some View {
@@ -67,6 +69,31 @@ struct ProcessingView: View {
                     .foregroundColor(LXColor.gold)
                 }
 
+                // Still-working state — shown when analysis is taking longer than
+                // expected (a timeout was retried, or >10s of polling). Offers
+                // the user a chance to Cancel or Retry mid-analysis.
+                if appState.analysisIsTakingLonger && !showError {
+                    Text("Analysis is taking longer than expected...")
+                        .lxCaption()
+                        .foregroundColor(LXColor.white.opacity(0.7))
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, LXConstants.standardPadding)
+
+                    HStack(spacing: 20) {
+                        Button("Cancel") {
+                            cancelAnalysis()
+                        }
+                        .lxBody()
+                        .foregroundColor(LXColor.white.opacity(0.7))
+
+                        Button("Retry") {
+                            startAnalysis()
+                        }
+                        .lxBody()
+                        .foregroundColor(LXColor.gold)
+                    }
+                }
+
                 Spacer()
             }
             .onReceive(timer) { _ in
@@ -94,8 +121,14 @@ struct ProcessingView: View {
             return
         }
 
-        Task {
+        // Cancel any in-flight poll before starting a new one (Retry).
+        analysisTask?.cancel()
+        showError = false
+
+        analysisTask = Task {
             let result = await appState.pollForResults(photoID: photoID)
+            guard !Task.isCancelled else { return }
+
             if result != nil {
                 progress = 1.0
                 // Small delay to show completed progress bar
@@ -107,6 +140,12 @@ struct ProcessingView: View {
                 progress = 0
             }
         }
+    }
+
+    private func cancelAnalysis() {
+        appState.cancelAnalysis()
+        analysisTask?.cancel()
+        dismiss()
     }
 }
 

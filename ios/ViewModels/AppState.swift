@@ -16,8 +16,12 @@ final class AppState: ObservableObject {
     @Published var isUploading = false
     @Published var isAnalyzing = false
     @Published var isPolling = false
+    @Published var analysisIsTakingLonger = false
     @Published var uploadProgress: Double = 0
     @Published var uploadError: String?
+
+    /// Set to true when the user cancels a long-running analysis poll.
+    private var analysisCancelled = false
 
     // MARK: - Plan -----------------------------------------------------------
     @Published var currentPlan: Plan?
@@ -205,20 +209,38 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// Cancels a long-running analysis poll (called from the Cancel button).
+    func cancelAnalysis() {
+        analysisCancelled = true
+        isAnalyzing = false
+        isPolling = false
+    }
+
     func pollForResults(photoID: String) async -> Score? {
         isAnalyzing = true
-        // Poll every 2 seconds for up to 60 seconds
-        for _ in 0..<30 {
+        isPolling = true
+        analysisIsTakingLonger = false
+        analysisCancelled = false
+
+        defer {
+            isAnalyzing = false
+            isPolling = false
+        }
+
+        // Poll every 2 seconds for up to 60 seconds.
+        for attempt in 0..<30 {
+            if analysisCancelled || Task.isCancelled {
+                return nil
+            }
+
             do {
                 let status = try await APIService.shared.getPhotoStatus(photoId: photoID)
                 if status.analysis_status == "completed" {
                     let score = status.toScore(photoId: photoID)
                     currentScore = score
-                    isAnalyzing = false
                     return score
                 } else if status.analysis_status == "failed" {
-                    isAnalyzing = false
-                    // Return a fallback score instead of nil so the flow continues
+                    // Return a fallback score instead of nil so the flow continues.
                     let fallback = Score(
                         photoID: photoID,
                         overallScore: 0,
@@ -232,16 +254,25 @@ final class AppState: ObservableObject {
                     currentScore = fallback
                     return fallback
                 }
-                // Still processing — wait and retry
-                try await Task.sleep(nanoseconds: 2_000_000_000)
             } catch {
-                // If we get a 404, the photo might not exist yet; keep polling
-                try? await Task.sleep(nanoseconds: 2_000_000_000)
-                continue
+                // Timeout or transient network error (e.g. 404 while the photo
+                // is still being processed) — retry after the 2s sleep below.
+                analysisIsTakingLonger = true
             }
+
+            // After ~10s of still processing (or any retry), surface a
+            // "still working" message so the user isn't left wondering.
+            if attempt >= 5 {
+                analysisIsTakingLonger = true
+            }
+
+            if analysisCancelled || Task.isCancelled {
+                return nil
+            }
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
         }
-        // Timeout after 60s — return nil
-        isAnalyzing = false
+
+        // Timeout after 60s — return nil.
         return nil
     }
 
