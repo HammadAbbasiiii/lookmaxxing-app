@@ -181,10 +181,12 @@ final class APIService {
     }
 
     func signUp(email: String, password: String, fullName: String? = nil) async throws -> SignupResponse {
+        let trimmedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedPassword = password.trimmingCharacters(in: .whitespacesAndNewlines)
         let body: [String: Any] = [
-            "email": email,
-            "password": password,
-            "full_name": fullName ?? email.components(separatedBy: "@").first ?? "User"
+            "email": trimmedEmail,
+            "password": trimmedPassword,
+            "full_name": fullName ?? trimmedEmail.components(separatedBy: "@").first ?? "User"
         ]
         let data = try JSONSerialization.data(withJSONObject: body)
         let req = try request("/auth/signup", method: "POST", body: data, auth: false)
@@ -192,6 +194,9 @@ final class APIService {
     }
 
     func login(email: String, password: String) async throws -> TokenResponse {
+        let trimmedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedPassword = password.trimmingCharacters(in: .whitespacesAndNewlines)
+
         // Backend expects OAuth2 form data (x-www-form-urlencoded)
         guard let url = url("/auth/login") else { throw APIError.invalidURL }
         var req = URLRequest(url: url)
@@ -201,8 +206,8 @@ final class APIService {
         var components = URLComponents()
         components.queryItems = [
             URLQueryItem(name: "grant_type", value: "password"),
-            URLQueryItem(name: "username", value: email),
-            URLQueryItem(name: "password", value: password),
+            URLQueryItem(name: "username", value: trimmedEmail),
+            URLQueryItem(name: "password", value: trimmedPassword),
         ]
         req.httpBody = components.percentEncodedQuery?.data(using: .utf8)
 
@@ -218,6 +223,28 @@ final class APIService {
         let req = try authenticatedRequest(path: "/auth/me")
         let raw: SignupResponse = try await perform(req)
         return raw.toUser()
+    }
+
+    // MARK: - Profile ---------------------------------------------------------
+
+    func getProfile() async throws -> UserProfile {
+        let req = try authenticatedRequest(path: "/profile")
+        return try await perform(req)
+    }
+
+    func updateProfile(_ update: ProfileUpdateRequest) async throws -> UserProfile {
+        let data = try JSONEncoder().encode(update)
+        let req = try authenticatedRequest(path: "/profile", method: "PUT", body: data)
+        return try await perform(req)
+    }
+
+    func deleteAccount() async throws {
+        struct DeleteAccountResponse: Decodable {
+            let success: Bool
+            let message: String
+        }
+        let req = try authenticatedRequest(path: "/profile/delete", method: "DELETE")
+        let _: DeleteAccountResponse = try await perform(req)
     }
 
     // MARK: - Photos ---------------------------------------------------------
@@ -659,32 +686,164 @@ final class APIService {
         return raw.toDashboardData()
     }
 
+    // MARK: - Progress --------------------------------------------------------
+
+    func getScoreHistory() async throws -> ScoreHistoryResponse {
+        let req = try authenticatedRequest(path: "/progress/history")
+        return try await perform(req)
+    }
+
+    func getProgressPhotos() async throws -> ProgressPhotosResponse {
+        let req = try authenticatedRequest(path: "/progress/photos")
+        return try await perform(req)
+    }
+
+    // MARK: - Progress Photo Upload & Compare --------------------------------
+
+    struct ProgressUploadResponse: Decodable {
+        let id: String
+        let file_url: String?
+        let score: Double?
+        let is_baseline: Bool?
+        let week_number: Int?
+    }
+
+    /// Minimal response from `POST /photos/analyze/{photo_id}` — we only care
+    /// that the call succeeded; the analysis updates the photo in place.
+    private struct AnalyzeResponse: Decodable {
+        let success: Bool
+    }
+
+    func uploadProgressPhoto(data: Data, fileName: String) async throws -> ProgressUploadResponse {
+        guard let url = url("/progress/photos/upload") else { throw APIError.invalidURL }
+        guard let token = authToken else { throw APIError.notAuthenticated }
+
+        let boundary = "Boundary-\(UUID().uuidString)"
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        req.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+
+        var body = Data()
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"file\"; filename=\"\(fileName)\"\r\n".data(using: .utf8)!)
+        body.append("Content-Type: image/jpeg\r\n\r\n".data(using: .utf8)!)
+        body.append(data)
+        body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
+        req.httpBody = body
+
+        return try await perform(req)
+    }
+
+    /// Scores a progress photo so it appears in `/progress/history` and
+    /// `/progress/photos/compare`.
+    func analyzeProgressPhoto(photoId: String) async throws {
+        let req = try authenticatedRequest(path: "/photos/analyze/\(photoId)", method: "POST")
+        let _: AnalyzeResponse = try await perform(req)
+    }
+
+    func getProgressComparison() async throws -> ProgressComparison {
+        let req = try authenticatedRequest(path: "/progress/photos/compare")
+        return try await perform(req)
+    }
+
+
     // MARK: - Explore --------------------------------------------------------
 
-    // Currently no /explore endpoint; fallback to plan/products + hardcoded content
+    /// Response from `GET /products/recommendations` — personalized affiliate
+    /// products targeted at the user's weakest analysis categories.
+    struct ProductRecommendationsResponse: Decodable {
+        let recommendations: [Recommendation]?
+        let total: Int?
+        let message: String?
+
+        struct Recommendation: Decodable {
+            let id: String
+            let name: String
+            let brand: String?
+            let price: Double?
+            let currency: String?
+            let affiliate_link: String?
+            let image_url: String?
+            let rating: Double?
+            let reviews_count: Int?
+            let reason: String?
+            let category: String?
+            let tier: String?
+        }
+    }
+
+    /// Response from `GET /explore` — the social-proof + education feed.
+    struct ExploreContentResponse: Decodable {
+        let transformations: [Transformation]
+        let articles: [Article]
+    }
+
     func getExplore() async throws -> ExploreData {
-        // Attempt plan endpoint for products
-        let req = try authenticatedRequest(path: "/plan")
-        let planRaw: PlanAPIResponse = try await perform(req)
         var products: [Product] = []
-        if let p = planRaw.products {
-            for (idx, item) in p.enumerated() {
-                products.append(Product(
-                    id: "prod_\(idx)",
-                    name: item.name ?? "",
-                    description: item.description ?? "",
-                    price: Self.parsePrice(item.price),
-                    rating: item.rating ?? 0,
-                    reviewCount: item.review_count ?? 0,
-                    imageURL: item.image_url,
-                    affiliateURL: item.affiliate_url
-                ))
+        var transformations: [Transformation] = []
+        var articles: [Article] = []
+
+        // 1) Products — personalised affiliate recommendations tied to the
+        //    user's weakest analysis categories.
+        do {
+            let req = try authenticatedRequest(path: "/products/recommendations")
+            let raw: ProductRecommendationsResponse = try await perform(req)
+            products = (raw.recommendations ?? []).map { rec in
+                Product(
+                    id: rec.id,
+                    name: rec.name,
+                    description: rec.reason ?? "\(rec.brand ?? "Recommended") · \(rec.tier ?? "mid_range")",
+                    price: rec.price ?? 0,
+                    rating: rec.rating ?? 0,
+                    reviewCount: rec.reviews_count ?? 0,
+                    imageURL: rec.image_url,
+                    affiliateURL: rec.affiliate_link
+                )
+            }
+        } catch {
+            products = []
+        }
+
+        // 2) Products fallback — derive from the plan endpoint (legacy path).
+        if products.isEmpty {
+            do {
+                let req = try authenticatedRequest(path: "/plan")
+                let planRaw: PlanAPIResponse = try await perform(req)
+                if let p = planRaw.products {
+                    for (idx, item) in p.enumerated() {
+                        products.append(Product(
+                            id: "prod_\(idx)",
+                            name: item.name ?? "",
+                            description: item.description ?? "",
+                            price: Self.parsePrice(item.price),
+                            rating: item.rating ?? 0,
+                            reviewCount: item.review_count ?? 0,
+                            imageURL: item.image_url,
+                            affiliateURL: item.affiliate_url
+                        ))
+                    }
+                }
+            } catch {
+                products = []
             }
         }
+
+        // 3) Transformations + articles from the Explore feed.
+        do {
+            let req = try authenticatedRequest(path: "/explore")
+            let content: ExploreContentResponse = try await perform(req)
+            transformations = content.transformations
+            articles = content.articles
+        } catch {
+            transformations = []
+            articles = []
+        }
+
         return ExploreData(
-            transformations: [],
+            transformations: transformations,
             products: products,
-            articles: []
+            articles: articles
         )
     }
 

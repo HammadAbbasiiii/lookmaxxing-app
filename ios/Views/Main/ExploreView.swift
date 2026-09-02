@@ -90,8 +90,16 @@ struct ExploreView: View {
 
     // MARK: - Transformations ----------------------------------------------
 
+    @ViewBuilder
     private func transformationsSection(_ data: ExploreData) -> some View {
-        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+        if data.transformations.isEmpty {
+            emptyState(
+                icon: "person.2.fill",
+                title: "No transformations yet",
+                message: "Upload a photo and track your progress — your journey can inspire others."
+            )
+        } else {
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
             ForEach(data.transformations) { tx in
                 VStack(spacing: 8) {
                     HStack(spacing: 4) {
@@ -136,8 +144,9 @@ struct ExploreView: View {
                 .background(LXColor.deepNavy)
                 .cornerRadius(LXConstants.cornerRadius)
             }
+            }
+            .padding(.horizontal, LXConstants.standardPadding)
         }
-        .padding(.horizontal, LXConstants.standardPadding)
     }
 
     // MARK: - Products -----------------------------------------------------
@@ -154,7 +163,7 @@ struct ExploreView: View {
                         }
                         .frame(height: 120)
                         .clipped()
-                        .cornerRadius(8)
+                        .cornerRadius(LXConstants.cornerRadius)
                     }
 
                     Text(product.name)
@@ -193,8 +202,16 @@ struct ExploreView: View {
 
     // MARK: - Articles -----------------------------------------------------
 
+    @ViewBuilder
     private func articlesSection(_ data: ExploreData) -> some View {
-        LazyVStack(spacing: 12) {
+        if data.articles.isEmpty {
+            emptyState(
+                icon: "doc.text",
+                title: "No articles yet",
+                message: "Check back soon for looksmaxxing tips and guides."
+            )
+        } else {
+            LazyVStack(spacing: 12) {
             ForEach(data.articles) { article in
                 Button(action: {
                     if let url = URL(string: article.url) {
@@ -209,7 +226,7 @@ struct ExploreView: View {
                                 Rectangle().fill(LXColor.deepNavy)
                             }
                             .frame(width: 60, height: 60)
-                            .cornerRadius(8)
+                            .cornerRadius(LXConstants.cornerRadius)
                         }
 
                         VStack(alignment: .leading, spacing: 4) {
@@ -233,6 +250,29 @@ struct ExploreView: View {
                 }
             }
         }
+        .padding(.horizontal, LXConstants.standardPadding)
+        }
+    }
+
+    // MARK: - Shared empty state -------------------------------------------
+
+    private func emptyState(icon: String, title: String, message: String) -> some View {
+        VStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.system(size: 32))
+                .foregroundColor(LXColor.gold.opacity(0.5))
+            Text(title)
+                .lxBody()
+                .foregroundColor(LXColor.white.opacity(0.7))
+            Text(message)
+                .lxCaption()
+                .foregroundColor(LXColor.white.opacity(0.4))
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(24)
+        .background(LXColor.deepNavy)
+        .cornerRadius(LXConstants.cornerRadius)
         .padding(.horizontal, LXConstants.standardPadding)
     }
 }

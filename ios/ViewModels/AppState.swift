@@ -32,6 +32,17 @@ final class AppState: ObservableObject {
     // MARK: - Explore --------------------------------------------------------
     @Published var exploreData: ExploreData?
 
+    // MARK: - Progress --------------------------------------------------------
+    @Published var scoreHistory: ScoreHistoryResponse?
+    @Published var progressPhotos: ProgressPhotosResponse?
+    @Published var progressComparison: ProgressComparison?
+    @Published var isUploadingProgressPhoto = false
+    @Published var progressUploadError: String?
+
+    // MARK: - Profile ----------------------------------------------------------
+    @Published var profile: UserProfile?
+    @Published var profileError: String?
+
     // MARK: - Navigation ------------------------------------------------------
     /// Currently selected tab in the main `TabView`. Used to route the user
     /// to the "Progress" (Plan) tab when they tap "View Your 90-Day Plan".
@@ -42,6 +53,10 @@ final class AppState: ObservableObject {
     @Published var dashboardState: AppLoadingState = .idle
     @Published var planState: AppLoadingState = .idle
     @Published var exploreState: AppLoadingState = .idle
+    @Published var scoreHistoryState: AppLoadingState = .idle
+    @Published var progressPhotosState: AppLoadingState = .idle
+    @Published var progressComparisonState: AppLoadingState = .idle
+    @Published var profileState: AppLoadingState = .idle
 
     // MARK: - Initialization ------------------------------------------------
 
@@ -71,7 +86,9 @@ final class AppState: ObservableObject {
             let response = try await APIService.shared.signUp(email: email, password: password, fullName: fullName)
             // After signup, auto-login to get token
             _ = try await APIService.shared.login(email: email, password: password)
-            currentUser = response.toUser()
+            let user = response.toUser()
+            currentUser = user
+            CacheService.shared.setUser(user)
             isAuthenticated = true
             shouldShowCamera = true
             authState = .loaded
@@ -86,17 +103,20 @@ final class AppState: ObservableObject {
     func login(email: String, password: String) async -> Bool {
         authState = .loading
         do {
-            _ = try await APIService.shared.login(email: email, password: password)
+            let token = try await APIService.shared.login(email: email, password: password)
             // Fetch user profile after login
             do {
                 let user = try await APIService.shared.getCurrentUser()
                 currentUser = user
+                CacheService.shared.setUser(user)
             } catch {
-                // If /me fails, construct minimal user from token response
+                // If /me fails, construct a minimal user from the token response
+                // so the app still shows a real name/id instead of empty placeholders.
+                let fallbackName = (token.email ?? email).components(separatedBy: "@").first
                 currentUser = User(
-                    id: "",
-                    email: email,
-                    username: nil,
+                    id: token.userId ?? "",
+                    email: token.email ?? email,
+                    username: fallbackName,
                     createdAt: Date(),
                     subscriptionTier: .free,
                     daysActive: 0,
@@ -139,6 +159,10 @@ final class AppState: ObservableObject {
     }
 
     func restoreFromCache() {
+        // Load cached user immediately for offline / instant profile display.
+        if let cachedUser = CacheService.shared.cachedUser() {
+            currentUser = cachedUser
+        }
         if APIService.shared.isAuthenticated {
             isAuthenticated = true
             // Fetch latest user info in background
@@ -167,10 +191,17 @@ final class AppState: ObservableObject {
         currentPlan = nil
         dashboardData = nil
         exploreData = nil
+        scoreHistory = nil
+        progressPhotos = nil
+        profile = nil
+        profileError = nil
         authState = .idle
         dashboardState = .idle
         planState = .idle
         exploreState = .idle
+        scoreHistoryState = .idle
+        progressPhotosState = .idle
+        profileState = .idle
     }
 
     /// Dismisses the session-expired alert and returns the user to onboarding.
@@ -179,10 +210,42 @@ final class AppState: ObservableObject {
         signOut()
     }
 
-    func deleteAccount() async -> Bool {
-        // No delete endpoint yet — just sign out locally
+    func deleteAccount() async throws {
+        try await APIService.shared.deleteAccount()
         signOut()
-        return true
+    }
+
+    // MARK: - Profile ----------------------------------------------------------
+
+    func fetchProfile() async {
+        profileState = .loading
+        profileError = nil
+        do {
+            profile = try await APIService.shared.getProfile()
+            profileState = .loaded
+        } catch {
+            profileState = .error(error.localizedDescription)
+            profileError = error.localizedDescription
+        }
+    }
+
+    func updateProfile(_ update: ProfileUpdateRequest) async -> Bool {
+        profileState = .loading
+        profileError = nil
+        do {
+            profile = try await APIService.shared.updateProfile(update)
+            // Refresh the lightweight user so the Profile tab reflects the new name/tier.
+            if let refreshed = try? await APIService.shared.getCurrentUser() {
+                currentUser = refreshed
+                CacheService.shared.setUser(refreshed)
+            }
+            profileState = .loaded
+            return true
+        } catch {
+            profileState = .error(error.localizedDescription)
+            profileError = error.localizedDescription
+            return false
+        }
     }
 
     // MARK: - Photo Upload ---------------------------------------------------
@@ -368,6 +431,78 @@ final class AppState: ObservableObject {
             exploreState = .loaded
         } catch {
             exploreState = .error(error.localizedDescription)
+        }
+    }
+
+    // MARK: - Progress Fetching ----------------------------------------------
+
+    func fetchScoreHistory() async {
+        scoreHistoryState = .loading
+        do {
+            scoreHistory = try await APIService.shared.getScoreHistory()
+            scoreHistoryState = .loaded
+        } catch {
+            scoreHistoryState = .error(error.localizedDescription)
+        }
+    }
+
+    func fetchProgressPhotos() async {
+        progressPhotosState = .loading
+        do {
+            progressPhotos = try await APIService.shared.getProgressPhotos()
+            progressPhotosState = .loaded
+        } catch {
+            progressPhotosState = .error(error.localizedDescription)
+        }
+    }
+
+    func fetchProgressComparison() async {
+        progressComparisonState = .loading
+        do {
+            progressComparison = try await APIService.shared.getProgressComparison()
+            progressComparisonState = .loaded
+        } catch {
+            progressComparisonState = .error(error.localizedDescription)
+        }
+    }
+
+    /// Uploads a new progress check-in photo, scores it via the analysis
+    /// endpoint, then refreshes the photos, history, and comparison.
+    ///
+    /// - Returns: `true` if the photo was uploaded successfully. Analysis may
+    ///   still fail (e.g. no face detected); that is surfaced via
+    ///   `progressUploadError`.
+    @discardableResult
+    func uploadProgressPhoto(image: UIImage) async -> Bool {
+        guard let data = ImageCompressor.compressImage(image) else {
+            progressUploadError = "Could not process that photo. Please try another one."
+            return false
+        }
+
+        isUploadingProgressPhoto = true
+        progressUploadError = nil
+        defer { isUploadingProgressPhoto = false }
+
+        do {
+            let uploaded = try await APIService.shared.uploadProgressPhoto(
+                data: data,
+                fileName: "progress_\(Int(Date().timeIntervalSince1970)).jpg"
+            )
+
+            // Score the photo so it shows up in history + before/after compare.
+            do {
+                try await APIService.shared.analyzeProgressPhoto(photoId: uploaded.id)
+            } catch {
+                progressUploadError = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            }
+
+            await fetchProgressPhotos()
+            await fetchScoreHistory()
+            await fetchProgressComparison()
+            return true
+        } catch {
+            progressUploadError = (error as? APIError)?.errorDescription ?? error.localizedDescription
+            return false
         }
     }
 }

@@ -32,6 +32,56 @@ enum SubscriptionTier: String, Codable {
     case elite
 }
 
+// MARK: - Profile (full backend profile) ------------------------------------
+
+struct UserProfile: Codable {
+    let id: String
+    let email: String
+    let fullName: String?
+    let age: Int?
+    let gender: String?
+    let goals: [String]?
+    let height: Int?
+    let weight: Int?
+    let location: String?
+    let bio: String?
+    let onboardingCompleted: Bool
+    let subscriptionTier: String
+    let isSubscribed: Bool
+    let totalCheckins: Int
+    let currentStreak: Int
+    let longestStreak: Int
+    let currentDay: Int
+
+    enum CodingKeys: String, CodingKey {
+        case id, email, age, gender, goals, height, weight, location, bio
+        case fullName = "full_name"
+        case onboardingCompleted = "onboarding_completed"
+        case subscriptionTier = "subscription_tier"
+        case isSubscribed = "is_subscribed"
+        case totalCheckins = "total_checkins"
+        case currentStreak = "current_streak"
+        case longestStreak = "longest_streak"
+        case currentDay = "current_day"
+    }
+}
+
+struct ProfileUpdateRequest: Encodable {
+    var fullName: String? = nil
+    var age: Int? = nil
+    var gender: String? = nil
+    var goals: [String]? = nil
+    var height: Int? = nil
+    var weight: Int? = nil
+    var location: String? = nil
+    var bio: String? = nil
+
+    enum CodingKeys: String, CodingKey {
+        case fullName = "full_name"
+        case age, gender, goals, height, weight, location, bio
+    }
+}
+
 // MARK: - Auth ------------------------------------------------------------
 
 struct LoginRequest: Codable {
@@ -42,10 +92,16 @@ struct LoginRequest: Codable {
 struct TokenResponse: Codable {
     let accessToken: String
     let tokenType: String
+    // Backend also returns these; used to build a resilient fallback user
+    // when the follow-up /me call fails.
+    let userId: String?
+    let email: String?
 
     enum CodingKeys: String, CodingKey {
         case accessToken = "access_token"
         case tokenType = "token_type"
+        case userId = "user_id"
+        case email
     }
 }
 
@@ -204,6 +260,107 @@ struct Milestone: Codable, Identifiable {
         case isCompleted = "is_completed"
     }
 }
+
+// MARK: - Progress (Score History & Photos) --------------------------------
+
+struct ScoreHistoryResponse: Codable {
+    let hasData: Bool
+    let initialScore: Double?
+    let currentScore: Double?
+    let improvement: Double?
+    let dataPoints: Int?
+    let message: String?
+    let history: [ScoreHistoryPoint]
+
+    enum CodingKeys: String, CodingKey {
+        case hasData = "has_data"
+        case initialScore = "initial_score"
+        case currentScore = "current_score"
+        case improvement
+        case dataPoints = "data_points"
+        case message
+        case history
+    }
+}
+
+struct ScoreHistoryPoint: Codable, Identifiable {
+    let id: String          // photo_id from /progress/history
+    let date: String?       // raw ISO-8601 string (kept as String to avoid TZ edge cases)
+    let score: Double?
+    let weekNumber: Int?
+    let isBaseline: Bool?
+
+    enum CodingKeys: String, CodingKey {
+        case id = "photo_id"
+        case date, score
+        case weekNumber = "week_number"
+        case isBaseline = "is_baseline"
+    }
+}
+
+struct ProgressPhotosResponse: Codable {
+    let total: Int
+    let photos: [ProgressPhoto]
+    let hasBaseline: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case total, photos
+        case hasBaseline = "has_baseline"
+    }
+}
+
+struct ProgressPhoto: Codable, Identifiable {
+    let id: String
+    let fileURL: String?
+    let score: Double?
+    let isBaseline: Bool
+    let weekNumber: Int?
+    let capturedAt: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case fileURL = "file_url"
+        case score
+        case isBaseline = "is_baseline"
+        case weekNumber = "week_number"
+        case capturedAt = "captured_at"
+    }
+}
+
+
+// MARK: - Progress Comparison ----------------------------------------------
+
+struct ProgressComparison: Codable {
+    let baseline: ComparisonPhoto?
+    let latest: ComparisonPhoto?
+    let scoreChange: Double?
+    let trend: String?
+    let weeksProgressed: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case baseline, latest
+        case scoreChange = "score_change"
+        case trend
+        case weeksProgressed = "weeks_progressed"
+    }
+}
+
+struct ComparisonPhoto: Codable {
+    let id: String?
+    let fileURL: String?
+    let score: Double?
+    let weekNumber: Int?
+    let capturedAt: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case fileURL = "file_url"
+        case score
+        case weekNumber = "week_number"
+        case capturedAt = "captured_at"
+    }
+}
+
 
 // MARK: - Product ---------------------------------------------------------
 
