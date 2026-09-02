@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from app.routes import health, auth, photos, analysis, plan, products, upload
-from app.routes import profile, progress, dashboard
+from app.routes import profile, progress, dashboard, explore
 from app.middleware.rate_limit import rate_limit_middleware
 from app.middleware.error_handler import global_error_handler
 from app.database import engine
@@ -78,3 +78,4 @@ app.include_router(products.router, prefix="/api/v1", tags=["Products"])
 app.include_router(profile.router, prefix="/api/v1", tags=["Profile"])
 app.include_router(progress.router, prefix="/api/v1", tags=["Progress"])
 app.include_router(dashboard.router, prefix="/api/v1", tags=["Dashboard"])
+app.include_router(explore.router, prefix="/api/v1", tags=["Explore"])
