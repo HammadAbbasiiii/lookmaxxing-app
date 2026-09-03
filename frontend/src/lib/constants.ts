@@ -86,14 +86,14 @@ export const PLANS = {
     tier: "pro",
     name: "Pro",
     monthly: 9.99,
-    blurb: "Unlimited analyses, full 90-day plan, check-ins, recommendations.",
+    blurb: "Unlimited analyses, 90-day plan, Glow-Up Forecast, percentile rank & your look-alike archetype.",
     highlight: true,
   },
   elite: {
     tier: "elite",
     name: "Elite",
     monthly: 19.99,
-    blurb: "Everything in Pro + 1:1 coach Q&A and priority.",
+    blurb: "Everything in Pro + golden-ratio harmony map, weekly blueprint & a shareable glow-up card.",
   },
 } as const;
 

@@ -16,8 +16,22 @@ import { ApiError } from "@/lib/api/client";
 
 const FEATURES: Record<string, string[]> = {
   free: ["1 analysis", "Baseline score", "Streak tracking"],
-  pro: ["Unlimited analyses", "Full 90-day plan", "Daily check-ins", "Product recommendations"],
-  elite: ["Everything in Pro", "1:1 coach Q&A", "Priority support"],
+  pro: [
+    "Unlimited analyses",
+    "Full 90-day plan + check-ins",
+    "Glow-Up Forecast (Day 30/60/90)",
+    "Percentile rank vs. others",
+    "Look-alike archetype match",
+    "Daily AI coach + product recs",
+  ],
+  elite: [
+    "Everything in Pro",
+    "1:1 coach Q&A",
+    "Golden-Ratio Harmony Map",
+    "Weekly Glow-Up Blueprint",
+    "Shareable Glow-Up Card",
+    "Priority support",
+  ],
 };
 
 export default function UpgradePage() {

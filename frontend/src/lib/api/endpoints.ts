@@ -48,6 +48,12 @@ import {
   type Coach,
   ReportSchema,
   type Report,
+  InsightsSchema,
+  emptyInsights,
+  type Insights,
+  HarmonySchema,
+  emptyHarmony,
+  type Harmony,
   CheckoutSchema,
   type Checkout,
 } from "@/lib/zod";
@@ -419,6 +425,16 @@ export async function getReport(photoId: string): Promise<Report> {
     improvement_potential: "",
     recommendations: { skincare: [], grooming: "", exercise: [], diet: [] },
   });
+}
+
+export async function getAnalysisInsights(photoId: string): Promise<Insights> {
+  const data = await apiFetch<unknown>(`/analysis/${photoId}/insights`);
+  return decode(InsightsSchema, data, emptyInsights(photoId));
+}
+
+export async function getAnalysisHarmony(photoId: string): Promise<Harmony> {
+  const data = await apiFetch<unknown>(`/analysis/${photoId}/harmony`);
+  return decode(HarmonySchema, data, emptyHarmony(photoId));
 }
 
 export async function createCheckout(tier: "pro" | "elite", annual: boolean): Promise<Checkout> {

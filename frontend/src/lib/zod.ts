@@ -524,6 +524,92 @@ export const CheckoutSchema = z.object({
 });
 export type Checkout = z.infer<typeof CheckoutSchema>;
 
+// ── Premium insights (Pro) ──────────────────────────────────────────
+export const ForecastMilestoneSchema = z.object({
+  day: z.number().catch(0),
+  projected_score: z.number().catch(0),
+});
+export const ForecastSchema = z.object({
+  current_score: z.number().catch(0),
+  potential_score: z.number().catch(0),
+  days_remaining: z.number().catch(0),
+  headline: z.string().catch(""),
+  milestones: z.array(ForecastMilestoneSchema).catch([]),
+});
+export const PercentileSchema = z.object({
+  percentile: z.number().nullable().catch(null),
+  peer_count: z.number().catch(0),
+  gender: z.string().catch(""),
+  rank_label: z.string().catch(""),
+});
+export const ArchetypeSchema = z.object({
+  name: z.string().catch(""),
+  emoji: z.string().catch(""),
+  vibe: z.string().catch(""),
+  reasons: z.array(z.string()).catch([]),
+});
+export const InsightsSchema = z.object({
+  photo_id: z.string().catch(""),
+  forecast: ForecastSchema,
+  percentile: PercentileSchema,
+  archetype: ArchetypeSchema,
+});
+export type Insights = z.infer<typeof InsightsSchema>;
+export const emptyInsights = (photoId: string): Insights => ({
+  photo_id: photoId,
+  forecast: { current_score: 0, potential_score: 0, days_remaining: 0, headline: "", milestones: [] },
+  percentile: { percentile: null, peer_count: 0, gender: "", rank_label: "" },
+  archetype: { name: "", emoji: "", vibe: "", reasons: [] },
+});
+
+// ── Premium harmony (Elite) ─────────────────────────────────────────
+export const HarmonyMetricSchema = z.object({
+  key: z.string().catch(""),
+  label: z.string().catch(""),
+  score: z.number().catch(0),
+  alignment: z.number().catch(0),
+});
+export const GoldenRatioSchema = z.object({
+  phi_score: z.number().nullable().catch(null),
+  summary: z.string().catch(""),
+  metrics: z.array(HarmonyMetricSchema).catch([]),
+});
+export const BlueprintDaySchema = z.object({
+  day: z.number().catch(0),
+  focus: z.string().catch(""),
+  task: z.string().catch(""),
+  why: z.string().catch(""),
+  duration_minutes: z.number().catch(2),
+});
+export const BlueprintSchema = z.object({
+  week_label: z.string().catch(""),
+  gender_note: z.string().catch(""),
+  days: z.array(BlueprintDaySchema).catch([]),
+});
+export const GlowUpCardSchema = z.object({
+  headline: z.string().catch(""),
+  score: z.number().catch(0),
+  label: z.string().catch(""),
+  archetype: z.string().catch(""),
+  top_strength: z.string().catch(""),
+  day: z.number().catch(0),
+  tier: z.string().catch(""),
+  share_text: z.string().catch(""),
+});
+export const HarmonySchema = z.object({
+  photo_id: z.string().catch(""),
+  golden_ratio: GoldenRatioSchema,
+  blueprint: BlueprintSchema,
+  glow_up_card: GlowUpCardSchema,
+});
+export type Harmony = z.infer<typeof HarmonySchema>;
+export const emptyHarmony = (photoId: string): Harmony => ({
+  photo_id: photoId,
+  golden_ratio: { phi_score: null, summary: "", metrics: [] },
+  blueprint: { week_label: "", gender_note: "", days: [] },
+  glow_up_card: { headline: "", score: 0, label: "", archetype: "", top_strength: "", day: 0, tier: "", share_text: "" },
+});
+
 export type DeleteAccountResult = z.infer<typeof DeleteAccountSchema>;
 
 
