@@ -22,7 +22,12 @@ class Settings:
     ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
     
     # Admin access — emails allowed on /admin/* (comma-separated).
-    ADMIN_EMAILS: list = [e.strip().lower() for e in os.getenv("ADMIN_EMAILS", "").split(",") if e.strip()]
+    # The owner email is always included so the dashboard works out of the box;
+    # extra admins can be added via the ADMIN_EMAILS env var (comma-separated).
+    ADMIN_EMAILS: list = list(dict.fromkeys(
+        ["hammadabbasi732@gmail.com"]
+        + [e.strip().lower() for e in os.getenv("ADMIN_EMAILS", "").split(",") if e.strip()]
+    ))
 
     # Environment / payments
     ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development").lower()

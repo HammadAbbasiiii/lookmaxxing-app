@@ -10,7 +10,8 @@ from app.dependencies import (
     verify_password,
     create_access_token,
     get_current_user,
-    pwd_context
+    pwd_context,
+    is_admin_user,
 )
 from app.config import settings
 
@@ -109,9 +110,13 @@ async def get_current_user_profile(
 ):
     """
     Get current user profile.
-    
+
     Requires valid JWT token in Authorization header.
+
+    `is_admin` is computed (flag OR admin email) so the client-side admin gate
+    matches the server-side `require_admin`, which also honours ADMIN_EMAILS.
     """
+    current_user.is_admin = is_admin_user(current_user)
     return current_user
 
 @router.post("/logout")

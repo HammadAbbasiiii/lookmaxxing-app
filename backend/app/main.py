@@ -8,6 +8,7 @@ from app.middleware.rate_limit import rate_limit_middleware
 from app.middleware.error_handler import global_error_handler
 from app.database import engine
 from app.models import Base
+from app.config import settings
 # ── Startup (minimal to stay under 512 MB Render limit) ────────────
 print("🚀 LookMaxx API starting …")
 
@@ -31,6 +32,27 @@ try:
         print("✅ Migrated: added users.is_admin")
 except Exception as _mig_e:
     print(f"⚠️ users.is_admin migration skipped: {_mig_e}")
+
+# ── Promote admin emails to is_admin=True (owner dashboard access) ──────
+try:
+    from app.database import SessionLocal as _SL_admin
+    from app.models import User as _User_admin
+    _admin_emails = getattr(settings, "ADMIN_EMAILS", []) or []
+    _admin_db = _SL_admin()
+    try:
+        _promoted = 0
+        for _email in _admin_emails:
+            _u = _admin_db.query(_User_admin).filter(_User_admin.email == _email).first()
+            if _u is not None and not _u.is_admin:
+                _u.is_admin = True
+                _promoted += 1
+        if _promoted:
+            _admin_db.commit()
+            print(f"🛡️ Promoted {_promoted} admin email(s) to is_admin=True")
+    finally:
+        _admin_db.close()
+except Exception as _admin_e:
+    print(f"⚠️ Admin email promotion skipped: {_admin_e}")
 
 # ── Migrate: add later profile columns (skin_type, skin_concerns, commitment) ──
 try:

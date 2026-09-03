@@ -85,11 +85,17 @@ def get_current_user_optional(
     return db.query(User).filter(User.id == user_id).first()
 
 
-def require_admin(user: User = Depends(get_current_user)):
-    """Gate /admin/* — requires `is_admin` flag OR email in ADMIN_EMAILS env."""
+def is_admin_user(user: User) -> bool:
+    """True when the user has the is_admin flag OR their email is in ADMIN_EMAILS."""
+    if getattr(user, "is_admin", False):
+        return True
     admin_emails = getattr(settings, "ADMIN_EMAILS", []) or []
-    is_admin = bool(user.is_admin) or (bool(user.email) and user.email.lower() in admin_emails)
-    if not is_admin:
+    return bool(user.email) and user.email.lower() in admin_emails
+
+
+def require_admin(user: User = Depends(get_current_user)):
+    """Gate /admin/* — requires the is_admin flag OR an email in ADMIN_EMAILS."""
+    if not is_admin_user(user):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Admin access required",

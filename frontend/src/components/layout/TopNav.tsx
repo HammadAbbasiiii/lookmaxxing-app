@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { LogOut, Settings as SettingsIcon, User as UserIcon } from "lucide-react";
+import { LayoutDashboard, LogOut, Settings as SettingsIcon, User as UserIcon } from "lucide-react";
 import { useMe } from "@/hooks/useMe";
 import { logout } from "@/lib/api/endpoints";
 import { clearToken } from "@/lib/auth";
@@ -29,6 +29,7 @@ export function TopNav() {
 
   const tier = user?.subscription_tier ?? "free";
   const isFree = tier === "free";
+  const isAdmin = user?.is_admin === true;
 
   useEffect(() => {
     function onDocClick(e: MouseEvent) {
@@ -72,6 +73,14 @@ export function TopNav() {
         </nav>
 
         <div className="flex items-center gap-2">
+          {isAdmin ? (
+            <Link href="/admin" className="hidden md:block">
+              <Badge variant="outline" className="cursor-pointer border-gold/40 text-gold hover:opacity-90">
+                <LayoutDashboard className="h-3.5 w-3.5" /> Admin
+              </Badge>
+            </Link>
+          ) : null}
+
           {isFree ? (
             <Link href="/upgrade" className="hidden md:block">
               <Badge variant="gold" className="cursor-pointer hover:opacity-90">
@@ -101,6 +110,19 @@ export function TopNav() {
                   <p className="truncate text-sm font-medium text-ink">{user?.full_name || "Member"}</p>
                   <p className="truncate text-xs text-muted">{user?.email}</p>
                 </div>
+                {isAdmin ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMenuOpen(false);
+                      router.push("/admin");
+                    }}
+                    className="flex w-full items-center gap-2 px-4 py-2.5 text-sm text-ink hover:bg-surface-2"
+                  >
+                    <LayoutDashboard className="h-4 w-4 text-gold" /> Admin Dashboard
+                  </button>
+                ) : null}
+
                 <button
                   type="button"
                   onClick={() => {
