@@ -1,0 +1,322 @@
+// Typed API endpoint functions (§13.2). Each wraps `apiFetch` and decodes the
+// response through a defensive Zod schema so a malformed payload never throws
+// into the UI.
+
+import { apiFetch, apiFetchUpload } from "@/lib/api/client";
+import {
+  decode,
+  AnalysisSchema,
+  type Analysis,
+  CategoriesSchema,
+  type CategoriesResponse,
+  CheckinSchema,
+  type CheckinResult,
+  CompareSchema,
+  type Compare,
+  DashboardSchema,
+  emptyDashboard,
+  type Dashboard,
+  DeleteAccountSchema,
+  type DeleteAccountResult,
+  ExploreSchema,
+  type Explore,
+  OnboardingSchema,
+  type OnboardingResult,
+  PhotoStatusSchema,
+  type PhotoStatus,
+  PlanSchema,
+  emptyPlan,
+  type Plan,
+  ProductsSchema,
+  type ProductsResponse,
+  ProgressSchema,
+  type Progress,
+  SaveUploadSchema,
+  type SaveUpload,
+  TokenSchema,
+  type TokenResponse,
+  UploadSignatureSchema,
+  type UploadSignature,
+  UserSchema,
+  emptyUser,
+  type User,
+} from "@/lib/zod";
+
+// ── Auth ────────────────────────────────────────────────────────────
+export async function signup(
+  email: string,
+  password: string,
+  fullName?: string,
+): Promise<User> {
+  const data = await apiFetch<unknown>("/auth/signup", {
+    method: "POST",
+    body: { email, password, full_name: fullName?.trim() || null },
+  });
+  return decode(UserSchema, data, emptyUser());
+}
+
+export async function login(email: string, password: string): Promise<TokenResponse> {
+  // Backend uses OAuth2PasswordRequestForm → form-urlencoded `username`+`password`.
+  const data = await apiFetch<unknown>("/auth/login", {
+    method: "POST",
+    form: true,
+    body: { username: email.trim().toLowerCase(), password },
+  });
+  return decode(TokenSchema, data, { access_token: "", token_type: "bearer", user_id: "", email: "" });
+}
+
+export async function getMe(): Promise<User> {
+  const data = await apiFetch<unknown>("/auth/me");
+  return decode(UserSchema, data, emptyUser());
+}
+
+export async function logout(): Promise<void> {
+  await apiFetch<unknown>("/auth/logout", { method: "POST" });
+}
+
+// ── Upload / analysis (critical path §4.4) ──────────────────────────
+export async function getUploadSignature(): Promise<UploadSignature> {
+  const data = await apiFetch<unknown>("/upload/signature");
+  return decode(UploadSignatureSchema, data, {
+    signature: "",
+    timestamp: 0,
+    cloud_name: "",
+    api_key: "",
+    folder: "",
+    public_id: "",
+    upload_preset: undefined,
+  });
+}
+
+// NOTE: /upload/save takes `file_url` and `public_id` as QUERY params (FastAPI
+// simple-type params), not a JSON/form body.
+export async function saveDirectUpload(fileUrl: string, publicId: string): Promise<SaveUpload> {
+  const qs = new URLSearchParams({ file_url: fileUrl, public_id: publicId }).toString();
+  const data = await apiFetch<unknown>(`/upload/save?${qs}`, { method: "POST" });
+  return decode(SaveUploadSchema, data, { photo_id: "", file_url: fileUrl, is_baseline: false, week_number: 1 });
+}
+
+export async function analyzePhoto(photoId: string): Promise<void> {
+  await apiFetchUpload<unknown>(`/photos/analyze/${photoId}`, { method: "POST" });
+}
+
+export async function getPhotoStatus(photoId: string): Promise<PhotoStatus> {
+  const data = await apiFetch<unknown>(`/photos/${photoId}/status`);
+  return decode(PhotoStatusSchema, data, {
+    id: photoId,
+    analysis_status: "pending",
+    score: null,
+    potential_score: null,
+    raw_score: null,
+    model_used: null,
+    improvement_potential: null,
+    category_breakdown: null,
+    strengths: null,
+    weaknesses: null,
+    error: null,
+    message: null,
+  });
+}
+
+export async function getAnalysis(photoId: string): Promise<Analysis> {
+  const data = await apiFetch<unknown>(`/analysis/${photoId}`);
+  return decode(AnalysisSchema, data, {
+    photo_id: photoId,
+    file_url: "",
+    scores: { overall: null, symmetry: null, skin: null, jawline: null, eyes: null },
+    face_shape: null,
+    is_baseline: false,
+    analyzed_at: null,
+  });
+}
+
+// ── Dashboard ───────────────────────────────────────────────────────
+export async function getDashboard(): Promise<Dashboard> {
+  const data = await apiFetch<unknown>("/dashboard");
+  return decode(DashboardSchema, data, emptyDashboard());
+}
+
+// ── Plan ────────────────────────────────────────────────────────────
+export async function getPlan(): Promise<Plan> {
+  const data = await apiFetch<unknown>("/plan");
+  return decode(PlanSchema, data, emptyPlan());
+}
+
+export async function postPlanCheckin(
+  completedTasks: string[],
+  notes?: string,
+): Promise<CheckinResult> {
+  const data = await apiFetch<unknown>("/plan/checkin", {
+    method: "POST",
+    body: { completed_tasks: completedTasks, notes: notes ?? "" },
+  });
+  return decode(CheckinSchema, data, {
+    success: false,
+    current_day: 0,
+    current_week: 0,
+    current_phase: "",
+    days_remaining: 0,
+    total_tasks_today: 0,
+    tasks_completed: 0,
+    tasks_remaining: 0,
+    is_plan_complete: false,
+    streak: 0,
+    streak_message: "",
+    longest_streak: 0,
+    total_checkins: 0,
+    milestone: null,
+  });
+}
+// ── Progress ────────────────────────────────────────────────────────
+export async function getProgress(): Promise<Progress> {
+  const data = await apiFetch<unknown>("/analysis/progress/all");
+  return decode(ProgressSchema, data, {
+    photos: [],
+    progress: null,
+  });
+}
+
+export async function getCompare(): Promise<Compare> {
+  const data = await apiFetch<unknown>("/progress/photos/compare");
+  return decode(CompareSchema, data, {
+    baseline: { id: "", file_url: "", score: null, captured_at: null },
+    latest: null,
+    score_change: null,
+    trend: "stable",
+    weeks_progressed: 0,
+  });
+}
+
+export interface Milestones {
+  completed: { day: number; title: string; emoji: string }[];
+  upcoming: { day: number; title: string; days_remaining: number; emoji: string }[];
+  next: { day: number; title: string; days_remaining: number; emoji: string } | null;
+}
+
+export async function getMilestones(): Promise<Milestones> {
+  const data = await apiFetch<unknown>("/progress/milestones");
+  const fallback: Milestones = { completed: [], upcoming: [], next: null };
+  if (!data || typeof data !== "object") return fallback;
+  const raw = data as Record<string, unknown>;
+  const pick = (item: unknown, key: string): string =>
+    item && typeof item === "object" && key in (item as object)
+      ? String((item as Record<string, unknown>)[key] ?? "")
+      : "";
+  const num = (item: unknown, key: string): number => {
+    const v = item && typeof item === "object" ? (item as Record<string, unknown>)[key] : undefined;
+    return typeof v === "number" ? v : 0;
+  };
+  const completed = (Array.isArray(raw.completed) ? raw.completed : []).map((m) => ({
+    day: num(m, "day"),
+    title: pick(m, "title") || pick(m, "message") || "Milestone",
+    emoji: pick(m, "emoji") || "🏆",
+  }));
+  const upcoming = (Array.isArray(raw.upcoming) ? raw.upcoming : []).map((m) => ({
+    day: num(m, "day"),
+    title: pick(m, "title") || pick(m, "message") || "Milestone",
+    days_remaining: num(m, "days_remaining") || num(m, "days_until") || 0,
+    emoji: pick(m, "emoji") || "🔥",
+  }));
+  const nextRaw = raw.next_milestone ?? raw.next ?? null;
+  return {
+    completed,
+    upcoming,
+    next:
+      nextRaw && typeof nextRaw === "object"
+        ? {
+            day: num(nextRaw, "day"),
+            title: pick(nextRaw, "title") || pick(nextRaw, "message") || "Milestone",
+            days_remaining: num(nextRaw, "days_remaining") || num(nextRaw, "days_until") || 0,
+            emoji: pick(nextRaw, "emoji") || "🎯",
+          }
+        : null,
+  };
+}
+
+// ── Explore ─────────────────────────────────────────────────────────
+export async function getExplore(): Promise<Explore> {
+  const data = await apiFetch<unknown>("/explore");
+  return decode(ExploreSchema, data, { success: false, transformations: [], articles: [], total: 0 });
+}
+
+// ── Products ────────────────────────────────────────────────────────
+export async function getProductRecommendations(
+  tier: string,
+  maxResults = 8,
+): Promise<ProductsResponse> {
+  const data = await apiFetch<unknown>(
+    `/products/recommendations?tier=${encodeURIComponent(tier)}&max_results=${maxResults}`,
+  );
+  // Backend returns each recommendation as { product: {...}, reason, category, tier }.
+  // Flatten to the flat Product shape the UI cards expect (defensive on both shapes).
+  const root =
+    data && typeof data === "object" ? (data as Record<string, unknown>) : {};
+  const items = Array.isArray(root.recommendations) ? root.recommendations : [];
+  const s = (v: unknown): string => (typeof v === "string" ? v : "");
+  const n = (v: unknown): number | null =>
+    typeof v === "number" && Number.isFinite(v) ? v : null;
+  const n0 = (v: unknown): number =>
+    typeof v === "number" && Number.isFinite(v) ? v : 0;
+  const recommendations = items.map((item) => {
+    const w =
+      item && typeof item === "object" ? (item as Record<string, unknown>) : {};
+    const p =
+      w.product && typeof w.product === "object"
+        ? (w.product as Record<string, unknown>)
+        : {};
+    return {
+      id: s(p.id ?? w.id),
+      name: s(p.name ?? w.name),
+      category: s(w.category ?? p.category),
+      price: n(p.price ?? w.price),
+      currency: s(p.currency ?? w.currency) || "USD",
+      rating: n(p.rating ?? w.rating),
+      review_count: n0(p.reviews_count ?? p.review_count ?? w.review_count),
+      url: s(p.affiliate_link ?? p.url ?? w.url),
+      image_url: p.image_url ?? w.image_url ?? null,
+      description: s(w.reason ?? p.social_proof ?? p.description),
+      tier: s(w.tier ?? p.tier) || "mid_range",
+      commission: null,
+    };
+  });
+  const next: Record<string, unknown> = { ...root, recommendations };
+  return decode(ProductsSchema, next, { success: false, recommendations: [], total: 0, message: "" });
+}
+
+export async function getCategories(): Promise<CategoriesResponse> {
+  const data = await apiFetch<unknown>("/products/categories");
+  return decode(CategoriesSchema, data, { success: false, categories: [], total: 0 });
+}
+
+// ── Profile ─────────────────────────────────────────────────────────
+export interface ProfileUpdate {
+  full_name?: string;
+  age?: number;
+  gender?: string;
+  goals?: string[];
+  height?: number;
+  weight?: number;
+  location?: string;
+  bio?: string;
+}
+
+export async function getProfile(): Promise<User> {
+  const data = await apiFetch<unknown>("/profile");
+  return decode(UserSchema, data, emptyUser());
+}
+
+export async function putProfile(update: ProfileUpdate): Promise<User> {
+  const data = await apiFetch<unknown>("/profile", { method: "PUT", body: update });
+  return decode(UserSchema, data, emptyUser());
+}
+
+export async function completeOnboarding(): Promise<OnboardingResult> {
+  const data = await apiFetch<unknown>("/profile/onboarding", { method: "POST" });
+  return decode(OnboardingSchema, data, { success: false, message: "", onboarding_completed: false });
+}
+
+export async function deleteAccount(): Promise<DeleteAccountResult> {
+  const data = await apiFetch<unknown>("/profile/delete", { method: "DELETE" });
+  return decode(DeleteAccountSchema, data, { success: false, message: "" });
+}
+

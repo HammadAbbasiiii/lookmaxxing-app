@@ -15,6 +15,7 @@ from app.models import User, Photo, Plan, UserCheckin
 from app.dependencies import get_current_user
 from app.schemas import CheckinLogRequest
 from app.services.plan_generator_service import generate_fallback_plan
+from app.services.progress_engine import compute_current_day, update_streak
 from datetime import datetime
 import uuid
 
@@ -80,11 +81,9 @@ async def get_my_plan(
     plan_data = plan.data or {}
     phases = plan_data.get("phases", plan.phases or {})
 
-    # Determine current day (estimate from plan created date if current_day is 0)
-    current_day = plan.current_day or 0
-    if current_day == 0 and plan.created_at:
-        delta = (datetime.utcnow() - plan.created_at).days
-        current_day = min(delta, 90)  # Cap at 90
+    # Current day is calendar-based (Day 1 = plan creation day), so a user can
+    # never skip ahead by spamming check-ins — time, not clicks, advances the day.
+    current_day = compute_current_day(plan)
 
     # Calculate current week
     if current_day > 0:
@@ -141,11 +140,12 @@ async def get_my_plan(
             }
             break
 
-    # Calculate streak (days since plan started)
-    days_since_start = 0
-    if plan.created_at:
-        days_since_start = (datetime.utcnow() - plan.created_at).days
-    streak = min(days_since_start, 90)
+    # Real consecutive-day streak (Loss Aversion hook), not "days since start".
+    streak = current_user.current_streak or 0
+    checked_in_today = (
+        current_user.last_checkin_date is not None
+        and current_user.last_checkin_date.date() == datetime.utcnow().date()
+    )
 
     # Products
     products = plan_data.get("products", [])
@@ -168,6 +168,7 @@ async def get_my_plan(
         "todays_quote": todays_quote,
         "upcoming_milestone": upcoming_milestone,
         "streak": streak,
+        "checked_in_today": checked_in_today,
         "products": products,
         "bonus_tip": plan_data.get("bonus_tip", ""),
         "phases": {
@@ -223,14 +224,19 @@ async def daily_checkin(
             detail="No active plan found. Analyse a photo first to generate a plan.",
         )
 
-    # Calculate current day
-    current_day = plan.current_day or 0
-    if current_day == 0 and plan.created_at:
-        delta = (datetime.utcnow() - plan.created_at).days
-        current_day = min(delta, 90)
+    # Current day is calendar-based, not click-based. This is the fix for the
+    # "I can click through all 90 days in a few minutes" bug: the day number
+    # comes from wall-clock time since the plan was created, capped at 90.
+    new_day = compute_current_day(plan)
 
-    # Advance day count
-    new_day = current_day + 1 if current_day < 90 else 90
+    # A user may only check in once per calendar day — reject duplicates so
+    # streaks and day counts can't be farmed.
+    today = datetime.utcnow().date()
+    if current_user.last_checkin_date is not None and current_user.last_checkin_date.date() == today:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="You've already checked in today. Come back tomorrow to continue your streak.",
+        )
 
     # Update plan
     plan.current_day = new_day
@@ -249,6 +255,11 @@ async def daily_checkin(
     # Plan regeneration now happens in the background-analysis pipeline, which
     # creates a fresh plan per photo. The check-in endpoint only advances
     # day/week/phase progress — it must never block on a slow AI regeneration.
+
+    # Update streak (Loss Aversion hook). Previously /plan/checkin skipped this,
+    # which is why the dashboard showed "0-day streak" even on later days.
+    update_streak(current_user)
+    current_user.current_day = new_day
 
     # Create check-in record
     checkin = UserCheckin(
@@ -293,9 +304,15 @@ async def daily_checkin(
         "tasks_completed": completed_count,
         "tasks_remaining": remaining_tasks,
         "is_plan_complete": new_day >= 90,
-        # Streak data for Loss Aversion hook
-        "streak": new_day,
-        "streak_message": f"{new_day} day streak — don't break it!" if new_day > 0 else "Start your streak today!",
+        # Streak data for Loss Aversion hook — the real streak, not the day number.
+        "streak": current_user.current_streak or 0,
+        "streak_message": (
+            f"{current_user.current_streak} day streak — don't break it!"
+            if current_user.current_streak
+            else "Start your streak today!"
+        ),
+        "longest_streak": current_user.longest_streak or 0,
+        "total_checkins": current_user.total_checkins or 0,
     }
 
 
@@ -349,11 +366,8 @@ async def get_progress(
     if baseline_score is not None and current_score is not None:
         score_change = round(current_score - baseline_score, 1)
 
-    # Calculate current day
-    current_day = plan.current_day or 0
-    if current_day == 0 and plan.created_at:
-        delta = (datetime.utcnow() - plan.created_at).days
-        current_day = min(delta, 90)
+    # Calculate current day (calendar-based)
+    current_day = compute_current_day(plan)
 
     # Completed milestones
     plan_data = plan.data or {}

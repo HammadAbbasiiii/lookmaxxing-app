@@ -9,6 +9,7 @@ from app.database import get_db
 from app.models import User, Photo, Plan, UserCheckin
 from app.dependencies import get_current_user
 from app.services.score_labels import get_score_label
+from app.services.progress_engine import compute_current_day
 from datetime import datetime
 
 router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
@@ -82,10 +83,7 @@ async def get_dashboard(
 
     plan_info = None
     if plan:
-        current_day = plan.current_day or 0
-        if current_day == 0 and plan.created_at:
-            delta = (datetime.utcnow() - plan.created_at).days
-            current_day = min(delta, 90)
+        current_day = compute_current_day(plan)
 
         plan_info = {
             "has_plan": True,
@@ -94,7 +92,7 @@ async def get_dashboard(
             "total_days": plan.total_days or 90,
             "progress_percentage": round((current_day / 90) * 100, 1) if current_day > 0 else 0,
             "days_remaining": max(0, 90 - current_day),
-            "current_week": plan.current_week or max(1, ((current_day - 1) // 7) + 1),
+            "current_week": max(1, ((current_day - 1) // 7) + 1),
             "current_phase": plan.current_phase or (
                 "phase_1" if current_day <= 30 else ("phase_2" if current_day <= 60 else "phase_3")
             ),
@@ -211,6 +209,25 @@ async def get_dashboard(
     }
 
 
+def _task_name(t) -> str:
+    """Human-readable title for a task (plan tasks use {task}; older data {name})."""
+    if isinstance(t, dict):
+        title = t.get("task") or t.get("name") or t.get("title")
+        if title:
+            return str(title).strip()
+        return "Daily task"
+    return str(t).strip()
+
+
+def _task_detail(t) -> str:
+    """Optional detail/description for a task."""
+    if isinstance(t, dict):
+        detail = t.get("details") or t.get("description")
+        if detail:
+            return str(detail).strip()
+    return ""
+
+
 def _get_next_action(plan, user: User, db: Session) -> dict | None:
     """
     Determine what the user should do next based on their current plan state.
@@ -222,10 +239,7 @@ def _get_next_action(plan, user: User, db: Session) -> dict | None:
             "description": "Take a clear front-facing photo in good lighting to get your baseline score and personalised 90-day plan.",
         }
 
-    current_day = plan.current_day or 0
-    if current_day == 0 and plan.created_at:
-        delta = (datetime.utcnow() - plan.created_at).days
-        current_day = min(delta, 90)
+    current_day = compute_current_day(plan)
 
     if current_day >= 90:
         return {
@@ -265,15 +279,15 @@ def _get_next_action(plan, user: User, db: Session) -> dict | None:
             if am_tasks:
                 first = am_tasks[0]
                 return {
-                    "task": first.get("name", str(first)) if isinstance(first, dict) else str(first),
+                    "task": _task_name(first),
                     "time": "Morning",
-                    "description": first.get("details", "") if isinstance(first, dict) else "",
+                    "description": _task_detail(first),
                 }
             first_task = daily_tasks[0]
             return {
-                "task": first_task.get("name", str(first_task)) if isinstance(first_task, dict) else str(first_task),
+                "task": _task_name(first_task),
                 "time": "Today",
-                "description": first_task.get("details", "") if isinstance(first_task, dict) else "",
+                "description": _task_detail(first_task),
             }
 
     # Fallback: remind about progress photo

@@ -23,6 +23,7 @@ from app.models import User, Photo, Plan, UserCheckin
 from app.schemas import CheckinLogRequest, CheckinRecord, PhotoUploadResponse
 from app.dependencies import get_current_user
 from app.services.upload_service import upload_to_cloudinary
+from app.services.progress_engine import compute_current_day, update_streak
 from app.config import settings
 from datetime import datetime, date
 import uuid
@@ -86,43 +87,6 @@ MILESTONE_DAYS = sorted(MILESTONES.keys())
 # ═══════════════════════════════════════════════════════════════════
 # Helper: update streak (Loss Aversion engine)
 # ═══════════════════════════════════════════════════════════════════
-def _update_streak(user: User) -> dict:
-    """Update streak counters after a check-in. Returns streak state."""
-    today = datetime.utcnow().date()
-    last_checkin = user.last_checkin_date.date() if user.last_checkin_date else None
-
-    if last_checkin == today:
-        # Already checked in today — no change
-        return {
-            "streak_updated": False,
-            "current_streak": user.current_streak,
-            "longest_streak": user.longest_streak,
-        }
-
-    if last_checkin and (today - last_checkin).days == 1:
-        # Consecutive day — extend streak
-        user.current_streak += 1
-    elif last_checkin and (today - last_checkin).days > 1:
-        # Streak broken — reset
-        user.current_streak = 1
-    else:
-        # First ever check-in
-        user.current_streak = 1
-
-    # Update longest streak record
-    if user.current_streak > user.longest_streak:
-        user.longest_streak = user.current_streak
-
-    user.total_checkins += 1
-    user.last_checkin_date = datetime.utcnow()
-
-    return {
-        "streak_updated": True,
-        "current_streak": user.current_streak,
-        "longest_streak": user.longest_streak,
-    }
-
-
 def _check_milestone(current_day: int) -> dict | None:
     """If current_day is exactly a milestone day, return the milestone data."""
     if current_day in MILESTONES:
@@ -236,14 +200,15 @@ async def log_checkin(
             detail="No active plan found. Analyse a photo first.",
         )
 
-    # Determine current day
-    current_day = plan.current_day or 0
-    if current_day == 0 and plan.created_at:
-        delta = (datetime.utcnow() - plan.created_at).days
-        current_day = min(delta, 90)
+    # Current day is calendar-based; a user can only check in once per day.
+    new_day = compute_current_day(plan)
 
-    # Advance day
-    new_day = current_day + 1 if current_day < 90 else 90
+    today = datetime.utcnow().date()
+    if current_user.last_checkin_date is not None and current_user.last_checkin_date.date() == today:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="You've already checked in today. Come back tomorrow to continue your streak.",
+        )
 
     # Update plan
     plan.current_day = new_day
@@ -259,7 +224,7 @@ async def log_checkin(
     plan.updated_at = datetime.utcnow()
 
     # Update user streak
-    streak_result = _update_streak(current_user)
+    update_streak(current_user)
     current_user.current_day = new_day
 
     # Check milestone
@@ -347,10 +312,7 @@ async def get_milestones(
 
     current_day = 0
     if plan:
-        current_day = plan.current_day or 0
-        if current_day == 0 and plan.created_at:
-            delta = (datetime.utcnow() - plan.created_at).days
-            current_day = min(delta, 90)
+        current_day = compute_current_day(plan)
 
     completed = []
     upcoming = []
