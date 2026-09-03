@@ -85,6 +85,8 @@ Base: `https://lookmaxx-api.onrender.com/api/v1`
 | GET | `/entitlements` | ✅ | Tier + usage limits + locked/unlocked feature matrix |
 | GET | `/coach` | ✅ | Daily AI coach tip (Pro/Elite; 403 for free) |
 | GET | `/analysis/{photo_id}/report` | ✅ | Full written report (Pro/Elite) |
+| GET | `/analysis/{photo_id}/insights` | ✅ | Glow-Up Forecast + Percentile + Archetype (Pro/Elite) |
+| GET | `/analysis/{photo_id}/harmony` | ✅ | Golden-ratio map + weekly blueprint + share card (Elite) |
 | POST | `/payments/checkout` | ✅ | Stripe Checkout session (503 if unconfigured) |
 | POST | `/payments/webhook` | ✅ | Stripe webhook → grants subscription |
 | POST | `/payments/test-upgrade` | ✅ | Dev-only subscription flip (ALLOW_TEST_PAYMENTS=1) |
