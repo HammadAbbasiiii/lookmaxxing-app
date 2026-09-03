@@ -1,7 +1,4 @@
-# macOS
-.DS_Store
-
-# Python
+# ── Python ──────────────────────────
 __pycache__/
 *.py[cod]
 .venv/
@@ -11,9 +8,14 @@ venv/
 *.db
 .pytest_cache/
 
-# Node / frontend
+# ── Node / frontend ─────────────────
 node_modules/
 .next/
 dist/
 build/
 .env.local
+
+# ── OS / editor ─────────────────────
+.DS_Store
+.idea/
+.vscode/
