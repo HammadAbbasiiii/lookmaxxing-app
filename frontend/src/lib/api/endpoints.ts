@@ -27,6 +27,7 @@ import {
   PlanSchema,
   emptyPlan,
   type Plan,
+  type Product,
   ProductsSchema,
   type ProductsResponse,
   ProgressSchema,
@@ -285,7 +286,58 @@ export async function getProductRecommendations(
 
 export async function getCategories(): Promise<CategoriesResponse> {
   const data = await apiFetch<unknown>("/products/categories");
-  return decode(CategoriesSchema, data, { success: false, categories: [], total: 0 });
+  // Backend returns { id, name, product_count } — map to the Category shape.
+  const root = data && typeof data === "object" ? (data as Record<string, unknown>) : {};
+  const raw = Array.isArray(root.categories) ? root.categories : [];
+  const categories = raw.map((c) => {
+    const w = c && typeof c === "object" ? (c as Record<string, unknown>) : {};
+    const name = typeof w.name === "string" ? w.name : "";
+    return {
+      id: typeof w.id === "string" ? w.id : "",
+      name,
+      label: name,
+      count: typeof w.product_count === "number" ? w.product_count : 0,
+      emoji: "",
+    };
+  });
+  return decode(
+    CategoriesSchema,
+    { success: true, categories, total: categories.length },
+    { success: false, categories: [], total: 0 },
+  );
+}
+
+export async function getProductsByCategory(
+  category: string,
+  tier?: string | null,
+): Promise<Product[]> {
+  const qs = tier ? `?tier=${encodeURIComponent(tier)}` : "";
+  const data = await apiFetch<unknown>(`/products/category/${encodeURIComponent(category)}${qs}`);
+  const root = data && typeof data === "object" ? (data as Record<string, unknown>) : {};
+  const items = Array.isArray(root.products) ? root.products : [];
+  const s = (v: unknown): string => (typeof v === "string" ? v : "");
+  const n = (v: unknown): number | null =>
+    typeof v === "number" && Number.isFinite(v) ? v : null;
+  const n0 = (v: unknown): number =>
+    typeof v === "number" && Number.isFinite(v) ? v : 0;
+  return items.map((item) => {
+    const w = item && typeof item === "object" ? (item as Record<string, unknown>) : {};
+    const img = w.image_url;
+    return {
+      id: s(w.id),
+      name: s(w.name),
+      category: s(w.category),
+      price: n(w.price),
+      currency: s(w.currency) || "USD",
+      rating: n(w.rating),
+      review_count: n0(w.reviews_count ?? w.review_count),
+      url: s(w.affiliate_link ?? w.url),
+      image_url: typeof img === "string" ? img : null,
+      description: s(w.social_proof ?? w.description),
+      tier: s(w.tier) || "mid_range",
+      commission: null,
+    };
+  });
 }
 
 // ── Profile ─────────────────────────────────────────────────────────

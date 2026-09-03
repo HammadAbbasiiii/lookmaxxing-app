@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from app.routes import health, auth, photos, analysis, plan, products, upload
-from app.routes import profile, progress, dashboard, explore
+from app.routes import profile, progress, dashboard, explore, analytics
 from app.middleware.rate_limit import rate_limit_middleware
 from app.middleware.error_handler import global_error_handler
 from app.database import engine
@@ -16,6 +16,20 @@ try:
     print("✅ DB tables ready")
 except Exception as e:
     print(f"⚠️ DB failed: {e}")
+
+# ── Lightweight migration ────────────────────────────────────────────
+# create_all() creates NEW tables (e.g. analytics_events) but never alters
+# existing ones, so add users.is_admin if the column is missing.
+try:
+    from sqlalchemy import inspect as _inspect, text as _text
+    _insp = _inspect(engine)
+    _cols = {c["name"] for c in _insp.get_columns("users")}
+    if "is_admin" not in _cols:
+        with engine.begin() as _conn:
+            _conn.execute(_text("ALTER TABLE users ADD COLUMN is_admin BOOLEAN DEFAULT FALSE"))
+        print("✅ Migrated: added users.is_admin")
+except Exception as _mig_e:
+    print(f"⚠️ users.is_admin migration skipped: {_mig_e}")
 
 # ── Recovery: reset photos orphaned at "processing" by a prior OOM crash ──
 try:
@@ -99,3 +113,4 @@ app.include_router(profile.router, prefix="/api/v1", tags=["Profile"])
 app.include_router(progress.router, prefix="/api/v1", tags=["Progress"])
 app.include_router(dashboard.router, prefix="/api/v1", tags=["Dashboard"])
 app.include_router(explore.router, prefix="/api/v1", tags=["Explore"])
+app.include_router(analytics.router, prefix="/api/v1", tags=["Analytics"])

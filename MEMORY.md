@@ -27,6 +27,12 @@ LookMaxx — web-only MVP. Backend (FastAPI) is **live** at `https://lookmaxx-ap
 ## Backend gaps (honest)
 No Stripe/payments route; ML falls back to mock/heuristic if unavailable; in-memory rate limiter; CORS `*`; `/upload/save` trusts the Cloudinary URL.
 
+## Analytics & admin (added)
+- **Self-hosted analytics:** `POST /api/v1/track` (batched events, auth optional) + `AnalyticsEvent` model. Frontend: `lib/api/analytics.ts` `track()` + `components/AnalyticsTracker.tsx` (page_view / page_exit time-spent / session). Events carry no PII.
+- **Admin endpoints (gated by `require_admin`):** `/admin/overview`, `/admin/users`, `/admin/users/{id}`, `/admin/events/summary`. Access = `is_admin` flag **or** email in `ADMIN_EMAILS` env (comma-separated). Set `ADMIN_EMAILS` on Render to unlock.
+- **Migration:** `main.py` auto-adds `users.is_admin` if missing; `analytics_events` table auto-created by `create_all`.
+- **Products page** now browses the full `product_database.json` via `/products/category/{cat}` + search + images (was: single personalized rec only).
+
 ## ✅ Face-detection blocker — FIXED & deployed
 - Previously: live upload → analysis always failed at face detection (`"No face detected"`).
 - Fixed and **deployed on Render (commit `56915f9`)**: 5× same-image scores are deterministic; category scores clamped 30–95; corrupt image returns a clean 400. Backend confirmed 100.
@@ -45,3 +51,4 @@ No Stripe/payments route; ML falls back to mock/heuristic if unavailable; in-mem
 3. Stripe secret key + webhook secret (only when building payments).
 4. Confirm the Render prod DeepSeek key = `apiforrender` (sk-b5c32…73bd).
 5. Legal review of the `docs/` drafts (privacy policy, terms, DPIA) by a qualified lawyer before public launch.
+6. Set `ADMIN_EMAILS` env on Render (comma-separated) to unlock `/admin/*`.

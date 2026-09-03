@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/Badge";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { ANNUAL_DISCOUNT_PCT, PLANS } from "@/lib/constants";
 import { cn } from "@/lib/utils";
+import { track } from "@/lib/api/analytics";
 
 const FEATURES: Record<string, string[]> = {
   free: ["1 analysis", "Baseline score", "Streak tracking"],
@@ -35,6 +36,7 @@ export default function UpgradePage() {
       router.push("/dashboard");
       return;
     }
+    track("upgrade_click", { metadata: { tier: plan.tier, plan: plan.name } });
     if (tier === plan.tier) {
       toast.info(`You're already on ${plan.name}.`);
       return;

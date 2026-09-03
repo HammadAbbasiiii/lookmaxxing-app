@@ -60,3 +60,38 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     if user is None:
         raise credentials_exception
     return user
+
+
+# Optional auth — returns None when the token is missing/invalid (used by /track).
+oauth2_scheme_optional = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", auto_error=False)
+
+
+def get_current_user_optional(
+    token: str = Depends(oauth2_scheme_optional),
+    db: Session = Depends(get_db),
+):
+    """Like get_current_user, but never raises 401 — returns None if anonymous."""
+    if not token:
+        return None
+    try:
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        user_id = payload.get("sub")
+        if not user_id:
+            return None
+    except JWTError:
+        return None
+
+    from app.models import User
+    return db.query(User).filter(User.id == user_id).first()
+
+
+def require_admin(user: User = Depends(get_current_user)):
+    """Gate /admin/* — requires `is_admin` flag OR email in ADMIN_EMAILS env."""
+    admin_emails = getattr(settings, "ADMIN_EMAILS", []) or []
+    is_admin = bool(user.is_admin) or (bool(user.email) and user.email.lower() in admin_emails)
+    if not is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required",
+        )
+    return user

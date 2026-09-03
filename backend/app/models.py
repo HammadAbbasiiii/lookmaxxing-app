@@ -26,6 +26,9 @@ class User(Base):
     
     # Onboarding
     onboarding_completed = Column(Boolean, default=False)
+
+    # Admin (flag OR email listed in ADMIN_EMAILS env)
+    is_admin = Column(Boolean, default=False)
     
     # Subscription
     is_subscribed = Column(Boolean, default=False)
@@ -151,6 +154,32 @@ class UserCheckin(Base):
     created_at = Column(DateTime, server_default=func.now())
     
     # Indexes for common queries
+
+
+class AnalyticsEvent(Base):
+    """Privacy-first event log (§17) — page views, session timing, CTA clicks.
+
+    Carries NO faces, NO emails, NO tokens. user_id is nullable so anonymous
+    landing visitors are still counted for top-of-funnel measurement.
+    """
+
+    __tablename__ = "analytics_events"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    user_id = Column(String, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    session_id = Column(String(64), nullable=True, index=True)
+    event_name = Column(String(64), nullable=False, index=True)
+    page = Column(String(255), nullable=True)
+    referrer = Column(String(255), nullable=True)
+    metadata = Column(JSON, nullable=True)
+
+    created_at = Column(DateTime, server_default=func.now(), index=True)
+
+    __table_args__ = (
+        Index("idx_event_name_created", "event_name", "created_at"),
+        Index("idx_event_user_created", "user_id", "created_at"),
+    )
+
     __table_args__ = (
         Index("idx_checkin_user_created", "user_id", "created_at"),
     )
