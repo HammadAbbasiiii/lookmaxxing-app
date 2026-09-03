@@ -512,6 +512,7 @@ async def analyze_photo(
         return obj
 
     photo.analysis_details = _json_safe(photo.analysis_details)
+    photo.analysis_status = "completed"
     # ──────────────────────────────────────────────────────────────
 
     db.commit()

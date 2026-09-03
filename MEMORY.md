@@ -5,9 +5,10 @@ One compact state snapshot. The coding agent reads only this file at session sta
 ## Project
 LookMaxx — web-only MVP. Backend (FastAPI) is **live** at `https://lookmaxx-api.onrender.com/api/v1`. Frontend is **not built yet**.
 
-## Docs (the 3 sources of truth)
-- `PSYCHOLOGY.md` — conversion/design/psychology. ✅ complete.
-- `ROADMAP.md` — full spec: 14 screens, API map, **20 signup scenarios**, error catalog, Stripe plan, testing, milestones. ✅ complete.
+## Docs (the sources of truth)
+- `PRODUCT_SPEC.md` — ⭐ **master whole-product design spec** (every screen/button/error, security, psychology, monetization/gating, **privacy/GDPR §20**, **production ops §21**, performance, run/deploy). Tie-breaker over the others.
+- `PSYCHOLOGY.md` — conversion/design/psychology tokens. ✅ complete.
+- `ROADMAP.md` — MVP checklist: 14 screens, API map, 20 signup scenarios, error catalog. ✅ complete.
 - `CONTEXT.md` — backend ground truth, credentials, gaps. ✅ complete.
 
 ## Tech decisions (LOCKED)
@@ -26,25 +27,21 @@ LookMaxx — web-only MVP. Backend (FastAPI) is **live** at `https://lookmaxx-ap
 ## Backend gaps (honest)
 No Stripe/payments route; ML falls back to mock/heuristic if unavailable; in-memory rate limiter; CORS `*`; `/upload/save` trusts the Cloudinary URL.
 
-## 🔴 Live blocker (found via live test)
-- Live upload → analysis **always fails** at face detection (`"No face detected"`) — verified on Render with a real test account + Obama/Lena/Biden photos. The ML model / heuristic **never runs**, so the model-vs-mock question is moot until this is fixed.
-- Root cause: `validation_service._detect_face` returns `False` immediately when MediaPipe loads but finds no face (never falls back to Haar), combined with MediaPipe failing at runtime (truncated `face_landmarker.task` or numpy 2.x).
-- Fixes applied (local, **not deployed**):
-  1. `app/services/validation_service.py` — fall through to Haar cascade on MediaPipe miss.
-  2. `app/services/face_service.py` — require model file > 1 KB (ignore empty/truncated).
-  3. `render.yaml` — `set -e` + `test -s` so a failed/empty download breaks the build.
-  4. `requirements.txt` — pin `numpy==1.26.4`.
+## ✅ Face-detection blocker — FIXED & deployed
+- Previously: live upload → analysis always failed at face detection (`"No face detected"`).
+- Fixed and **deployed on Render (commit `56915f9`)**: 5× same-image scores are deterministic; category scores clamped 30–95; corrupt image returns a clean 400. Backend confirmed 100.
 
 ## Next steps (ordered)
-1. **Deploy the face-detection fixes** (commit + push to `github.com/HammadAbbasiiii/lookmaxxing-app` → Render redeploys), then re-run the model-vs-mock test (upload the same photo twice; identical scores = real model, differing = random fallback).
-2. Scaffold Next.js in `frontend/`.
-3. Auth (signup/login/me + the 20 scenarios in ROADMAP §9).
-4. Upload → analyze → result (direct Cloudinary flow).
-5. Dashboard / plan / streak.
-6. Stripe backend + `/upgrade`.
+1. Scaffold Next.js in `frontend/` per `PRODUCT_SPEC.md` §8.
+2. Auth (signup/login/me + the 20 scenarios in `PRODUCT_SPEC.md` §9.2).
+3. Upload → analyze → result (direct Cloudinary flow).
+4. Dashboard / plan / streak.
+5. Stripe backend (`require_pro` + `/payments/*`) + `/upgrade`.
+6. Legal/compliance: privacy policy, consent log, DPIA, sub-processor DPAs (`PRODUCT_SPEC.md` §20).
 
 ## Still needed from the user
 1. Render Postgres `DATABASE_URL`.
 2. (optional) Render Redis URL.
 3. Stripe secret key + webhook secret (only when building payments).
 4. Confirm the Render prod DeepSeek key = `apiforrender` (sk-b5c32…73bd).
+5. Legal review of the `docs/` drafts (privacy policy, terms, DPIA) by a qualified lawyer before public launch.

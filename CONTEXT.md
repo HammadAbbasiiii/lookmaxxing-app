@@ -22,6 +22,7 @@
 
 ```
 lookmaxx-web/
+├── PRODUCT_SPEC.md      # ⭐ master whole-product design spec (screens, security, psych, monetization)
 ├── PSYCHOLOGY.md        # conversion/design psychology (foundation)
 ├── ROADMAP.md           # web MVP spec + edge cases + errors
 ├── CONTEXT.md           # this file
@@ -112,7 +113,7 @@ Base: `https://lookmaxx-api.onrender.com/api/v1`
 
 ## 6. Next tasks (ordered)
 
-1. ✅ Save `PSYCHOLOGY.md`, `ROADMAP.md`, `CONTEXT.md` (this task).
+1. ✅ Save `PSYCHOLOGY.md`, `ROADMAP.md`, `CONTEXT.md`, and `PRODUCT_SPEC.md` (the master whole-product design spec).
 2. Scaffold Next.js + TypeScript + Tailwind in `frontend/`.
 3. Implement auth (signup/login/me) + token handling per ROADMAP §7.
 4. Implement upload → analysis → results (direct Cloudinary flow).
