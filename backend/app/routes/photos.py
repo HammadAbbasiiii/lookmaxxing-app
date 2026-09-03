@@ -5,6 +5,7 @@ from app.models import User, Photo, Plan
 from app.schemas import PhotoUploadResponse, PhotoStatusResponse, APIResponse
 from app.dependencies import get_current_user
 from app.services.upload_service import upload_to_cloudinary, delete_from_cloudinary
+from app.services.validation_service import can_decode_image
 from app.services.face_service import (
     detect_face_landmarks,
     calculate_symmetry,
@@ -79,6 +80,14 @@ async def upload_photo(
     # 📄 Log file size
     file_size_kb = len(file_content) / 1024
     print(f"📄 File received: {file_size_kb:.2f} KB ({file.filename})")
+
+    # Reject non-image files (e.g. an HTML page saved as .jpg) with a clean
+    # 400 before they reach Cloudinary.
+    if not can_decode_image(file_content):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Could not read this image. Please choose a different photo."
+        )
 
     # 2. ⏱️ Time to upload to Cloudinary
     cloudinary_start = time.perf_counter()

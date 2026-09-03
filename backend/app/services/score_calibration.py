@@ -92,10 +92,12 @@ def anchor_categories(
     weakness intact but re-centres the set on the holistic score, so the whole
     report stays coherent:
 
-        anchored_i = clamp(overall + (raw_i - mean(raw)) * spread, 0, 100)
+        anchored_i = clamp(overall + (raw_i - mean(raw)) * spread, FLOOR, CAP)
 
     ``spread`` damps (spread < 1) or amplifies (spread > 1) the relative
-    differences. The default 1.0 preserves them exactly.
+    differences. The default 1.0 preserves them exactly. Categories are
+    clamped to the same [FLOOR, CAP] range as the overall score, so the report
+    never shows a "perfect" 100 or a sub-floor low next to the holistic score.
     """
     if not raw_scores:
         return {}
@@ -107,6 +109,6 @@ def anchor_categories(
     anchored: Dict[str, float] = {}
     for name, raw in raw_scores.items():
         anchored[name] = round(
-            _clamp(overall + (float(raw) - mean) * spread, 0.0, 100.0), 1
+            _clamp(overall + (float(raw) - mean) * spread, FLOOR, CAP), 1
         )
     return anchored

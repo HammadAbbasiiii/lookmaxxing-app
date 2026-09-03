@@ -88,17 +88,21 @@ def test_anchor_centers_on_overall():
     }
     anchored = anchor_categories(raw, overall=50.4)
     mean = sum(anchored.values()) / len(anchored)
-    assert abs(mean - 50.4) < 0.5, f"anchored mean {mean} should be ~50.4"
+    # Clamping extreme categories to [FLOOR, CAP] can nudge the mean by a
+    # point or two, but it must stay close to the holistic score.
+    assert abs(mean - 50.4) < 2.5, f"anchored mean {mean} should be ~50.4"
     # harmony stays the best, structure the worst
     assert anchored["facial_harmony"] == max(anchored.values())
     assert anchored["facial_structure"] == min(anchored.values())
+    # every category respects the same floor/cap as the overall score
+    assert all(FLOOR <= v <= CAP for v in anchored.values())
 
 
 def test_anchor_clamps_and_empty():
     assert anchor_categories({}, overall=50.0) == {}
     anchored = anchor_categories({"x": 200.0, "y": -50.0}, overall=50.0)
-    assert 0.0 <= anchored["x"] <= 100.0
-    assert 0.0 <= anchored["y"] <= 100.0
+    assert anchored["x"] == CAP
+    assert anchored["y"] == FLOOR
 
 
 # ── standalone report ────────────────────────────────────────────────────────

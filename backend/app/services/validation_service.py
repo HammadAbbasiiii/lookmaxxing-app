@@ -73,6 +73,22 @@ def validate_image(image_bytes: bytes) -> dict:
     return {"valid": True, "error": None}
 
 
+def can_decode_image(image_bytes: bytes) -> bool:
+    """Cheap sanity check: are these bytes a real image PIL can decode?
+
+    Used by the upload route to reject non-image files (e.g. an HTML error
+    page saved with a ``.jpg`` name) with a clean 400 *before* they are sent
+    to Cloudinary. Intentionally lighter than :func:`validate_image` — it
+    does not check face/quality/size; the background validation still does.
+    """
+    try:
+        img = Image.open(io.BytesIO(image_bytes))
+        img.verify()
+        return True
+    except Exception:
+        return False
+
+
 def _detect_face(image_bytes, w, h):
     """Return (face_found, face_ratio) using strict detection (never mock).
 
