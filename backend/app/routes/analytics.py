@@ -63,7 +63,7 @@ async def track_events(
                     event_name=e.event_name[:64],
                     page=e.page,
                     referrer=e.referrer,
-                    metadata=e.metadata,
+                    properties=e.metadata,
                 )
             )
         db.commit()
@@ -99,7 +99,7 @@ async def admin_overview(
 
     # Average page dwell time, computed in Python (DB-agnostic JSON handling).
     exits = (
-        db.query(AnalyticsEvent.metadata)
+        db.query(AnalyticsEvent.properties)
         .filter(AnalyticsEvent.event_name == "page_exit")
         .order_by(AnalyticsEvent.created_at.desc())
         .limit(1000)
@@ -223,8 +223,8 @@ async def admin_user_detail(
     for ev in events:
         if ev.event_name == "page_view" and ev.page:
             page_counts[ev.page] = page_counts.get(ev.page, 0) + 1
-        if ev.event_name == "page_exit" and isinstance(ev.metadata, dict):
-            d = ev.metadata.get("duration_ms")
+        if ev.event_name == "page_exit" and isinstance(ev.properties, dict):
+            d = ev.properties.get("duration_ms")
             if isinstance(d, (int, float)):
                 durations.append(d)
     total_time_sec = round(sum(durations) / 1000, 1) if durations else 0

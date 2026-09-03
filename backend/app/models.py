@@ -171,15 +171,13 @@ class AnalyticsEvent(Base):
     event_name = Column(String(64), nullable=False, index=True)
     page = Column(String(255), nullable=True)
     referrer = Column(String(255), nullable=True)
-    metadata = Column(JSON, nullable=True)
+    # Named `properties` (not `metadata`) — `metadata` is reserved in the
+    # SQLAlchemy Declarative API (every mapped class already has `.metadata`).
+    properties = Column(JSON, nullable=True)
 
     created_at = Column(DateTime, server_default=func.now(), index=True)
 
     __table_args__ = (
         Index("idx_event_name_created", "event_name", "created_at"),
         Index("idx_event_user_created", "user_id", "created_at"),
-    )
-
-    __table_args__ = (
-        Index("idx_checkin_user_created", "user_id", "created_at"),
     )
