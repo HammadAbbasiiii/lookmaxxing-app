@@ -7,6 +7,7 @@ import {
   Home,
   ListChecks,
   Settings as SettingsIcon,
+  Sparkles,
   TrendingUp,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -14,6 +15,7 @@ import { cn } from "@/lib/utils";
 const TABS = [
   { href: "/dashboard", label: "Home", icon: Home },
   { href: "/plan", label: "Plan", icon: ListChecks },
+  { href: "/glow-up", label: "Glow-Up", icon: Sparkles },
   { href: "/progress", label: "Progress", icon: TrendingUp },
   { href: "/explore", label: "Explore", icon: Compass },
   { href: "/settings", label: "Settings", icon: SettingsIcon },
@@ -28,7 +30,7 @@ export function BottomNav() {
       className="fixed inset-x-0 bottom-0 z-40 border-t border-border-soft bg-background/95 backdrop-blur md:hidden"
       aria-label="Bottom"
     >
-      <div className="mx-auto grid max-w-md grid-cols-5">
+      <div className="mx-auto grid max-w-md grid-cols-6">
         {TABS.map((tab) => {
           const active = pathname.startsWith(tab.href);
           const Icon = tab.icon;

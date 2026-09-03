@@ -610,6 +610,17 @@ export const emptyHarmony = (photoId: string): Harmony => ({
   glow_up_card: { headline: "", score: 0, label: "", archetype: "", top_strength: "", day: 0, tier: "", share_text: "" },
 });
 
+// ── Latest photo (for the Glow-Up page) ─────────────────────────────
+export const LatestPhotoSchema = z.object({
+  id: z.string().catch(""),
+  file_url: z.string().catch(""),
+  score: z.number().nullable().catch(null),
+  is_baseline: z.boolean().catch(false),
+  week_number: z.number().catch(1),
+  captured_at: z.string().nullable().catch(null),
+});
+export type LatestPhoto = z.infer<typeof LatestPhotoSchema>;
+
 export type DeleteAccountResult = z.infer<typeof DeleteAccountSchema>;
 
 

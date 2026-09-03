@@ -54,6 +54,8 @@ import {
   HarmonySchema,
   emptyHarmony,
   type Harmony,
+  LatestPhotoSchema,
+  type LatestPhoto,
   CheckoutSchema,
   type Checkout,
 } from "@/lib/zod";
@@ -435,6 +437,18 @@ export async function getAnalysisInsights(photoId: string): Promise<Insights> {
 export async function getAnalysisHarmony(photoId: string): Promise<Harmony> {
   const data = await apiFetch<unknown>(`/analysis/${photoId}/harmony`);
   return decode(HarmonySchema, data, emptyHarmony(photoId));
+}
+
+export async function getLatestPhoto(): Promise<LatestPhoto> {
+  const data = await apiFetch<unknown>("/progress/photos/latest");
+  return decode(LatestPhotoSchema, data, {
+    id: "",
+    file_url: "",
+    score: null,
+    is_baseline: false,
+    week_number: 1,
+    captured_at: null,
+  });
 }
 
 export async function createCheckout(tier: "pro" | "elite", annual: boolean): Promise<Checkout> {

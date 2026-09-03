@@ -294,6 +294,7 @@ export default function DashboardPage() {
         {[
           { href: "/upload", label: "Upload new photo", sub: "Track a new check-in", icon: Camera },
           { href: "/plan", label: "View plan", sub: "Today's 2-minute tasks", icon: ListChecks },
+          { href: "/glow-up", label: "Your Glow-Up", sub: "Forecast, rank & harmony", icon: Sparkles },
           { href: "/products", label: "Shop products", sub: "Matched to your goals", icon: ShoppingBag },
         ].map(({ href, label, sub, icon: Icon }) => (
           <Link
