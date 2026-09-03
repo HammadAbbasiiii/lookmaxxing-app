@@ -89,6 +89,16 @@ class PredictionService:
             from app.config import settings
             path = settings.MODEL_PATH
 
+            # Render's Starter plan has only 512 MB RAM; loading torch +
+            # ResNet50 there is OOM-killed. Degrade to mock scoring first.
+            from app.services.memory_guard import can_load_torch
+            if not can_load_torch():
+                logger.warning(
+                    "⚠️ Insufficient free memory to load PyTorch model — using mock predictions."
+                )
+                self._loaded = True
+                return False
+
             if not _ensure_torch():
                 logger.warning("PyTorch unavailable — skipping model load")
                 self._loaded = True

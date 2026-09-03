@@ -42,6 +42,16 @@ def _load_mediapipe():
             logger.warning(msg)
             return
 
+        # On low-RAM hosts (Render Starter = 512 MB), creating the MediaPipe
+        # graph at import time can OOM-kill the worker. Skip it and fall back
+        # to mock landmarks; the full graph loads on larger instances.
+        from app.services.memory_guard import can_load_mediapipe
+        if not can_load_mediapipe():
+            _last_load_error = "Skipped: insufficient free memory for MediaPipe"
+            print("⚠️ Skipping MediaPipe load — insufficient free memory")
+            logger.warning("⚠️ Skipping MediaPipe load — insufficient free memory")
+            return
+
         import mediapipe as _mp
         from mediapipe.tasks import python
         from mediapipe.tasks.python import vision

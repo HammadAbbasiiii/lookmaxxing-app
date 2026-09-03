@@ -74,24 +74,39 @@ def validate_image(image_bytes: bytes) -> dict:
 
 
 def _detect_face(image_bytes, w, h):
-    """Return (face_found, face_ratio) using strict detection (never mock)."""
-    # 1) MediaPipe (real landmarker) — preferred, most accurate.
+    """Return (face_found, face_ratio) using strict detection (never mock).
+
+    Haar cascade runs first: it's cheap, always available, and never returns a
+    mock result, so it is the correct gate on low-RAM hosts. MediaPipe is only
+    tried as a more accurate backup when Haar misses AND memory allows.
+    """
+    face_found, face_ratio = _detect_face_haar(image_bytes, w, h)
+    if face_found:
+        return True, face_ratio
+
+    # MediaPipe (real landmarker) — more accurate, but heavy. Only create its
+    # graph when there is enough free memory to do so safely.
     if MEDIAPIPE_AVAILABLE:
         try:
-            result = detect_face_landmarks(image_bytes)
-            if result.get("success") and result.get("landmarks"):
-                return True, _landmarks_ratio(result["landmarks"], w, h)
-            # MediaPipe is loaded but found no face (e.g. corrupt model file or
-            # inference failure). Fall through to the Haar cascade backup below
-            # instead of rejecting every upload outright.
-            logger.warning(
-                "MediaPipe found no face (%s) — falling back to Haar cascade",
-                result.get("error", "no error detail"),
-            )
+            from app.services.memory_guard import can_load_mediapipe
+            if not can_load_mediapipe():
+                logger.warning("Skipping MediaPipe face check (insufficient free memory)")
+            else:
+                result = detect_face_landmarks(image_bytes)
+                if result.get("success") and result.get("landmarks"):
+                    return True, _landmarks_ratio(result["landmarks"], w, h)
+                logger.warning(
+                    "MediaPipe found no face (%s) — final result: no face",
+                    result.get("error", "no error detail"),
+                )
         except Exception as exc:
             logger.warning(f"MediaPipe face validation failed: {exc}")
 
-    # 2) OpenCV Haar cascade — always available, no model file needed.
+    return False, None
+
+
+def _detect_face_haar(image_bytes, w, h):
+    """OpenCV Haar-cascade face detection. Returns (face_found, face_ratio)."""
     nparr = np.frombuffer(image_bytes, np.uint8)
     bgr = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
     if bgr is None:

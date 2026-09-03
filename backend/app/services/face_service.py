@@ -87,15 +87,28 @@ def _generate_mock_landmarks_result() -> Dict[str, Any]:
     }
 
 
+_landmarker = None  # cached MediaPipe FaceLandmarker (created once, reused)
+
+
 def detect_face_landmarks(image_bytes: bytes) -> Dict[str, Any]:
     """
     Detect facial landmarks from image bytes.
     Returns 468 landmarks with x, y, z coordinates.
 
-    Falls back to mock landmarks only if the MediaPipe model file is missing.
+    Falls back to mock landmarks when the MediaPipe model file is missing OR
+    the host lacks the free memory to create its graph safely.
     """
+    global _landmarker
+
     if not MEDIAPIPE_AVAILABLE or _options is None:
         print("📷 Using mock landmarks (no MediaPipe model loaded)")
+        return _generate_mock_landmarks_result()
+
+    # On a 512 MB Render worker, creating the MediaPipe graph can OOM-kill
+    # the process. Degrade to mock landmarks instead of crashing.
+    from app.services.memory_guard import can_load_mediapipe
+    if not can_load_mediapipe():
+        print("📷 Using mock landmarks (insufficient free memory for MediaPipe)")
         return _generate_mock_landmarks_result()
 
     # Real MediaPipe detection with downloaded model
@@ -105,8 +118,9 @@ def detect_face_landmarks(image_bytes: bytes) -> Dict[str, Any]:
         img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=img_rgb)
 
-        landmarker = FaceLandmarker.create_from_options(_options)
-        results = landmarker.detect(mp_image)
+        if _landmarker is None:
+            _landmarker = FaceLandmarker.create_from_options(_options)
+        results = _landmarker.detect(mp_image)
 
         if not results.face_landmarks:
             return {"success": False, "error": "No face detected"}

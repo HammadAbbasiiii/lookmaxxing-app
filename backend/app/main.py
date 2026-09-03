@@ -17,6 +17,26 @@ try:
 except Exception as e:
     print(f"⚠️ DB failed: {e}")
 
+# ── Recovery: reset photos orphaned at "processing" by a prior OOM crash ──
+try:
+    from app.database import SessionLocal
+    from app.models import Photo
+    _db = SessionLocal()
+    try:
+        _stuck = _db.query(Photo).filter(Photo.analysis_status == "processing").all()
+        for _p in _stuck:
+            _p.analysis_status = "failed"
+            _p.analysis_details = {
+                "error": "Analysis interrupted by service restart — please re-upload.",
+            }
+        if _stuck:
+            _db.commit()
+            print(f"🔁 Recovered {len(_stuck)} photo(s) stuck at 'processing'")
+    finally:
+        _db.close()
+except Exception as _recovery_e:
+    print(f"⚠️ Recovery scan failed: {_recovery_e}")
+
 # PyTorch model, MediaPipe & Redis are all lazy-loaded on first request.
 # Loading the 94MB model at boot consumes 200-300MB and OOMs Render starter tier.
 
