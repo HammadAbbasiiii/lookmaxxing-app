@@ -2,7 +2,10 @@ import cv2
 import numpy as np
 import math
 import os
+import logging
 from typing import Dict, Any
+
+logger = logging.getLogger(__name__)
 
 # ── Resolve MediaPipe model path ──────────────────────────────
 _MODEL_FILENAME = "face_landmarker.task"
@@ -19,8 +22,9 @@ MODEL_ASSET_PATH = None
 for candidate in _MODEL_CANDIDATES:
     # A truncated/empty download (e.g. a build-time curl failure) still "exists"
     # on disk, so require a non-trivial size. The float16 landmarker is ~3.6 MB;
-    # anything under 1 KB is definitely broken and must not enable MediaPipe.
-    if os.path.exists(candidate) and os.path.getsize(candidate) > 1024:
+    # anything well under that is a broken/partial download and must not enable
+    # MediaPipe (otherwise create_from_options() throws at first use).
+    if os.path.exists(candidate) and os.path.getsize(candidate) >= 3_000_000:
         MODEL_ASSET_PATH = candidate
         break
 
@@ -115,6 +119,9 @@ def detect_face_landmarks(image_bytes: bytes) -> Dict[str, Any]:
     try:
         nparr = np.frombuffer(image_bytes, np.uint8)
         img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        if img is None:
+            return {"success": False, "error": "Could not decode image"}
+
         img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=img_rgb)
 
@@ -123,7 +130,9 @@ def detect_face_landmarks(image_bytes: bytes) -> Dict[str, Any]:
         results = _landmarker.detect(mp_image)
 
         if not results.face_landmarks:
-            return {"success": False, "error": "No face detected"}
+            msg = "MediaPipe found no face in this image"
+            logger.warning(msg)
+            return {"success": False, "error": msg}
 
         landmarks = []
         for landmark in results.face_landmarks[0]:
@@ -139,7 +148,7 @@ def detect_face_landmarks(image_bytes: bytes) -> Dict[str, Any]:
             "face_count": len(results.face_landmarks)
         }
     except Exception as e:
-        print(f"⚠️ MediaPipe detection error: {e}")
+        logger.warning(f"MediaPipe detection error: {e}")
         return {"success": False, "error": f"MediaPipe error: {str(e)}"}
 
 

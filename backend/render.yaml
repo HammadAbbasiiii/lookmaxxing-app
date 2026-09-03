@@ -12,12 +12,18 @@ services:
       source venv/bin/activate
       pip install --upgrade pip
       pip install -r requirements.txt
-      # Download MediaPipe face landmarker model
+      # Download MediaPipe face landmarker model (~3.6 MB float16). Fail the
+      # build if the download is empty or truncated — a partial .task file
+      # passes a simple existence check but fails at inference time.
       mkdir -p app/ml
       curl -fsSL -o app/ml/face_landmarker.task \
         https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/latest/face_landmarker.task
-      test -s app/ml/face_landmarker.task || { echo "❌ MediaPipe model download failed/empty"; exit 1; }
-      echo "✅ MediaPipe model pre-downloaded ($(wc -c < app/ml/face_landmarker.task) bytes)"
+      _mp_size=$(wc -c < app/ml/face_landmarker.task)
+      if [ "$_mp_size" -lt 3000000 ]; then
+        echo "❌ MediaPipe model download failed/truncated (${_mp_size} bytes)"
+        exit 1
+      fi
+      echo "✅ MediaPipe model pre-downloaded (${_mp_size} bytes)"
     startCommand: |
       cd backend
       source venv/bin/activate

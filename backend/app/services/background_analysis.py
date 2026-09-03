@@ -84,35 +84,55 @@ def run_analysis_background(photo_id: str, user_id: str, image_bytes: bytes, gen
         analysis_data = {}
         plan_data = {}
 
+        landmarks = None
         try:
             face_result = detect_face_landmarks(image_bytes)
             if face_result.get("success"):
-                landmarks = face_result["landmarks"]
-
-                symmetry_score = calculate_symmetry(landmarks)
-                skin_score = calculate_skin_score(landmarks, image_bytes)
-                jawline_score = calculate_jawline_score(landmarks)
-                eye_score = calculate_eye_score(landmarks)
-                face_shape = get_face_shape(landmarks)
-
-                scores = {
-                    "symmetry": symmetry_score,
-                    "skin": skin_score,
-                    "jawline": jawline_score,
-                    "eyes": eye_score,
-                    "nose": 70.0,
-                    "lips": 75.0,
-                }
-                overall_score = generate_overall_score(scores)
-
-                category_breakdown = get_category_breakdown(
-                    image_bytes=image_bytes,
-                    landmarks=landmarks,
-                    gender=gender,
-                    overall_score=overall_score,
+                landmarks = face_result.get("landmarks") or []
+            else:
+                logger.warning(
+                    f"Face landmark detection failed for {photo_id}: "
+                    f"{face_result.get('error')} — using heuristic category breakdown"
                 )
         except Exception as exc:
             logger.warning(f"Background face detection failed for {photo_id}: {exc}")
+
+        if landmarks and len(landmarks) >= 100:
+            symmetry_score = calculate_symmetry(landmarks)
+            skin_score = calculate_skin_score(landmarks, image_bytes)
+            jawline_score = calculate_jawline_score(landmarks)
+            eye_score = calculate_eye_score(landmarks)
+            face_shape = get_face_shape(landmarks)
+
+            scores = {
+                "symmetry": symmetry_score,
+                "skin": skin_score,
+                "jawline": jawline_score,
+                "eyes": eye_score,
+                "nose": 70.0,
+                "lips": 75.0,
+            }
+            overall_score = generate_overall_score(scores)
+
+        # Always produce a category breakdown — never leave it empty.
+        try:
+            category_breakdown = get_category_breakdown(
+                image_bytes=image_bytes,
+                landmarks=landmarks if landmarks and len(landmarks) >= 100 else None,
+                gender=gender,
+                overall_score=overall_score,
+            )
+        except Exception as exc:
+            logger.warning(f"Category breakdown failed for {photo_id}: {exc}")
+            category_breakdown = {
+                "facial_harmony": {"score": round(overall_score, 1), "description": "Estimate based on overall score"},
+                "skin_quality": {"score": round(overall_score, 1), "description": "Estimate based on overall score"},
+                "jawline_definition": {"score": round(overall_score, 1), "description": "Estimate based on overall score"},
+                "eye_appeal": {"score": round(overall_score, 1), "description": "Estimate based on overall score"},
+                "facial_structure": {"score": round(overall_score, 1), "description": "Estimate based on overall score"},
+                "masculinity_femininity": {"score": round(overall_score, 1), "description": "Estimate based on overall score"},
+                "heuristic": True,
+            }
 
         # ── 3. Template-based analysis + plan ────────────────────
         score_data = {

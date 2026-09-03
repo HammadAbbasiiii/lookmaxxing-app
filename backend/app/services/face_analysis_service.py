@@ -13,89 +13,29 @@ from typing import Dict, List, Any, Optional, Tuple
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# MediaPipe Task API model (face_landmarker.task)
+# MediaPipe landmark extraction
 # ---------------------------------------------------------------------------
-# Absolute path used on Render; fall back to relative for local dev
-_RENDER_MODEL_PATH = "/opt/render/project/src/backend/app/ml/face_landmarker.task"
-_LOCAL_MODEL_PATH = os.path.join(os.path.dirname(__file__), "..", "ml", "face_landmarker.task")
-
-if os.path.exists(_RENDER_MODEL_PATH):
-    MODEL_PATH = _RENDER_MODEL_PATH
-elif os.path.exists(_LOCAL_MODEL_PATH):
-    MODEL_PATH = _LOCAL_MODEL_PATH
-else:
-    MODEL_PATH = _RENDER_MODEL_PATH  # keep for error messages
-
-_mediapipe_available = False
-_face_landmarker = None
-_last_load_error = None
-
-
-def _load_mediapipe():
-    """Load the MediaPipe FaceLandmarker Task API model at module import."""
-    global _mediapipe_available, _face_landmarker, _last_load_error
-    try:
-        if not os.path.exists(MODEL_PATH):
-            msg = f"⚠️ MediaPipe model not found: {MODEL_PATH}"
-            _last_load_error = msg
-            print(msg)
-            logger.warning(msg)
-            return
-
-        # On low-RAM hosts (Render Starter = 512 MB), creating the MediaPipe
-        # graph at import time can OOM-kill the worker. Skip it and fall back
-        # to mock landmarks; the full graph loads on larger instances.
-        from app.services.memory_guard import can_load_mediapipe
-        if not can_load_mediapipe():
-            _last_load_error = "Skipped: insufficient free memory for MediaPipe"
-            print("⚠️ Skipping MediaPipe load — insufficient free memory")
-            logger.warning("⚠️ Skipping MediaPipe load — insufficient free memory")
-            return
-
-        import mediapipe as _mp
-        from mediapipe.tasks import python
-        from mediapipe.tasks.python import vision
-
-        print(f"🔍 MediaPipe version: {_mp.__version__}")
-        print(f"🔍 Loading model from: {MODEL_PATH} (exists={os.path.exists(MODEL_PATH)}, size={os.path.getsize(MODEL_PATH)} bytes)")
-
-        base_options = python.BaseOptions(model_asset_path=MODEL_PATH)
-        options = vision.FaceLandmarkerOptions(
-            base_options=base_options,
-            output_face_blendshapes=True,
-            output_facial_transformation_matrixes=True,
-            num_faces=1,
-            running_mode=vision.RunningMode.IMAGE,
-        )
-        _face_landmarker = vision.FaceLandmarker.create_from_options(options)
-        _mediapipe_available = True
-        _last_load_error = None
-        print(f"✅ MediaPipe loaded from: {MODEL_PATH}")
-        logger.info("✅ MediaPipe model loaded — using real landmarks from %s", MODEL_PATH)
-    except Exception as e:
-        _mediapipe_available = False
-        _last_load_error = str(e)
-        print(f"⚠️ MediaPipe loading failed: {e}")
-        logger.warning("⚠️ Could not load MediaPipe Task model: %s", e)
+# There is exactly ONE MediaPipe FaceLandmarker graph in the process, owned by
+# face_service.py. Loading a second graph here (as this module used to do at
+# import time) doubled MediaPipe's ~500 MB footprint on Render and caused the
+# second graph to fail after torch loaded, which left category_breakdown empty.
+# All landmark extraction now delegates to the shared loader.
+from app.services.face_service import MEDIAPIPE_AVAILABLE, detect_face_landmarks
 
 
 def is_mediapipe_available() -> bool:
-    """Return whether MediaPipe FaceLandmarker was successfully loaded."""
-    return _mediapipe_available
+    """Return whether the shared MediaPipe FaceLandmarker is available."""
+    return MEDIAPIPE_AVAILABLE
 
 
 def get_mediapipe_status() -> dict:
-    """Return detailed MediaPipe status for health checks."""
+    """Return MediaPipe status for health checks (delegates to face_service)."""
     return {
-        "available": _mediapipe_available,
-        "model_path": MODEL_PATH,
-        "model_path_exists": os.path.exists(MODEL_PATH),
-        "error": _last_load_error,
+        "available": MEDIAPIPE_AVAILABLE,
+        "model_path": None,
+        "model_path_exists": MEDIAPIPE_AVAILABLE,
+        "error": None if MEDIAPIPE_AVAILABLE else "MediaPipe model not loaded (see face_service)",
     }
-
-
-# Load immediately at module import
-_load_mediapipe()
 
 # ---------------------------------------------------------------------------
 # MediaPipe landmark indices (FaceMesh topology)
@@ -135,61 +75,16 @@ MIDLINE_NOSE_BRIDGE = 6  # Nose bridge
 # ---------------------------------------------------------------------------
 def extract_face_landmarks(image_bytes: bytes) -> Dict[str, Any]:
     """
-    Extract 468 facial landmarks using MediaPipe FaceLandmarker Task API.
+    Extract 468 facial landmarks using the shared MediaPipe FaceLandmarker.
 
-    Args:
-        image_bytes: Raw image bytes (JPEG, PNG, etc.)
+    Delegates to face_service.detect_face_landmarks so there is exactly one
+    MediaPipe graph in the process (avoids double-loading ~500 MB on Render).
 
     Returns:
         dict with success (bool), landmarks (list of {x, y, z}), face_count (int),
         and optional mock (bool) if fallback was used.
     """
-    if _mediapipe_available and _face_landmarker is not None:
-        try:
-            nparr = np.frombuffer(image_bytes, np.uint8)
-            img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-            if img is None:
-                return {"success": False, "error": "Could not decode image"}
-
-            img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-            h, w = img.shape[:2]
-
-            import mediapipe as mp
-            mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=img_rgb)
-            results = _face_landmarker.detect(mp_image)
-
-            if not results.face_landmarks:
-                return {"success": False, "error": "No face detected", "fallback": True}
-
-            # Take the first face
-            face_lm = results.face_landmarks[0]
-            landmarks = []
-            for lm in face_lm:
-                landmarks.append({
-                    "x": float(lm.x),
-                    "y": float(lm.y),
-                    "z": float(lm.z),
-                })
-
-            return {
-                "success": True,
-                "landmarks": landmarks,
-                "face_count": len(results.face_landmarks),
-                "image_dims": (h, w),
-            }
-        except Exception as exc:
-            logger.error(f"MediaPipe extraction failed: {exc}")
-            return {"success": False, "error": str(exc), "fallback": True}
-
-    # Fallback: generate symmetrical mock landmarks
-    logger.info("Using mock landmarks (MediaPipe unavailable)")
-    mock = _generate_mock_landmarks()
-    return {
-        "success": True,
-        "landmarks": mock,
-        "face_count": 1,
-        "mock": True,
-    }
+    return detect_face_landmarks(image_bytes)
 
 
 def _generate_mock_landmarks() -> List[Dict[str, float]]:
