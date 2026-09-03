@@ -68,27 +68,27 @@ def _other_admin(db_session):
 
 # ── Gate: non-admin is denied ─────────────────────────────────────────
 def test_users_list_requires_admin(client, user_headers):
-    res = client.get("/admin/users", headers=user_headers)
+    res = client.get("/api/v1/admin/users", headers=user_headers)
     assert res.status_code == 403
 
 
 def test_promote_requires_admin(client, user_headers, test_user):
     res = client.patch(
-        f"/admin/users/{test_user.id}/admin", json={"is_admin": True}, headers=user_headers
+        f"/api/v1/admin/users/{test_user.id}/admin", json={"is_admin": True}, headers=user_headers
     )
     assert res.status_code == 403
 
 
 def test_tier_requires_admin(client, user_headers, test_user):
     res = client.patch(
-        f"/admin/users/{test_user.id}/tier", json={"tier": "pro"}, headers=user_headers
+        f"/api/v1/admin/users/{test_user.id}/tier", json={"tier": "pro"}, headers=user_headers
     )
     assert res.status_code == 403
 
 
 # ── List includes is_admin ────────────────────────────────────────────
 def test_users_list_includes_is_admin(client, admin_headers, test_user):
-    res = client.get("/admin/users", headers=admin_headers)
+    res = client.get("/api/v1/admin/users", headers=admin_headers)
     assert res.status_code == 200
     body = res.json()
     assert body["success"] is True
@@ -100,7 +100,7 @@ def test_users_list_includes_is_admin(client, admin_headers, test_user):
 # ── Promote / demote ──────────────────────────────────────────────────
 def test_promote_user(client, admin_headers, test_user, db_session):
     res = client.patch(
-        f"/admin/users/{test_user.id}/admin", json={"is_admin": True}, headers=admin_headers
+        f"/api/v1/admin/users/{test_user.id}/admin", json={"is_admin": True}, headers=admin_headers
     )
     assert res.status_code == 200
     assert res.json()["user"]["is_admin"] is True
@@ -118,7 +118,7 @@ def test_promote_user(client, admin_headers, test_user, db_session):
 def test_demote_admin(client, admin_headers, db_session):
     other = _other_admin(db_session)
     res = client.patch(
-        f"/admin/users/{other.id}/admin", json={"is_admin": False}, headers=admin_headers
+        f"/api/v1/admin/users/{other.id}/admin", json={"is_admin": False}, headers=admin_headers
     )
     assert res.status_code == 200
     assert res.json()["user"]["is_admin"] is False
@@ -134,10 +134,10 @@ def test_demote_admin(client, admin_headers, db_session):
 
 def test_promote_is_idempotent(client, admin_headers, test_user):
     first = client.patch(
-        f"/admin/users/{test_user.id}/admin", json={"is_admin": True}, headers=admin_headers
+        f"/api/v1/admin/users/{test_user.id}/admin", json={"is_admin": True}, headers=admin_headers
     )
     second = client.patch(
-        f"/admin/users/{test_user.id}/admin", json={"is_admin": True}, headers=admin_headers
+        f"/api/v1/admin/users/{test_user.id}/admin", json={"is_admin": True}, headers=admin_headers
     )
     assert first.status_code == 200
     assert second.status_code == 200
@@ -145,7 +145,7 @@ def test_promote_is_idempotent(client, admin_headers, test_user):
 
 def test_cannot_change_own_admin_status(client, admin_headers, admin_user):
     res = client.patch(
-        f"/admin/users/{admin_user.id}/admin", json={"is_admin": False}, headers=admin_headers
+        f"/api/v1/admin/users/{admin_user.id}/admin", json={"is_admin": False}, headers=admin_headers
     )
     assert res.status_code == 400
     assert "own admin status" in res.json()["detail"]
@@ -153,7 +153,7 @@ def test_cannot_change_own_admin_status(client, admin_headers, admin_user):
 
 def test_admin_toggle_unknown_user(client, admin_headers):
     res = client.patch(
-        "/admin/users/does-not-exist/admin", json={"is_admin": True}, headers=admin_headers
+        "/api/v1/admin/users/does-not-exist/admin", json={"is_admin": True}, headers=admin_headers
     )
     assert res.status_code == 404
 
@@ -161,7 +161,7 @@ def test_admin_toggle_unknown_user(client, admin_headers):
 # ── Tier override ─────────────────────────────────────────────────────
 def test_set_tier_pro(client, admin_headers, test_user, db_session):
     res = client.patch(
-        f"/admin/users/{test_user.id}/tier", json={"tier": "pro"}, headers=admin_headers
+        f"/api/v1/admin/users/{test_user.id}/tier", json={"tier": "pro"}, headers=admin_headers
     )
     assert res.status_code == 200
     assert res.json()["user"]["tier"] == "pro"
@@ -178,7 +178,7 @@ def test_set_tier_pro(client, admin_headers, test_user, db_session):
 
 def test_set_tier_elite(client, admin_headers, test_user, db_session):
     res = client.patch(
-        f"/admin/users/{test_user.id}/tier", json={"tier": "elite"}, headers=admin_headers
+        f"/api/v1/admin/users/{test_user.id}/tier", json={"tier": "elite"}, headers=admin_headers
     )
     assert res.status_code == 200
     db_session.refresh(test_user)
@@ -187,9 +187,9 @@ def test_set_tier_elite(client, admin_headers, test_user, db_session):
 
 
 def test_set_tier_free_revokes_subscription(client, admin_headers, test_user, db_session):
-    client.patch(f"/admin/users/{test_user.id}/tier", json={"tier": "pro"}, headers=admin_headers)
+    client.patch(f"/api/v1/admin/users/{test_user.id}/tier", json={"tier": "pro"}, headers=admin_headers)
     res = client.patch(
-        f"/admin/users/{test_user.id}/tier", json={"tier": "free"}, headers=admin_headers
+        f"/api/v1/admin/users/{test_user.id}/tier", json={"tier": "free"}, headers=admin_headers
     )
     assert res.status_code == 200
     db_session.refresh(test_user)
@@ -199,7 +199,7 @@ def test_set_tier_free_revokes_subscription(client, admin_headers, test_user, db
 
 def test_set_tier_invalid(client, admin_headers, test_user):
     res = client.patch(
-        f"/admin/users/{test_user.id}/tier", json={"tier": "premium"}, headers=admin_headers
+        f"/api/v1/admin/users/{test_user.id}/tier", json={"tier": "premium"}, headers=admin_headers
     )
     assert res.status_code == 400
     assert "Tier must be one of" in res.json()["detail"]
@@ -207,14 +207,14 @@ def test_set_tier_invalid(client, admin_headers, test_user):
 
 def test_set_tier_unknown_user(client, admin_headers):
     res = client.patch(
-        "/admin/users/does-not-exist/tier", json={"tier": "pro"}, headers=admin_headers
+        "/api/v1/admin/users/does-not-exist/tier", json={"tier": "pro"}, headers=admin_headers
     )
     assert res.status_code == 404
 
 
 def test_set_tier_case_insensitive(client, admin_headers, test_user, db_session):
     res = client.patch(
-        f"/admin/users/{test_user.id}/tier", json={"tier": "PRO"}, headers=admin_headers
+        f"/api/v1/admin/users/{test_user.id}/tier", json={"tier": "PRO"}, headers=admin_headers
     )
     assert res.status_code == 200
     db_session.refresh(test_user)

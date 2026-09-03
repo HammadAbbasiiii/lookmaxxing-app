@@ -68,20 +68,20 @@ def _headers(user):
 # ── Gating ────────────────────────────────────────────────────────────
 def test_insights_requires_pro(client, db_session, test_user):
     photo = _add_photo(db_session, test_user)
-    res = client.get(f"/analysis/{photo.id}/insights", headers=_headers(test_user))
+    res = client.get(f"/api/v1/analysis/{photo.id}/insights", headers=_headers(test_user))
     assert res.status_code == 403
 
 
 def test_harmony_requires_elite(client, db_session):
     pro = _make_user(db_session, "pro@example.com", "pro")
     photo = _add_photo(db_session, pro)
-    res = client.get(f"/analysis/{photo.id}/harmony", headers=_headers(pro))
+    res = client.get(f"/api/v1/analysis/{photo.id}/harmony", headers=_headers(pro))
     assert res.status_code == 403
 
 
 def test_insights_unknown_photo(client, db_session):
     pro = _make_user(db_session, "pro2@example.com", "pro")
-    res = client.get("/analysis/does-not-exist/insights", headers=_headers(pro))
+    res = client.get("/api/v1/analysis/does-not-exist/insights", headers=_headers(pro))
     assert res.status_code == 404
 
 
@@ -89,7 +89,7 @@ def test_insights_unknown_photo(client, db_session):
 def test_insights_shape(client, db_session):
     pro = _make_user(db_session, "pro3@example.com", "pro")
     photo = _add_photo(db_session, pro, score=70.0)
-    res = client.get(f"/analysis/{photo.id}/insights", headers=_headers(pro))
+    res = client.get(f"/api/v1/analysis/{photo.id}/insights", headers=_headers(pro))
     assert res.status_code == 200
     body = res.json()
 
@@ -114,7 +114,7 @@ def test_insights_shape(client, db_session):
 def test_harmony_shape(client, db_session):
     elite = _make_user(db_session, "elite@example.com", "elite")
     photo = _add_photo(db_session, elite, score=80.0)
-    res = client.get(f"/analysis/{photo.id}/harmony", headers=_headers(elite))
+    res = client.get(f"/api/v1/analysis/{photo.id}/harmony", headers=_headers(elite))
     assert res.status_code == 200
     body = res.json()
 
