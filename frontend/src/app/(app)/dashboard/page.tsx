@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowUpRight, Camera, Check, Flame, ListChecks, ShoppingBag } from "lucide-react";
+import { ArrowUpRight, Camera, Check, Flame, ListChecks, Lock, ShoppingBag, Sparkles } from "lucide-react";
 import { getDashboard } from "@/lib/api/endpoints";
+import { useEntitlements } from "@/hooks/useEntitlements";
 import { STALE, scoreLabel } from "@/lib/constants";
 import { cn, firstName, formatScore } from "@/lib/utils";
 import { Card, CardTitle } from "@/components/ui/Card";
@@ -286,6 +287,8 @@ export default function DashboardPage() {
         </>
       )}
 
+      <ProPerks />
+
       {/* Quick links */}
       <div className="mt-6 grid gap-3 sm:grid-cols-3">
         {[
@@ -306,6 +309,36 @@ export default function DashboardPage() {
           </Link>
         ))}
       </div>
+    </div>
+  );
+}
+
+function ProPerks() {
+  const ent = useEntitlements();
+  const perks = ent.data?.features?.filter((f) => f.locked).slice(0, 3) ?? [];
+
+  if (!ent.data || perks.length === 0) return null;
+
+  return (
+    <div className="mt-6 rounded-card card-border p-5">
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="flex items-center gap-2 font-display text-base font-semibold text-ink">
+          <Sparkles className="h-4 w-4 text-gold" aria-hidden /> Unlock the full picture
+        </h2>
+        <Link href="/upgrade">
+          <Badge variant="gold" className="cursor-pointer hover:opacity-90">Upgrade</Badge>
+        </Link>
+      </div>
+      <ul className="mt-3 space-y-2">
+        {perks.map((p) => (
+          <li key={p.key} className="flex items-start gap-2 text-sm text-muted">
+            <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0 text-gold" aria-hidden />
+            <span>
+              <span className="font-medium text-ink">{p.name}</span> — {p.teaser}
+            </span>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

@@ -25,7 +25,7 @@ LookMaxx — web-only MVP. Backend (FastAPI) is **live** at `https://lookmaxx-ap
 - Stripe: ❌ none + **no backend route yet**.
 
 ## Backend gaps (honest)
-No Stripe/payments route; ML falls back to mock/heuristic if unavailable; in-memory rate limiter; CORS `*`; `/upload/save` trusts the Cloudinary URL.
+ML falls back to mock/heuristic if unavailable; in-memory rate limiter; CORS `*`; `/upload/save` trusts the Cloudinary URL. Stripe route now exists (`/payments/*`) but needs real keys + price IDs.
 
 ## Analytics & admin (added)
 - **Self-hosted analytics:** `POST /api/v1/track` (batched events, auth optional) + `AnalyticsEvent` model. Frontend: `lib/api/analytics.ts` `track()` + `components/AnalyticsTracker.tsx` (page_view / page_exit time-spent / session). Events carry no PII.
@@ -33,22 +33,30 @@ No Stripe/payments route; ML falls back to mock/heuristic if unavailable; in-mem
 - **Migration:** `main.py` auto-adds `users.is_admin` if missing; `analytics_events` table auto-created by `create_all`.
 - **Products page** now browses the full `product_database.json` via `/products/category/{cat}` + search + images (was: single personalized rec only).
 
+## Premium, entitlements & payments (added)
+- **Server-authoritative gating:** `require_pro` / `require_elite` in `dependencies.py`; 403 carries `{code:"upgrade_required"}`. `GET /entitlements` returns tier + limits + a feature matrix (locked/unlocked + teasers) from `services/entitlements_service.py`.
+- **Freemium limit:** free = 1 analysis (`FREE_ANALYSIS_LIMIT`, default 1). Enforced in `/upload/save`, `/photos/upload`, `/photos/analyze/{id}`.
+- **Premium features:** `GET /coach` (daily AI tip, DeepSeek + fallback, cached by user+date), `GET /analysis/{id}/report` (full written report).
+- **Payments (honest):** `POST /payments/checkout` → Stripe Checkout; `POST /payments/webhook` → grant subscription + audit row; `POST /payments/test-upgrade` (dev-only, `ALLOW_TEST_PAYMENTS=1` + non-production). No fake charges — missing keys → 503 waitlist.
+- **Profile data:** `User` gains `skin_type`, `skin_concerns`, `commitment` (auto-migrated in `main.py`); onboarding is now 5 steps; settings editable. All inputs server-validated.
+- **Frontend:** `PaywallLock`, `useEntitlements`, `/coach` page, dashboard `ProPerks`, results/upload paywall teasers, upgrade wired to real checkout (waitlist fallback).
+
 ## ✅ Face-detection blocker — FIXED & deployed
 - Previously: live upload → analysis always failed at face detection (`"No face detected"`).
 - Fixed and **deployed on Render (commit `56915f9`)**: 5× same-image scores are deterministic; category scores clamped 30–95; corrupt image returns a clean 400. Backend confirmed 100.
 
 ## Next steps (ordered)
-1. Scaffold Next.js in `frontend/` per `PRODUCT_SPEC.md` §8.
-2. Auth (signup/login/me + the 20 scenarios in `PRODUCT_SPEC.md` §9.2).
-3. Upload → analyze → result (direct Cloudinary flow).
-4. Dashboard / plan / streak.
-5. Stripe backend (`require_pro` + `/payments/*`) + `/upgrade`.
-6. Legal/compliance: privacy policy, consent log, DPIA, sub-processor DPAs (`PRODUCT_SPEC.md` §20).
+1. Deploy frontend to Vercel (landing + app).
+2. Verify Render boot logs (`✅ DB tables ready`, `🌱 Seeded N products`).
+3. Add Stripe keys + price IDs on Render to enable real checkout (route already built).
+4. Smoke-test premium: `/upgrade` checkout (or `ALLOW_TEST_PAYMENTS=1` preview), `/coach`, `/admin`.
+5. Legal/compliance: privacy policy, consent log, DPIA, sub-processor DPAs (`PRODUCT_SPEC.md` §20).
+6. Move rate limiter to Redis + lock CORS to the Vercel domain before real traffic.
 
 ## Still needed from the user
 1. Render Postgres `DATABASE_URL`.
 2. (optional) Render Redis URL.
-3. Stripe secret key + webhook secret (only when building payments).
+3. Stripe secret key + webhook secret + price IDs (`STRIPE_PRICE_PRO_*`, `STRIPE_PRICE_ELITE_*`) — required to enable real checkout (route already built).
 4. Confirm the Render prod DeepSeek key = `apiforrender` (sk-b5c32…73bd).
 5. Legal review of the `docs/` drafts (privacy policy, terms, DPIA) by a qualified lawyer before public launch.
 6. Set `ADMIN_EMAILS` env on Render (comma-separated) to unlock `/admin/*`.

@@ -11,6 +11,8 @@ import { Spinner } from "@/components/ui/Skeleton";
 import { ApiError } from "@/lib/api/client";
 import { analyzePhoto, getUploadSignature, saveDirectUpload } from "@/lib/api/endpoints";
 import { uploadDirectToCloudinary } from "@/lib/api/cloudinary";
+import { useEntitlements } from "@/hooks/useEntitlements";
+import { PaywallLock } from "@/components/ui/PaywallLock";
 import { ACCEPTED_IMAGE_TYPES, MAX_DIMENSION_PX, MAX_FILE_SIZE_MB } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 
@@ -33,6 +35,13 @@ export default function UploadPage() {
   const [preview, setPreview] = useState<string | null>(null);
   const [stage, setStage] = useState<Stage>("idle");
   const [error, setError] = useState<string | null>(null);
+
+  const ent = useEntitlements();
+  const hitLimit = Boolean(
+    ent.data &&
+      !ent.data.limits.analyses.unlimited &&
+      (ent.data.limits.analyses.remaining ?? 1) === 0,
+  );
 
   function reset() {
     setFile(null);
@@ -111,6 +120,19 @@ export default function UploadPage() {
       setError(mapUploadError(e));
       setStage("idle");
     }
+  }
+
+  if (hitLimit) {
+    return (
+      <div className="mx-auto max-w-md">
+        <ScreenHeader title="Get your score" subtitle="You've used your free analysis." />
+        <PaywallLock
+          title="Unlimited analyses"
+          teaser="Re-score every week and watch your face change in the before/after."
+          description="Free tier includes 1 analysis. Pro unlocks unlimited uploads, the full report, and your daily coach."
+        />
+      </div>
+    );
   }
 
   const busy = stage !== "idle";

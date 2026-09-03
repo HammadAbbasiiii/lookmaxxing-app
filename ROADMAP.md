@@ -379,7 +379,7 @@ Every error gets: **status code → user-facing toast/inline copy → next actio
 | **2 — Auth** | Signup/login/me, token store, guards, 20 scenarios | All 20 scenarios pass E2E |
 | **3 — Core loop** | Upload → analyze → result → dashboard → plan | Happy path E2E green |
 | **4 — Retention** | Streak, check-in, progress, explore | D2-return instrumentation wired |
-| **5 — Monetize** | Stripe backend + `/upgrade` + gating | Test checkout → webhook → tier flips |
+| **5 — Monetize** | Stripe backend (`/payments/*`) + `/upgrade` + `require_pro` gating | ✅ built — needs real Stripe keys to go live |
 | **6 — Launch** | Landing SEO, analytics, error tracking | LCP < 2.5s, error rate < 1% |
 
 ---

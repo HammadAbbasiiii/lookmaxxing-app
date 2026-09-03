@@ -49,6 +49,23 @@ export const COMMITMENT_OPTIONS = [
   { value: "locked_in", label: "Locked in" },
 ] as const;
 
+export const SKIN_TYPE_OPTIONS = [
+  { value: "oily", label: "Oily" },
+  { value: "dry", label: "Dry" },
+  { value: "combination", label: "Combination" },
+  { value: "normal", label: "Normal" },
+  { value: "sensitive", label: "Sensitive" },
+] as const;
+
+export const SKIN_CONCERN_OPTIONS = [
+  { value: "acne", label: "Acne / breakouts", emoji: "🔴" },
+  { value: "dark_spots", label: "Dark spots", emoji: "🟤" },
+  { value: "redness", label: "Redness", emoji: "🌡️" },
+  { value: "dullness", label: "Dullness", emoji: "😶‍🌫️" },
+  { value: "fine_lines", label: "Fine lines", emoji: "〰️" },
+  { value: "oiliness", label: "Excess oil", emoji: "💧" },
+] as const;
+
 // Products budget tiers (§8.12).
 export const PRODUCT_TIERS = [
   { value: "budget", label: "Budget" },

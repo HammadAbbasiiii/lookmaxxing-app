@@ -2,7 +2,8 @@ from fastapi import APIRouter, HTTPException, status, Depends
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import User, Photo, Plan
-from app.dependencies import get_current_user
+from app.dependencies import get_current_user, require_pro
+from app.services.score_calibration import compute_potential_score
 from datetime import datetime
 
 router = APIRouter(prefix="/analysis", tags=["Analysis"])
@@ -47,6 +48,64 @@ async def get_analysis(
         "face_shape": photo.face_shape,
         "is_baseline": photo.is_baseline,
         "analyzed_at": photo.captured_at
+    }
+
+
+@router.get("/{photo_id}/report")
+async def get_full_report(
+    photo_id: str,
+    current_user: User = Depends(require_pro),
+    db: Session = Depends(get_db)
+):
+    """Pro/Elite: full written report for a scored photo (gated by require_pro)."""
+    photo = db.query(Photo).filter(
+        Photo.id == photo_id,
+        Photo.user_id == current_user.id
+    ).first()
+
+    if not photo or photo.score is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Analyzed photo not found"
+        )
+
+    details = photo.analysis_details or {}
+    breakdown = details.get("category_breakdown") or {}
+    if not isinstance(breakdown, dict):
+        breakdown = {}
+
+    categories = [
+        {"key": k, "score": v, "label": k.replace("_", " ").title()}
+        for k, v in breakdown.items()
+    ]
+    categories.sort(key=lambda c: c["score"])
+    weakest = [c["key"] for c in categories[:3]]
+    strongest = [c["key"] for c in categories[-3:]][::-1]
+
+    deepseek = details.get("deepseek_analysis") or {}
+    if not isinstance(deepseek, dict):
+        deepseek = {}
+
+    potential = compute_potential_score(photo.score)
+
+    return {
+        "photo_id": photo.id,
+        "overall_score": photo.score,
+        "potential_score": potential,
+        "improvement_gap": round((potential or 0) - photo.score, 1),
+        "face_shape": photo.face_shape,
+        "categories": categories,
+        "weakest_areas": weakest,
+        "strongest_areas": strongest,
+        "strengths": photo.strengths or [],
+        "weaknesses": photo.weaknesses or [],
+        "improvement_potential": details.get("improvement_potential", "Up to +8 points in 90 days"),
+        "recommendations": {
+            "skincare": deepseek.get("skincare_routine") or details.get("skincare_routine", []),
+            "grooming": deepseek.get("grooming_advice") or details.get("grooming_advice", ""),
+            "exercise": deepseek.get("exercise_tips") or details.get("exercise_tips", []),
+            "diet": deepseek.get("diet_advice") or details.get("diet_advice", []),
+        },
     }
 
 

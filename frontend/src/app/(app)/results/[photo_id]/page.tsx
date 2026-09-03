@@ -5,6 +5,8 @@ import { useParams, useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowRight, ShoppingBag, Sparkles } from "lucide-react";
 import { getAnalysis, getPhotoStatus } from "@/lib/api/endpoints";
+import { useMe } from "@/hooks/useMe";
+import { PaywallLock } from "@/components/ui/PaywallLock";
 import { STALE, scoreLabel } from "@/lib/constants";
 import { formatScore } from "@/lib/utils";
 import { Button } from "@/components/ui/Button";
@@ -28,6 +30,8 @@ export default function ResultsPage() {
   const params = useParams<{ photo_id: string }>();
   const router = useRouter();
   const photoId = Array.isArray(params.photo_id) ? params.photo_id[0] : params.photo_id;
+  const { data: me } = useMe();
+  const isFree = (me?.subscription_tier ?? "free") === "free";
 
   const analysis = useQuery({
     queryKey: ["analysis", photoId],
@@ -90,6 +94,15 @@ export default function ResultsPage() {
           <CategoryBar key={c.key} label={c.label} value={a?.scores?.[c.key]} delayMs={i * 60} />
         ))}
       </div>
+
+      {isFree ? (
+        <PaywallLock
+          className="mt-6"
+          title="Your full report"
+          teaser="Top 3 fixes · the exact routine · your strongest features ranked — ready to read."
+          description="The breakdown is free. The written, coach-grade plan for fixing your weakest areas is Pro."
+        />
+      ) : null}
 
       {strengths.length || weaknesses.length ? (
         <div className="mt-6 grid gap-4 sm:grid-cols-2">

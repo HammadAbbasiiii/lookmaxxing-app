@@ -22,6 +22,7 @@ from app.services.score_labels import get_score_label
 from app.services.score_calibration import compute_potential_score
 from app.services.prediction_service import prediction_service
 from app.services.background_analysis import run_analysis_in_background
+from app.services.entitlements_service import enforce_analysis_limit, enforce_photo_limit
 from app.config import settings
 import uuid
 from datetime import datetime
@@ -52,6 +53,9 @@ async def upload_photo(
     # ⏱️ Start timing
     timings = {}
     start_total = time.perf_counter()
+
+    # Server-authoritative freemium gate (§5.2) — free tier gets 1 analysis.
+    enforce_photo_limit(current_user, db)
 
     # Validate file type
     allowed_extensions = [".jpg", ".jpeg", ".png", ".heic"]
@@ -373,6 +377,9 @@ async def analyze_photo(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Photo not found"
         )
+
+    # Freemium gate: free users get one analysis; Pro/Elite are unlimited.
+    enforce_analysis_limit(current_user, db, exclude_photo_id=photo_id)
 
     # Download image bytes from Cloudinary
     import requests

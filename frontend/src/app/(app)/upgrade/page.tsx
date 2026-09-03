@@ -11,6 +11,8 @@ import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { ANNUAL_DISCOUNT_PCT, PLANS } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { track } from "@/lib/api/analytics";
+import { createCheckout, testUpgrade } from "@/lib/api/endpoints";
+import { ApiError } from "@/lib/api/client";
 
 const FEATURES: Record<string, string[]> = {
   free: ["1 analysis", "Baseline score", "Streak tracking"],
@@ -20,6 +22,7 @@ const FEATURES: Record<string, string[]> = {
 
 export default function UpgradePage() {
   const [annual, setAnnual] = useState(true);
+  const [busy, setBusy] = useState<string | null>(null);
   const router = useRouter();
   const { data: user } = useMe();
   const tier = user?.subscription_tier ?? "free";
@@ -30,7 +33,30 @@ export default function UpgradePage() {
     return `$${effective.toFixed(2)}`;
   }
 
-  function handleSelect(planKey: keyof typeof PLANS) {
+  function waitlistMessage(name: string, email?: string): string {
+    return `You're on the ${name} waitlist — we'll email ${email || "you"} when it launches.`;
+  }
+
+  const canTest = process.env.NEXT_PUBLIC_ENABLE_TEST_PAYMENTS === "1";
+
+  async function runTestUpgrade(target: "pro" | "elite") {
+    setBusy(target);
+    try {
+      const res = await testUpgrade(target);
+      if (res.success) {
+        toast.success(`Switched to ${res.tier === "elite" ? "Elite" : "Pro"} (dev preview).`);
+        window.location.href = "/dashboard";
+      } else {
+        toast.error("Test upgrades are disabled on this environment.");
+      }
+    } catch (e) {
+      toast.error(e instanceof ApiError ? e.message : "Couldn't run test upgrade.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function handleSelect(planKey: keyof typeof PLANS) {
     const plan = PLANS[planKey];
     if (plan.tier === "free") {
       router.push("/dashboard");
@@ -41,11 +67,25 @@ export default function UpgradePage() {
       toast.info(`You're already on ${plan.name}.`);
       return;
     }
-    // Honesty rule (§12.4): until /payments/* is live, show a waitlist —
-    // never a fake checkout that pretends to charge.
-    toast.success(
-      `You're on the ${plan.name} waitlist — we'll email ${user?.email || "you"} when it launches.`,
-    );
+
+    setBusy(plan.tier);
+    try {
+      const res = await createCheckout(plan.tier as "pro" | "elite", annual);
+      if (res.checkout_url) {
+        window.location.href = res.checkout_url;
+      } else {
+        toast.info(waitlistMessage(plan.name, user?.email));
+      }
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 503) {
+        // Payments not configured → honest waitlist fallback (§12.4).
+        toast.info(waitlistMessage(plan.name, user?.email));
+      } else {
+        toast.error(e instanceof ApiError ? e.message : "Couldn't start checkout. Try again.");
+      }
+    } finally {
+      setBusy(null);
+    }
   }
 
   return (
@@ -135,7 +175,8 @@ export default function UpgradePage() {
                 variant={isPro ? "primary" : "secondary"}
                 fullWidth
                 className="mt-6"
-                disabled={isCurrent}
+                disabled={isCurrent || busy !== null}
+                loading={busy === plan.tier}
               >
                 {isCurrent
                   ? "Current plan"
@@ -155,6 +196,35 @@ export default function UpgradePage() {
           Don't lose your progress — your streak, history, and plan sync across devices.
         </p>
       </div>
+
+      {canTest ? (
+        <div className="mt-6 rounded-card card-border p-6">
+          <h2 className="text-sm font-semibold text-ink">Developer preview</h2>
+          <p className="mt-1 text-xs text-muted">
+            Test payments are enabled on this build. Preview Pro or Elite without a real charge.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-3">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => runTestUpgrade("pro")}
+              loading={busy === "pro"}
+              disabled={busy !== null}
+            >
+              Preview Pro
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => runTestUpgrade("elite")}
+              loading={busy === "elite"}
+              disabled={busy !== null}
+            >
+              Preview Elite
+            </Button>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

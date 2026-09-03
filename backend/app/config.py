@@ -24,6 +24,22 @@ class Settings:
     # Admin access — emails allowed on /admin/* (comma-separated).
     ADMIN_EMAILS: list = [e.strip().lower() for e in os.getenv("ADMIN_EMAILS", "").split(",") if e.strip()]
 
+    # Environment / payments
+    ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development").lower()
+    FRONTEND_URL: str = os.getenv("FRONTEND_URL", "http://localhost:3000")
+    STRIPE_SECRET_KEY: str = os.getenv("STRIPE_SECRET_KEY", "")
+    STRIPE_WEBHOOK_SECRET: str = os.getenv("STRIPE_WEBHOOK_SECRET", "")
+    STRIPE_PRICE_PRO_MONTHLY: str = os.getenv("STRIPE_PRICE_PRO_MONTHLY", "")
+    STRIPE_PRICE_PRO_ANNUAL: str = os.getenv("STRIPE_PRICE_PRO_ANNUAL", "")
+    STRIPE_PRICE_ELITE_MONTHLY: str = os.getenv("STRIPE_PRICE_ELITE_MONTHLY", "")
+    STRIPE_PRICE_ELITE_ANNUAL: str = os.getenv("STRIPE_PRICE_ELITE_ANNUAL", "")
+    # Dev/test-only: allows POST /payments/test-upgrade to flip a subscription
+    # without a real charge. Ignored when ENVIRONMENT == "production".
+    ALLOW_TEST_PAYMENTS: bool = os.getenv("ALLOW_TEST_PAYMENTS", "0") == "1"
+
+    # Freemium limits (server-authoritative §5.2).
+    FREE_ANALYSIS_LIMIT: int = int(os.getenv("FREE_ANALYSIS_LIMIT", "1"))
+
     # Cloudinary
     CLOUDINARY_CLOUD_NAME: str = os.getenv("CLOUDINARY_CLOUD_NAME", "")
     CLOUDINARY_API_KEY: str = os.getenv("CLOUDINARY_API_KEY", "")

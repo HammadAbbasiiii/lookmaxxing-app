@@ -24,6 +24,7 @@ from app.database import get_db
 from app.dependencies import get_current_user
 from app.models import Photo, Plan, User
 from app.services.prediction_service import prediction_service
+from app.services.entitlements_service import enforce_photo_limit
 
 router = APIRouter(prefix="/upload", tags=["Upload"])
 
@@ -100,6 +101,9 @@ async def save_direct_upload(
             status_code=400,
             detail="Invalid file_url — must be a Cloudinary URL",
         )
+
+    # Freemium gate: free users can save only their free allowance of photos.
+    enforce_photo_limit(current_user, db)
 
     # Check if this is the user's first photo (baseline)
     is_baseline = (

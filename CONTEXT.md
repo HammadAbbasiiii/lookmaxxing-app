@@ -82,6 +82,12 @@ Base: `https://lookmaxx-api.onrender.com/api/v1`
 | POST | `/progress/checkin` `/progress/photos/upload` | ✅ | Check-in + photo |
 | GET | `/dashboard` | ✅ | One-call home summary |
 | GET | `/explore` | ✅ | Anonymised transformations + articles |
+| GET | `/entitlements` | ✅ | Tier + usage limits + locked/unlocked feature matrix |
+| GET | `/coach` | ✅ | Daily AI coach tip (Pro/Elite; 403 for free) |
+| GET | `/analysis/{photo_id}/report` | ✅ | Full written report (Pro/Elite) |
+| POST | `/payments/checkout` | ✅ | Stripe Checkout session (503 if unconfigured) |
+| POST | `/payments/webhook` | ✅ | Stripe webhook → grants subscription |
+| POST | `/payments/test-upgrade` | ✅ | Dev-only subscription flip (ALLOW_TEST_PAYMENTS=1) |
 
 > Full routes: `backend/app/routes/*.py`. Response shapes: `backend/app/schemas.py`.
 
@@ -101,7 +107,7 @@ Base: `https://lookmaxx-api.onrender.com/api/v1`
 
 ## 5. Known gaps & tech debt (honest list)
 
-1. **No Stripe/billing endpoint.** Subscription is frontend-only until `/payments/*` is built.
+1. **Stripe route exists but needs real keys.** `/payments/*` (checkout + webhook) is built and honest — it returns 503 until `STRIPE_SECRET_KEY` + `STRIPE_WEBHOOK_SECRET` + price IDs are set. Test upgrades need `ALLOW_TEST_PAYMENTS=1` and are refused in production.
 2. **Score may be heuristic/mock** when MediaPipe/PyTorch unavailable (Render 512MB OOM risk). Do not over-claim.
 3. **`SECRET_KEY` default** in `config.py` — must be overridden in prod.
 4. **Rate limiter is in-memory** (not Redis) — resets on restart, per-worker.

@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from app.routes import health, auth, photos, analysis, plan, products, upload
 from app.routes import profile, progress, dashboard, explore, analytics, admin_products
+from app.routes import entitlements, coach, payments
 from app.middleware.rate_limit import rate_limit_middleware
 from app.middleware.error_handler import global_error_handler
 from app.database import engine
@@ -30,6 +31,24 @@ try:
         print("✅ Migrated: added users.is_admin")
 except Exception as _mig_e:
     print(f"⚠️ users.is_admin migration skipped: {_mig_e}")
+
+# ── Migrate: add later profile columns (skin_type, skin_concerns, commitment) ──
+try:
+    from sqlalchemy import inspect as _inspect2, text as _text2
+    _insp2 = _inspect2(engine)
+    _cols2 = {c["name"] for c in _insp2.get_columns("users")}
+    _additions = {
+        "skin_type": "VARCHAR(20)",
+        "skin_concerns": "JSON",
+        "commitment": "VARCHAR(20)",
+    }
+    for _col, _type in _additions.items():
+        if _col not in _cols2:
+            with engine.begin() as _conn2:
+                _conn2.execute(_text2(f"ALTER TABLE users ADD COLUMN {_col} {_type}"))
+            print(f"✅ Migrated: added users.{_col}")
+except Exception as _mig_e2:
+    print(f"⚠️ users profile columns migration skipped: {_mig_e2}")
 
 # ── Recovery: reset photos orphaned at "processing" by a prior OOM crash ──
 try:
@@ -152,3 +171,6 @@ app.include_router(dashboard.router, prefix="/api/v1", tags=["Dashboard"])
 app.include_router(explore.router, prefix="/api/v1", tags=["Explore"])
 app.include_router(analytics.router, prefix="/api/v1", tags=["Analytics"])
 app.include_router(admin_products.router, prefix="/api/v1", tags=["Admin"])
+app.include_router(entitlements.router, prefix="/api/v1", tags=["Entitlements"])
+app.include_router(coach.router, prefix="/api/v1", tags=["Coach"])
+app.include_router(payments.router, prefix="/api/v1", tags=["Payments"])

@@ -56,6 +56,12 @@ function normalizeDetail(data: unknown): string {
       .filter(Boolean)
       .join(" ");
   }
+  // FastAPI can return `detail` as an object, e.g. {"code": "...", "message": "..."}
+  // used by the premium gate + payments endpoints.
+  if (detail && typeof detail === "object" && "message" in (detail as object)) {
+    const msg = (detail as { message: unknown }).message;
+    if (typeof msg === "string" && msg) return msg;
+  }
 
   if (typeof record.message === "string") return record.message;
   return "";

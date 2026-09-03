@@ -28,6 +28,9 @@ export const UserSchema = z.object({
   weight: z.number().nullable().catch(null),
   location: z.string().nullable().catch(null),
   bio: z.string().nullable().catch(null),
+  skin_type: z.string().nullable().catch(null),
+  skin_concerns: z.array(z.string()).nullable().catch(null),
+  commitment: z.string().nullable().catch(null),
   onboarding_completed: z.boolean().catch(false),
   subscription_tier: z.string().catch("free"),
   is_subscribed: z.boolean().catch(false),
@@ -51,6 +54,9 @@ export const emptyUser = (): User => ({
   weight: null,
   location: null,
   bio: null,
+  skin_type: null,
+  skin_concerns: null,
+  commitment: null,
   onboarding_completed: false,
   subscription_tier: "free",
   is_subscribed: false,
@@ -436,6 +442,88 @@ export const DeleteAccountSchema = z.object({
   success: z.boolean().catch(false),
   message: z.string().catch(""),
 });
+// ── Entitlements / premium ─────────────────────────────────────────
+export const EntitlementFeatureSchema = z.object({
+  key: z.string().catch(""),
+  name: z.string().catch(""),
+  description: z.string().catch(""),
+  teaser: z.string().catch(""),
+  tier: z.string().catch("pro"),
+  locked: z.boolean().catch(true),
+});
+export type EntitlementFeature = z.infer<typeof EntitlementFeatureSchema>;
+
+export const EntitlementsSchema = z.object({
+  tier: z.string().catch("free"),
+  is_subscribed: z.boolean().catch(false),
+  subscription_end: z.string().nullable().catch(null),
+  limits: z
+    .object({
+      analyses: z.object({
+        used: z.number().catch(0),
+        allowed: z.number().nullable().catch(null),
+        unlimited: z.boolean().catch(false),
+        remaining: z.number().nullable().catch(null),
+      }),
+      photos: z.number().catch(0),
+    })
+    .catch({ analyses: { used: 0, allowed: null, unlimited: false, remaining: null }, photos: 0 }),
+  features: z.array(EntitlementFeatureSchema).catch([]),
+});
+export type Entitlements = z.infer<typeof EntitlementsSchema>;
+
+export const emptyEntitlements = (): Entitlements => ({
+  tier: "free",
+  is_subscribed: false,
+  subscription_end: null,
+  limits: { analyses: { used: 0, allowed: 1, unlimited: false, remaining: 1 }, photos: 0 },
+  features: [],
+});
+
+export const CoachSchema = z.object({
+  date: z.string().catch(""),
+  tier: z.string().catch("pro"),
+  message: z.string().catch(""),
+  focus: z.string().nullable().catch(null),
+  tasks: z.array(z.string()).catch([]),
+  score_context: z.string().catch(""),
+  source: z.string().catch("template"),
+});
+export type Coach = z.infer<typeof CoachSchema>;
+
+export const ReportCategorySchema = z.object({
+  key: z.string().catch(""),
+  score: z.number().catch(0),
+  label: z.string().catch(""),
+});
+export const ReportSchema = z.object({
+  photo_id: z.string().catch(""),
+  overall_score: z.number().nullable().catch(null),
+  potential_score: z.number().nullable().catch(null),
+  improvement_gap: z.number().nullable().catch(null),
+  face_shape: z.string().nullable().catch(null),
+  categories: z.array(ReportCategorySchema).catch([]),
+  weakest_areas: z.array(z.string()).catch([]),
+  strongest_areas: z.array(z.string()).catch([]),
+  strengths: z.array(z.string()).catch([]),
+  weaknesses: z.array(z.string()).catch([]),
+  improvement_potential: z.string().catch(""),
+  recommendations: z
+    .object({
+      skincare: z.array(z.string()).catch([]),
+      grooming: z.string().catch(""),
+      exercise: z.array(z.string()).catch([]),
+      diet: z.array(z.string()).catch([]),
+    })
+    .catch({ skincare: [], grooming: "", exercise: [], diet: [] }),
+});
+export type Report = z.infer<typeof ReportSchema>;
+
+export const CheckoutSchema = z.object({
+  checkout_url: z.string().nullable().catch(null),
+});
+export type Checkout = z.infer<typeof CheckoutSchema>;
+
 export type DeleteAccountResult = z.infer<typeof DeleteAccountSchema>;
 
 

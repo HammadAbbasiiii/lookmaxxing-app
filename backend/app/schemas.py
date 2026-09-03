@@ -34,6 +34,9 @@ class UserResponse(BaseModel):
     weight: Optional[int] = None
     location: Optional[str] = None
     bio: Optional[str] = None
+    skin_type: Optional[str] = None
+    skin_concerns: Optional[list] = None
+    commitment: Optional[str] = None
     onboarding_completed: bool
     subscription_tier: str
     is_subscribed: bool
@@ -50,13 +53,16 @@ class UserResponse(BaseModel):
 
 class ProfileUpdate(BaseModel):
     full_name: Optional[str] = None
-    age: Optional[int] = None
+    age: Optional[int] = Field(None, ge=13, le=120)
     gender: Optional[str] = None  # "male", "female", "other"
     goals: Optional[List[str]] = None  # ["improve_skin", "jawline", "confidence"]
-    height: Optional[int] = None  # cm
-    weight: Optional[int] = None  # kg
+    height: Optional[int] = Field(None, ge=100, le=250)  # cm
+    weight: Optional[int] = Field(None, ge=30, le=300)  # kg
     location: Optional[str] = None
     bio: Optional[str] = None
+    skin_type: Optional[str] = None  # oily | dry | combination | normal | sensitive
+    skin_concerns: Optional[List[str]] = None  # ["acne", "dark_spots", ...]
+    commitment: Optional[str] = None  # casual | consistent | locked_in
 
     class Config:
         from_attributes = True
@@ -183,6 +189,31 @@ class ProductUpdate(BaseModel):
     tier: Optional[str] = Field(None, max_length=20)
     image_url: Optional[str] = None
     affiliate_url: Optional[str] = None
+class OnboardingUpdate(BaseModel):
+    """Everything the onboarding wizard may save in one call (§8.4)."""
+    age: Optional[int] = Field(None, ge=13, le=120)
+    gender: Optional[str] = None
+    goals: Optional[List[str]] = None
+    skin_type: Optional[str] = None
+    skin_concerns: Optional[List[str]] = None
+    height: Optional[int] = Field(None, ge=100, le=250)
+    weight: Optional[int] = Field(None, ge=30, le=300)
+    commitment: Optional[str] = None
+    location: Optional[str] = None
+    bio: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class CheckoutIn(BaseModel):
+    tier: str = Field(..., pattern="^(pro|elite)$")
+    annual: bool = True
+
+
+class TestUpgradeIn(BaseModel):
+    tier: str = Field(..., pattern="^(pro|elite)$")
+
     description: Optional[str] = None
     rating: Optional[float] = Field(None, ge=0, le=5)
     review_count: Optional[int] = Field(None, ge=0)

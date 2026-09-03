@@ -23,7 +23,13 @@ class User(Base):
     weight = Column(Integer, nullable=True)  # kg
     location = Column(String(255), nullable=True)
     bio = Column(Text, nullable=True)
-    
+
+    # Skin / lifestyle — collected in onboarding, editable in settings. These
+    # feed the plan generator + coach so recommendations are genuinely targeted.
+    skin_type = Column(String(20), nullable=True)  # oily | dry | combination | normal | sensitive
+    skin_concerns = Column(JSON, nullable=True)    # ["acne", "dark_spots", "redness", "dullness", "fine_lines"]
+    commitment = Column(String(20), nullable=True) # casual | consistent | locked_in
+
     # Onboarding
     onboarding_completed = Column(Boolean, default=False)
 

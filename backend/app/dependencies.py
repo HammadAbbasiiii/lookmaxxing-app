@@ -95,3 +95,45 @@ def require_admin(user: User = Depends(get_current_user)):
             detail="Admin access required",
         )
     return user
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Premium tier gating (§5.2 — server-authoritative; the browser is untrusted).
+#
+# Each gated endpoint calls one of these independently. The 403 `detail` is a
+# dict carrying a machine-readable `code` so the client can tell an "upgrade
+# required" 403 from any other 403.
+# ─────────────────────────────────────────────────────────────────────────────
+
+VALID_TIERS = ("free", "pro", "elite")
+
+
+def is_premium(user: User) -> bool:
+    """True when the user is on a paid tier (pro or elite)."""
+    return (user.subscription_tier or "free").lower() in ("pro", "elite")
+
+
+def require_pro(user: User = Depends(get_current_user)):
+    """Gate premium endpoints — requires pro or elite."""
+    if not is_premium(user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "code": "upgrade_required",
+                "message": "Upgrade to Pro to unlock this feature.",
+            },
+        )
+    return user
+
+
+def require_elite(user: User = Depends(get_current_user)):
+    """Gate elite-only endpoints."""
+    if (user.subscription_tier or "free").lower() != "elite":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "code": "upgrade_required",
+                "message": "Upgrade to Elite to unlock this feature.",
+            },
+        )
+    return user

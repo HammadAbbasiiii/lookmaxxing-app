@@ -41,6 +41,15 @@ import {
   UserSchema,
   emptyUser,
   type User,
+  EntitlementsSchema,
+  emptyEntitlements,
+  type Entitlements,
+  CoachSchema,
+  type Coach,
+  ReportSchema,
+  type Report,
+  CheckoutSchema,
+  type Checkout,
 } from "@/lib/zod";
 
 // ── Auth ────────────────────────────────────────────────────────────
@@ -350,6 +359,9 @@ export interface ProfileUpdate {
   weight?: number;
   location?: string;
   bio?: string;
+  skin_type?: string;
+  skin_concerns?: string[];
+  commitment?: string;
 }
 
 export async function getProfile(): Promise<User> {
@@ -370,5 +382,56 @@ export async function completeOnboarding(): Promise<OnboardingResult> {
 export async function deleteAccount(): Promise<DeleteAccountResult> {
   const data = await apiFetch<unknown>("/profile/delete", { method: "DELETE" });
   return decode(DeleteAccountSchema, data, { success: false, message: "" });
+}
+
+// ── Entitlements / premium ─────────────────────────────────────────
+export async function getEntitlements(): Promise<Entitlements> {
+  const data = await apiFetch<unknown>("/entitlements");
+  return decode(EntitlementsSchema, data, emptyEntitlements());
+}
+
+export async function getCoach(): Promise<Coach> {
+  const data = await apiFetch<unknown>("/coach");
+  return decode(CoachSchema, data, {
+    date: "",
+    tier: "pro",
+    message: "",
+    focus: null,
+    tasks: [],
+    score_context: "",
+    source: "template",
+  });
+}
+
+export async function getReport(photoId: string): Promise<Report> {
+  const data = await apiFetch<unknown>(`/analysis/${photoId}/report`);
+  return decode(ReportSchema, data, {
+    photo_id: photoId,
+    overall_score: null,
+    potential_score: null,
+    improvement_gap: null,
+    face_shape: null,
+    categories: [],
+    weakest_areas: [],
+    strongest_areas: [],
+    strengths: [],
+    weaknesses: [],
+    improvement_potential: "",
+    recommendations: { skincare: [], grooming: "", exercise: [], diet: [] },
+  });
+}
+
+export async function createCheckout(tier: "pro" | "elite", annual: boolean): Promise<Checkout> {
+  const data = await apiFetch<unknown>("/payments/checkout", {
+    method: "POST",
+    body: { tier, annual },
+  });
+  return decode(CheckoutSchema, data, { checkout_url: null });
+}
+
+export async function testUpgrade(tier: "pro" | "elite"): Promise<{ success: boolean; tier: string }> {
+  const data = await apiFetch<unknown>("/payments/test-upgrade", { method: "POST", body: { tier } });
+  const root = data && typeof data === "object" ? (data as Record<string, unknown>) : {};
+  return { success: Boolean(root.success), tier: typeof root.tier === "string" ? root.tier : tier };
 }
 

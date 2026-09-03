@@ -9,11 +9,11 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Logo } from "@/components/layout/Logo";
 import { Spinner } from "@/components/ui/Skeleton";
-import { COMMITMENT_OPTIONS, GENDER_OPTIONS, GOAL_OPTIONS } from "@/lib/constants";
+import { COMMITMENT_OPTIONS, GENDER_OPTIONS, GOAL_OPTIONS, SKIN_CONCERN_OPTIONS, SKIN_TYPE_OPTIONS } from "@/lib/constants";
 import { completeOnboarding, putProfile } from "@/lib/api/endpoints";
 import { cn } from "@/lib/utils";
 
-const STEPS = ["Tell us about you", "Pick one goal", "Consistency beats intensity"];
+const STEPS = ["Tell us about you", "Pick one goal", "Your skin type", "Skin concerns", "Consistency beats intensity"];
 
 export default function OnboardingPage() {
   const ready = useRequireAuth();
@@ -25,6 +25,8 @@ export default function OnboardingPage() {
   const [gender, setGender] = useState("");
   const [goal, setGoal] = useState("");
   const [commitment, setCommitment] = useState("");
+  const [skinType, setSkinType] = useState("");
+  const [skinConcerns, setSkinConcerns] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
 
   function canNext(): boolean {
@@ -33,7 +35,9 @@ export default function OnboardingPage() {
       return !Number.isNaN(ageNum) && ageNum >= 13 && ageNum <= 99 && Boolean(gender);
     }
     if (step === 1) return Boolean(goal);
-    if (step === 2) return Boolean(commitment);
+    if (step === 2) return Boolean(skinType);
+    if (step === 3) return true; // concerns optional
+    if (step === 4) return Boolean(commitment);
     return true;
   }
 
@@ -54,12 +58,12 @@ export default function OnboardingPage() {
       }
       setAgeError("");
     }
-    if (step < 2) setStep((s) => s + 1);
+    if (step < 4) setStep((s) => s + 1);
     else finish();
   }
 
   function skip() {
-    if (step < 2) setStep((s) => s + 1);
+    if (step < 4) setStep((s) => s + 1);
     else finish();
   }
 
@@ -72,6 +76,9 @@ export default function OnboardingPage() {
         age: Number.isNaN(ageNum) ? undefined : ageNum,
         gender: gender || undefined,
         goals,
+        skin_type: skinType || undefined,
+        skin_concerns: skinConcerns.length ? skinConcerns : undefined,
+        commitment: commitment || undefined,
       });
     } catch {
       toast.error("Couldn't save your details — you can update them later in Settings.");
@@ -99,7 +106,7 @@ export default function OnboardingPage() {
         <Logo />
       </div>
 
-      <div className="mb-8 flex items-center gap-2" aria-label={`Step ${step + 1} of 3`}>
+      <div className="mb-8 flex items-center gap-2" aria-label={`Step ${step + 1} of ${STEPS.length}`}>
         {STEPS.map((_, i) => (
           <span
             key={i}
@@ -113,7 +120,7 @@ export default function OnboardingPage() {
 
       <div className="w-full max-w-sm card-border rounded-card p-7">
         <p className="mb-1 text-xs uppercase tracking-wide text-muted">
-          Step {step + 1} of 3
+          Step {step + 1} of {STEPS.length}
         </p>
         <h1 className="font-display text-xl font-bold text-ink">{STEPS[step]}</h1>
         <motion.div
@@ -190,6 +197,58 @@ export default function OnboardingPage() {
             </div>
           ) : null}
           {step === 2 ? (
+            <div className="grid grid-cols-2 gap-2" role="radiogroup">
+              {SKIN_TYPE_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  role="radio"
+                  aria-checked={skinType === opt.value}
+                  onClick={() => setSkinType(opt.value)}
+                  className={cn(
+                    "rounded-xl border px-4 py-3 text-sm font-medium transition-all",
+                    skinType === opt.value
+                      ? "border-gold bg-gold/15 text-ink"
+                      : "border-border-soft bg-surface-2 text-muted hover:text-ink",
+                  )}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          ) : null}
+          {step === 3 ? (
+            <div className="flex flex-wrap gap-2" role="group">
+              {SKIN_CONCERN_OPTIONS.map((opt) => {
+                const active = skinConcerns.includes(opt.value);
+                return (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    role="checkbox"
+                    aria-checked={active}
+                    onClick={() =>
+                      setSkinConcerns((prev) =>
+                        prev.includes(opt.value)
+                          ? prev.filter((x) => x !== opt.value)
+                          : [...prev, opt.value],
+                      )
+                    }
+                    className={cn(
+                      "rounded-full border px-3 py-2 text-sm font-medium transition-all",
+                      active
+                        ? "border-gold bg-gold/15 text-ink"
+                        : "border-border-soft bg-surface-2 text-muted hover:text-ink",
+                    )}
+                  >
+                    <span className="mr-1">{opt.emoji}</span>
+                    {opt.label}
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
+          {step === 4 ? (
             <div className="space-y-2" role="radiogroup">
               {COMMITMENT_OPTIONS.map((opt) => (
                 <button
@@ -222,7 +281,7 @@ export default function OnboardingPage() {
             Skip
           </Button>
           <Button onClick={next} disabled={!canNext()} loading={saving} className="min-w-[96px]">
-            {step === 2 ? "Finish" : "Next"}
+            {step === 4 ? "Finish" : "Next"}
           </Button>
         </div>
       </div>

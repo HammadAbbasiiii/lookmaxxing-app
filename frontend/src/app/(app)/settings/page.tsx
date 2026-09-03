@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import { useMe } from "@/hooks/useMe";
 import { deleteAccount, putProfile, type ProfileUpdate } from "@/lib/api/endpoints";
 import { clearToken } from "@/lib/auth";
-import { GENDER_OPTIONS, GOAL_OPTIONS } from "@/lib/constants";
+import { COMMITMENT_OPTIONS, GENDER_OPTIONS, GOAL_OPTIONS, SKIN_CONCERN_OPTIONS, SKIN_TYPE_OPTIONS } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { ApiError } from "@/lib/api/client";
 import { Button } from "@/components/ui/Button";
@@ -27,6 +27,9 @@ export default function SettingsPage() {
   const [age, setAge] = useState("");
   const [gender, setGender] = useState("");
   const [goals, setGoals] = useState<string[]>([]);
+  const [skinType, setSkinType] = useState("");
+  const [skinConcerns, setSkinConcerns] = useState<string[]>([]);
+  const [commitment, setCommitment] = useState("");
   const [height, setHeight] = useState("");
   const [weight, setWeight] = useState("");
   const [location, setLocation] = useState("");
@@ -44,6 +47,9 @@ export default function SettingsPage() {
       setAge(user.age?.toString() ?? "");
       setGender(user.gender ?? "");
       setGoals(user.goals ?? []);
+      setSkinType(user.skin_type ?? "");
+      setSkinConcerns(user.skin_concerns ?? []);
+      setCommitment(user.commitment ?? "");
       setHeight(user.height?.toString() ?? "");
       setWeight(user.weight?.toString() ?? "");
       setLocation(user.location ?? "");
@@ -56,6 +62,10 @@ export default function SettingsPage() {
     setGoals((prev) => (prev.includes(g) ? prev.filter((x) => x !== g) : [...prev, g]));
   }
 
+  function toggleSkinConcern(c: string) {
+    setSkinConcerns((prev) => (prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c]));
+  }
+
   async function save() {
     const payload: ProfileUpdate = {};
     if (fullName.trim()) payload.full_name = fullName.trim();
@@ -63,6 +73,9 @@ export default function SettingsPage() {
     if (age && !Number.isNaN(ageNum)) payload.age = ageNum;
     if (gender) payload.gender = gender;
     if (goals.length) payload.goals = goals;
+    if (skinType) payload.skin_type = skinType;
+    if (skinConcerns.length) payload.skin_concerns = skinConcerns;
+    if (commitment) payload.commitment = commitment;
     const heightNum = parseInt(height, 10);
     if (height && !Number.isNaN(heightNum)) payload.height = heightNum;
     const weightNum = parseInt(weight, 10);
@@ -172,6 +185,76 @@ export default function SettingsPage() {
                 </button>
               );
             })}
+          </div>
+        </div>
+
+        <div className="mt-4">
+          <p className="mb-2 text-sm font-medium text-muted">Skin type</p>
+          <div className="grid grid-cols-3 gap-2 sm:grid-cols-5" role="radiogroup">
+            {SKIN_TYPE_OPTIONS.map((opt) => (
+              <button
+                key={opt.value}
+                type="button"
+                role="radio"
+                aria-checked={skinType === opt.value}
+                onClick={() => setSkinType(opt.value)}
+                className={cn(
+                  "rounded-xl border px-2 py-2 text-sm font-medium transition-colors",
+                  skinType === opt.value
+                    ? "border-gold bg-gold/15 text-gold-bright"
+                    : "border-border-soft bg-surface-2 text-muted hover:text-ink",
+                )}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="mt-4">
+          <p className="mb-2 text-sm font-medium text-muted">Skin concerns</p>
+          <div className="flex flex-wrap gap-2">
+            {SKIN_CONCERN_OPTIONS.map((opt) => {
+              const active = skinConcerns.includes(opt.value);
+              return (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => toggleSkinConcern(opt.value)}
+                  className={cn(
+                    "rounded-full border px-3 py-1.5 text-sm font-medium transition-colors",
+                    active
+                      ? "border-gold bg-gold/15 text-gold-bright"
+                      : "border-border-soft bg-surface-2 text-muted hover:text-ink",
+                  )}
+                >
+                  {opt.emoji} {opt.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="mt-4">
+          <p className="mb-2 text-sm font-medium text-muted">Consistency</p>
+          <div className="grid grid-cols-3 gap-2" role="radiogroup">
+            {COMMITMENT_OPTIONS.map((opt) => (
+              <button
+                key={opt.value}
+                type="button"
+                role="radio"
+                aria-checked={commitment === opt.value}
+                onClick={() => setCommitment(opt.value)}
+                className={cn(
+                  "rounded-xl border px-3 py-2 text-sm font-medium transition-colors",
+                  commitment === opt.value
+                    ? "border-gold bg-gold/15 text-gold-bright"
+                    : "border-border-soft bg-surface-2 text-muted hover:text-ink",
+                )}
+              >
+                {opt.label}
+              </button>
+            ))}
           </div>
         </div>
 
