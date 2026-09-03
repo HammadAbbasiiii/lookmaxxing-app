@@ -3,7 +3,7 @@ services:
     name: lookmaxx-api
     runtime: python
     repo: https://github.com/HammadAbbasiiii/lookmaxxing-app
-    plan: starter
+    plan: pro
     region: frankfurt
     buildCommand: |
       set -e

@@ -87,12 +87,17 @@ def run_analysis_background(photo_id: str, user_id: str, image_bytes: bytes, gen
         landmarks = None
         try:
             face_result = detect_face_landmarks(image_bytes)
-            if face_result.get("success"):
+            # `mock: True` means MediaPipe's graph could not be created at runtime
+            # (e.g. the memory guard on a small instance). Mock ellipse landmarks
+            # are identical for every image and produce meaningless category
+            # scores, so treat them as "no landmarks" and fall through to the
+            # honest heuristic breakdown below.
+            if face_result.get("success") and not face_result.get("mock"):
                 landmarks = face_result.get("landmarks") or []
             else:
                 logger.warning(
                     f"Face landmark detection failed for {photo_id}: "
-                    f"{face_result.get('error')} — using heuristic category breakdown"
+                    f"{face_result.get('error') or 'mock landmarks (MediaPipe unavailable)'} — using heuristic category breakdown"
                 )
         except Exception as exc:
             logger.warning(f"Background face detection failed for {photo_id}: {exc}")
