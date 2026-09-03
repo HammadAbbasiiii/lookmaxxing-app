@@ -33,7 +33,10 @@ try:
 except Exception as _mig_e:
     print(f"⚠️ users.is_admin migration skipped: {_mig_e}")
 
-# ── Promote admin emails to is_admin=True (owner dashboard access) ──────
+# ── Promote admin emails to is_admin=True + grant Elite (testing convenience) ──────
+# The owner/admin account defaults to Elite so every Pro/Elite surface is testable
+# without manual tier fiddling. To temporarily test free/pro gating, flip your own
+# tier in the /admin/users dropdown (it re-applies Elite on next boot).
 try:
     from app.database import SessionLocal as _SL_admin
     from app.models import User as _User_admin
@@ -41,14 +44,21 @@ try:
     _admin_db = _SL_admin()
     try:
         _promoted = 0
+        _tiered = 0
         for _email in _admin_emails:
             _u = _admin_db.query(_User_admin).filter(_User_admin.email == _email).first()
-            if _u is not None and not _u.is_admin:
+            if _u is None:
+                continue
+            if not _u.is_admin:
                 _u.is_admin = True
                 _promoted += 1
-        if _promoted:
+            if not _u.is_subscribed:
+                _u.subscription_tier = "elite"
+                _u.is_subscribed = True
+                _tiered += 1
+        if _promoted or _tiered:
             _admin_db.commit()
-            print(f"🛡️ Promoted {_promoted} admin email(s) to is_admin=True")
+            print(f"🛡️ Admin emails: {_promoted} promoted, {_tiered} granted Elite (testing)")
     finally:
         _admin_db.close()
 except Exception as _admin_e:
