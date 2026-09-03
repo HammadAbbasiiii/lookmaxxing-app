@@ -1,7 +1,7 @@
 """
 Direct Cloudinary Upload API
 =============================
-Allows iOS clients to upload directly to Cloudinary (bypassing the server),
+Allows clients to upload directly to Cloudinary (bypassing the server),
 then register the resulting URL with the backend.
 
 Flow:
@@ -36,7 +36,7 @@ async def get_upload_signature(
     current_user: User = Depends(get_current_user),
 ):
     """
-    Generate signed upload credentials so the iOS client can upload
+    Generate signed upload credentials so the client can upload
     directly to Cloudinary without routing image bytes through the server.
 
     The returned fields are used by the Cloudinary iOS SDK to perform

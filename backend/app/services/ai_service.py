@@ -14,7 +14,7 @@ DEEPSEEK_TIMEOUT_SECONDS = 15
 # Initialize OpenAI client for DeepSeek
 client = OpenAI(
     api_key=settings.DEEPSEEK_API_KEY,
-    base_url="https://api.deepseek.com",
+    base_url=settings.DEEPSEEK_BASE_URL,
     timeout=DEEPSEEK_TIMEOUT_SECONDS,
 )
 
@@ -23,7 +23,7 @@ def analyze_face_with_deepseek(score_data: dict, image_url: str) -> dict:
     """
     Send face analysis to DeepSeek for detailed breakdown.
 
-    Uses deepseek-chat (fast model) with 15s timeout.
+    Uses the configured DEEPSEEK_MODEL with a 15s timeout.
     If DeepSeek is unavailable or times out, returns template-based fallback.
     """
     prompt = f"""
@@ -67,7 +67,7 @@ def analyze_face_with_deepseek(score_data: dict, image_url: str) -> dict:
     try:
         start = time.time()
         response = client.chat.completions.create(
-            model="deepseek-chat",
+            model=settings.DEEPSEEK_MODEL,
             messages=[
                 {"role": "system", "content": "You are an expert facial aesthetics consultant."},
                 {"role": "user", "content": prompt}

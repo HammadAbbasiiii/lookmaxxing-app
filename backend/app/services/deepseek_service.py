@@ -284,7 +284,7 @@ def generate_personalized_content(
     try:
         client = _get_client()
         response = client.chat.completions.create(
-            model="deepseek-chat",
+            model=settings.DEEPSEEK_MODEL,
             messages=[
                 {
                     "role": "system",

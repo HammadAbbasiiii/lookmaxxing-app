@@ -28,7 +28,7 @@ async def signup(
     - **password**: Minimum 6 characters
     - **full_name**: Optional display name
     """
-    # Normalize credentials (defense-in-depth; the iOS client also trims).
+    # Normalize credentials (defense-in-depth; the web client also trims).
     # Lowercasing the email prevents duplicate accounts via case variations.
     email = user_data.email.strip().lower()
     password = user_data.password.strip()
