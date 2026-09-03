@@ -2,8 +2,17 @@ from fastapi import APIRouter, HTTPException, status, Depends
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import User, Photo, Plan
-from app.dependencies import get_current_user, require_pro
+from app.dependencies import get_current_user, require_pro, require_elite
 from app.services.score_calibration import compute_potential_score
+from app.services.score_labels import get_score_label
+from app.services.insights_service import (
+    build_archetype,
+    build_blueprint,
+    build_forecast,
+    build_glow_up_card,
+    build_golden_ratio,
+    rank_label,
+)
 from datetime import datetime
 
 router = APIRouter(prefix="/analysis", tags=["Analysis"])
@@ -284,4 +293,129 @@ async def get_recommendations(
         "diet_advice": data.get("diet_advice", []),
         "recommended_products": data.get("recommended_products", []),
         "seven_day_plan": data.get("seven_day_plan", [])
+    }
+
+
+def _get_scored_photo(photo_id: str, current_user: User, db: Session) -> Photo:
+    photo = db.query(Photo).filter(
+        Photo.id == photo_id,
+        Photo.user_id == current_user.id
+    ).first()
+
+    if not photo or photo.score is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Analyzed photo not found"
+        )
+    return photo
+
+
+def _percentile(score: float, gender: str, user_id: str, db: Session) -> dict:
+    """Where this user's score ranks among their peers (same gender when known)."""
+    rows = (
+        db.query(Photo.user_id, Photo.score, Photo.captured_at)
+        .filter(Photo.score.isnot(None))
+        .all()
+    )
+
+    latest: dict = {}
+    for uid, s, ts in rows:
+        if uid not in latest or (ts is not None and (latest[uid][1] is None or ts > latest[uid][1])):
+            latest[uid] = (s, ts)
+
+    uids = list(latest.keys())
+    genders: dict = {}
+    if uids:
+        for u in db.query(User).filter(User.id.in_(uids)).all():
+            genders[u.id] = (u.gender or "other").lower()
+
+    peer_scores = [
+        s for uid, (s, _) in latest.items()
+        if uid != user_id and (gender == "other" or genders.get(uid, "other") == gender)
+    ]
+    if not peer_scores:
+        peer_scores = [s for uid, (s, _) in latest.items() if uid != user_id]
+
+    total = len(peer_scores)
+    if total == 0:
+        return {"percentile": None, "peer_count": 0, "gender": gender, "rank_label": rank_label(None)}
+
+    below = sum(1 for s in peer_scores if s < score)
+    equal = sum(1 for s in peer_scores if s == score)
+    percentile = round((below + 0.5 * equal) / total * 100, 1)
+
+    return {
+        "percentile": percentile,
+        "peer_count": total,
+        "gender": gender,
+        "rank_label": rank_label(percentile),
+    }
+
+
+@router.get("/{photo_id}/insights")
+async def get_insights(
+    photo_id: str,
+    current_user: User = Depends(require_pro),
+    db: Session = Depends(get_db)
+):
+    """Pro/Elite: Glow-Up Forecast, Percentile Rank and Look-Alike Archetype."""
+    photo = _get_scored_photo(photo_id, current_user, db)
+    details = photo.analysis_details or {}
+    breakdown = details.get("category_breakdown") or {}
+    if not isinstance(breakdown, dict):
+        breakdown = {}
+
+    gender = (current_user.gender or "other").lower()
+
+    return {
+        "photo_id": photo.id,
+        "forecast": build_forecast(photo.score, current_user.current_day),
+        "percentile": _percentile(photo.score, gender, current_user.id, db),
+        "archetype": build_archetype(photo.score, photo.face_shape, gender, breakdown),
+    }
+
+
+@router.get("/{photo_id}/harmony")
+async def get_harmony(
+    photo_id: str,
+    current_user: User = Depends(require_elite),
+    db: Session = Depends(get_db)
+):
+    """Elite: Golden-Ratio Harmony Map, Weekly Blueprint and Shareable Card."""
+    photo = _get_scored_photo(photo_id, current_user, db)
+    details = photo.analysis_details or {}
+    breakdown = details.get("category_breakdown") or {}
+    if not isinstance(breakdown, dict):
+        breakdown = {}
+
+    gender = (current_user.gender or "other").lower()
+
+    scores = {
+        "symmetry": photo.symmetry_score,
+        "skin": photo.skin_score,
+        "jawline": photo.jawline_score,
+        "eyes": photo.eye_score,
+    }
+
+    weakest = sorted(breakdown, key=lambda k: breakdown.get(k, 0))[:3] if breakdown else []
+    archetype = build_archetype(photo.score, photo.face_shape, gender, breakdown)
+
+    top_key = max(breakdown, key=lambda k: breakdown.get(k, 0)) if breakdown else None
+    top_strength = top_key.replace("_", " ").title() if top_key else "natural balance"
+
+    label = get_score_label(photo.score)["label"]
+
+    return {
+        "photo_id": photo.id,
+        "golden_ratio": build_golden_ratio(breakdown, scores),
+        "blueprint": build_blueprint(weakest, gender),
+        "glow_up_card": build_glow_up_card(
+            current_user.full_name,
+            photo.score,
+            label,
+            archetype["name"],
+            top_strength,
+            current_user.current_day,
+            current_user.subscription_tier,
+        ),
     }

@@ -64,6 +64,48 @@ FEATURES: List[Dict[str, Any]] = [
         "teaser": "Stuck on a routine? Get a human answer.",
         "tier": "elite",
     },
+    {
+        "key": "glow_up_forecast",
+        "name": "Glow-Up Forecast",
+        "description": "Your projected score at Day 30, 60 and 90 — and the tier you're tracking toward.",
+        "teaser": "You're on track for a top-tier score by Day 90.",
+        "tier": "pro",
+    },
+    {
+        "key": "percentile_rank",
+        "name": "Percentile Rank",
+        "description": "Where your score stands against others like you — and the rank you can claim.",
+        "teaser": "See how your score ranks against everyone else.",
+        "tier": "pro",
+    },
+    {
+        "key": "archetype_match",
+        "name": "Look-Alike Archetype",
+        "description": "The celebrity-grade vibe your face projects — fun, gender-aware and shareable.",
+        "teaser": "Which archetype do you look like? Find out.",
+        "tier": "pro",
+    },
+    {
+        "key": "golden_ratio",
+        "name": "Golden-Ratio Harmony Map",
+        "description": "Your face measured against phi (1.618): thirds, symmetry, jawline, eyes and skin.",
+        "teaser": "See exactly how your face measures against the golden ratio.",
+        "tier": "elite",
+    },
+    {
+        "key": "weekly_blueprint",
+        "name": "Weekly Glow-Up Blueprint",
+        "description": "A day-by-day 7-day plan built around your weakest areas — the deep version of your daily coach.",
+        "teaser": "Your next 7 days, planned day by day.",
+        "tier": "elite",
+    },
+    {
+        "key": "glow_up_card",
+        "name": "Shareable Glow-Up Card",
+        "description": "A stylized score card with your archetype and rank — built to screenshot and share.",
+        "teaser": "Show off your score with a share-ready card.",
+        "tier": "elite",
+    },
 ]
 
 TIER_RANK = {"free": 0, "pro": 1, "elite": 2}
