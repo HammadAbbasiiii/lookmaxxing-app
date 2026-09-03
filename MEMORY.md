@@ -30,6 +30,7 @@ ML falls back to mock/heuristic if unavailable; in-memory rate limiter; CORS `*`
 ## Analytics & admin (added)
 - **Self-hosted analytics:** `POST /api/v1/track` (batched events, auth optional) + `AnalyticsEvent` model. Frontend: `lib/api/analytics.ts` `track()` + `components/AnalyticsTracker.tsx` (page_view / page_exit time-spent / session). Events carry no PII.
 - **Admin endpoints (gated by `require_admin`):** `/admin/overview`, `/admin/users`, `/admin/users/{id}`, `/admin/events/summary`. Access = `is_admin` flag **or** email in `ADMIN_EMAILS` env (comma-separated). Set `ADMIN_EMAILS` on Render to unlock.
+- **Admin user management:** `PATCH /api/v1/admin/users/{id}/admin` (promote/demote) + `PATCH /api/v1/admin/users/{id}/tier` (override free/pro/elite, sets `is_subscribed`). Both write `AdminAction` audit rows (`promote_admin`/`demote_admin`/`set_tier`); self-admin change is 400; idempotent. Admin list now returns `is_admin`. Frontend: Users table Admin buttons + Tier dropdown, and a "Manage user" card on `/admin/users/[id]` (`setUserAdmin`/`setUserTier` in `lib/api/admin.ts`), with `sonner` toasts + invalidation of `admin-users`/`admin-user`/`me`. Owner access via `ADMIN_EMAILS` (hammadabbasi732@gmail.com).
 - **Migration:** `main.py` auto-adds `users.is_admin` if missing; `analytics_events` table auto-created by `create_all`.
 - **Products page** now browses the full `product_database.json` via `/products/category/{cat}` + search + images (was: single personalized rec only).
 

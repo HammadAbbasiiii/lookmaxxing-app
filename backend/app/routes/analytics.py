@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.dependencies import get_current_user_optional, require_admin
-from app.models import AnalyticsEvent, Photo, Plan, User, UserCheckin
+from app.models import AdminAction, AnalyticsEvent, Photo, Plan, User, UserCheckin
 
 router = APIRouter(tags=["Analytics"])
 
@@ -39,6 +39,14 @@ class TrackEventIn(BaseModel):
 
 class TrackRequest(BaseModel):
     events: List[TrackEventIn]
+
+
+class SetUserAdminIn(BaseModel):
+    is_admin: bool
+
+
+class SetUserTierIn(BaseModel):
+    tier: str = Field(..., max_length=16)
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -176,6 +184,7 @@ async def admin_users(
                 "id": u.id,
                 "email": u.email,
                 "tier": u.subscription_tier,
+                "is_admin": u.is_admin,
                 "created_at": u.created_at.isoformat() if u.created_at else None,
                 "current_day": u.current_day,
                 "current_streak": u.current_streak,
@@ -344,6 +353,70 @@ async def admin_user_detail(
             "funnel_stage": stage,
             "session_count": _ev_count("session_start"),
         },
+    }
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Admin: user management (promote/demote admin, override tier)
+# ─────────────────────────────────────────────────────────────────────
+@router.patch("/admin/users/{user_id}/admin")
+async def set_user_admin(
+    user_id: str,
+    payload: SetUserAdminIn,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Promote or demote a user's admin flag. Admins cannot change themselves."""
+    if user_id == admin.id:
+        raise HTTPException(status_code=400, detail="You cannot change your own admin status.")
+    target = db.query(User).filter(User.id == user_id).first()
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    if target.is_admin == payload.is_admin:
+        return {"success": True, "user": {"id": target.id, "email": target.email, "is_admin": target.is_admin}}
+    target.is_admin = payload.is_admin
+    db.add(
+        AdminAction(
+            admin_email=admin.email,
+            action="promote_admin" if payload.is_admin else "demote_admin",
+            entity_type="user",
+            entity_id=target.id,
+            details={"email": target.email, "is_admin": payload.is_admin},
+        )
+    )
+    db.commit()
+    return {"success": True, "user": {"id": target.id, "email": target.email, "is_admin": target.is_admin}}
+
+
+@router.patch("/admin/users/{user_id}/tier")
+async def set_user_tier(
+    user_id: str,
+    payload: SetUserTierIn,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Override a user's subscription tier (grant/revoke Pro or Elite)."""
+    tier = payload.tier.strip().lower()
+    if tier not in ("free", "pro", "elite"):
+        raise HTTPException(status_code=400, detail="Tier must be one of: free, pro, elite")
+    target = db.query(User).filter(User.id == user_id).first()
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    target.subscription_tier = tier
+    target.is_subscribed = tier != "free"
+    db.add(
+        AdminAction(
+            admin_email=admin.email,
+            action="set_tier",
+            entity_type="user",
+            entity_id=target.id,
+            details={"email": target.email, "tier": tier},
+        )
+    )
+    db.commit()
+    return {
+        "success": True,
+        "user": {"id": target.id, "email": target.email, "tier": target.subscription_tier},
     }
 
 

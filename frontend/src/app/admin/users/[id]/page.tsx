@@ -2,11 +2,13 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
-import { getAdminUserDetail } from "@/lib/api/admin";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
+import { getAdminUserDetail, setUserAdmin, setUserTier } from "@/lib/api/admin";
 import { Card, CardTitle } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Spinner } from "@/components/ui/Skeleton";
+import { Button } from "@/components/ui/Button";
 
 const s = (v: unknown): string => (typeof v === "string" ? v : "");
 const n = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
@@ -19,6 +21,32 @@ export default function AdminUserDetail() {
     queryKey: ["admin-user", id],
     queryFn: () => getAdminUserDetail(id),
     enabled: Boolean(id),
+  });
+
+  const qc = useQueryClient();
+  const isTargetAdmin = detail.data?.user?.is_admin === true;
+  const targetTier = s(detail.data?.user?.tier) || "free";
+
+  const mutateAdmin = useMutation({
+    mutationFn: (isAdmin: boolean) => setUserAdmin(id, isAdmin),
+    onSuccess: (res, isAdmin) => {
+      toast.success(isAdmin ? `${res.email} is now an admin` : `${res.email} admin access revoked`);
+      qc.invalidateQueries({ queryKey: ["admin-user", id] });
+      qc.invalidateQueries({ queryKey: ["admin-users"] });
+      qc.invalidateQueries({ queryKey: ["me"] });
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Failed to update admin status"),
+  });
+
+  const mutateTier = useMutation({
+    mutationFn: (tier: string) => setUserTier(id, tier),
+    onSuccess: (res) => {
+      toast.success(`${res.email} tier set to ${res.tier}`);
+      qc.invalidateQueries({ queryKey: ["admin-user", id] });
+      qc.invalidateQueries({ queryKey: ["admin-users"] });
+      qc.invalidateQueries({ queryKey: ["me"] });
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Failed to update tier"),
   });
 
   if (detail.isLoading) {
@@ -46,6 +74,7 @@ export default function AdminUserDetail() {
   const facts: Array<[string, unknown]> = [
     ["Email", s(user.email)],
     ["Tier", s(user.tier)],
+    ["Admin", user.is_admin === true ? "Yes" : "No"],
     ["Onboarding complete", user.onboarding_completed === true ? "Yes" : "No"],
     ["Account created", user.created_at ? new Date(s(user.created_at)).toLocaleString() : "—"],
     ["Plan day", `${n(user.current_day) ?? 0} / 90`],
@@ -84,6 +113,33 @@ export default function AdminUserDetail() {
         <h1 className="text-2xl font-semibold text-ink">{s(user.email)}</h1>
         <Badge variant={stageVariant as "success" | "warning" | "muted"}>{stage}</Badge>
       </div>
+
+      <Card>
+        <div className="flex flex-wrap items-center gap-3">
+          <CardTitle className="mb-0 mr-2">Manage user</CardTitle>
+          <Button
+            variant={isTargetAdmin ? "danger" : "secondary"}
+            size="sm"
+            disabled={mutateAdmin.isPending}
+            onClick={() => mutateAdmin.mutate(!isTargetAdmin)}
+          >
+            {isTargetAdmin ? "Revoke admin" : "Make admin"}
+          </Button>
+          <label className="flex items-center gap-2 text-sm text-muted">
+            Tier
+            <select
+              value={targetTier}
+              disabled={mutateTier.isPending}
+              onChange={(e) => mutateTier.mutate(e.target.value)}
+              className="rounded-lg border border-border-soft bg-surface px-2 py-1 text-sm text-ink"
+            >
+              <option value="free">free</option>
+              <option value="pro">pro</option>
+              <option value="elite">elite</option>
+            </select>
+          </label>
+        </div>
+      </Card>
 
       <div className="grid gap-4 md:grid-cols-2">
         <Card>

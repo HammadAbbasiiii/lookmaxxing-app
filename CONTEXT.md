@@ -88,6 +88,9 @@ Base: `https://lookmaxx-api.onrender.com/api/v1`
 | POST | `/payments/checkout` | ✅ | Stripe Checkout session (503 if unconfigured) |
 | POST | `/payments/webhook` | ✅ | Stripe webhook → grants subscription |
 | POST | `/payments/test-upgrade` | ✅ | Dev-only subscription flip (ALLOW_TEST_PAYMENTS=1) |
+| GET | `/admin/overview` `/admin/users` `/admin/users/{id}` `/admin/events/summary` | ✅ admin | Analytics + user 360 (owner/`is_admin`/`ADMIN_EMAILS`) |
+| PATCH | `/admin/users/{id}/admin` | ✅ admin | Promote/demote admin flag (self-change 400, idempotent) |
+| PATCH | `/admin/users/{id}/tier` | ✅ admin | Override tier free/pro/elite (sets `is_subscribed`, audit-logged) |
 
 > Full routes: `backend/app/routes/*.py`. Response shapes: `backend/app/schemas.py`.
 

@@ -30,6 +30,7 @@ export interface AdminUserRow {
   id: string;
   email: string;
   tier: string;
+  is_admin: boolean;
   created_at: string | null;
   current_day: number;
   current_streak: number;
@@ -153,6 +154,7 @@ export async function getAdminUsers(
       id: s(w.id),
       email: s(w.email),
       tier: s(w.tier),
+      is_admin: w.is_admin === true,
       created_at: iso(w.created_at),
       current_day: n0(w.current_day),
       current_streak: n0(w.current_streak),
@@ -175,6 +177,30 @@ export async function getAdminUserDetail(id: string): Promise<AdminUserDetail> {
     analytics: rec(r.analytics),
     profile: rec(r.profile),
   };
+}
+
+export async function setUserAdmin(
+  id: string,
+  isAdmin: boolean,
+): Promise<{ id: string; email: string; is_admin: boolean }> {
+  const data = await apiFetch<unknown>(`/admin/users/${encodeURIComponent(id)}/admin`, {
+    method: "PATCH",
+    body: { is_admin: isAdmin },
+  });
+  const w = rec(rec(data).user);
+  return { id: s(w.id), email: s(w.email), is_admin: w.is_admin === true };
+}
+
+export async function setUserTier(
+  id: string,
+  tier: string,
+): Promise<{ id: string; email: string; tier: string }> {
+  const data = await apiFetch<unknown>(`/admin/users/${encodeURIComponent(id)}/tier`, {
+    method: "PATCH",
+    body: { tier },
+  });
+  const w = rec(rec(data).user);
+  return { id: s(w.id), email: s(w.email), tier: s(w.tier) };
 }
 
 // ── Funnel / retention / events ──────────────────────────────────────

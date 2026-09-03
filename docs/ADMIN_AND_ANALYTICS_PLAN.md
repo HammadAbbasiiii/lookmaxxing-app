@@ -181,3 +181,26 @@ A new `/admin` section (reusing the black+gold design system), protected by `is_
 2. **Placement:** a separate admin URL, or a `/admin` page inside the same app (simpler, recommended for MVP)?
 3. **Products:** include an affiliate link + commission field per product (recommended — yes)?
 
+
+---
+
+## 10. Implemented so far (addendum)
+
+### Admin user management (owner controls)
+- `PATCH /api/v1/admin/users/{user_id}/admin` — promote/demote a user's admin flag (body `{is_admin: bool}`). Admins cannot change themselves (400); unknown user 404; idempotent when the flag already matches.
+- `PATCH /api/v1/admin/users/{user_id}/tier` — override subscription tier (body `{tier: "free"|"pro"|"elite"}`). Normalizes `strip().lower()`; sets `is_subscribed = tier != "free"`; invalid tier 400.
+- Every change writes an `AdminAction` audit row (`promote_admin` / `demote_admin` / `set_tier`).
+- Admin user list (`GET /admin/users`) now returns `is_admin` per row.
+
+### Admin dashboard access
+- Owner email `hammadabbasi732@gmail.com` is in `ADMIN_EMAILS`, so the admin UI is reachable by logging in as that email (no `is_admin` flag required).
+- `/admin` UI gate checks `me.is_admin || me.email in ADMIN_EMAILS` via an `isAdminUser()` helper.
+
+### Frontend controls
+- Admin Users table: per-row **Admin** buttons (Make admin / Revoke) and a **Tier** dropdown (free/pro/elite). The signed-in user's own row is readonly ("Admin (you)" / "you") with no self-toggle.
+- User detail page (`/admin/users/[id]`): a **Manage user** card with the same admin toggle + tier select, which updates the detail facts and invalidates `admin-users`, `admin-user`, and `me` queries (so TopNav/admin gating stays in sync).
+- API helpers in `frontend/src/lib/api/admin.ts`: `setUserAdmin()`, `setUserTier()`.
+
+### Tests
+- `backend/tests/test_admin.py` covers 403 gating, promote/demote + audit rows, idempotency, self-change 400, unknown-user 404, tier free/pro/elite + `is_subscribed`, invalid tier 400, and case-insensitive normalization. (Verified over HTTP in-session; full pytest run requires the complete backend env with ML deps.)
+
