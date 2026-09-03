@@ -54,6 +54,29 @@ export default function AdminUsers() {
         <p className="text-sm text-muted">Search by email and open any user for a full 360° view.</p>
       </div>
 
+      <Card className="border-gold/20">
+        <h2 className="text-sm font-semibold text-ink">What these controls do</h2>
+        <dl className="mt-3 grid gap-4 text-sm sm:grid-cols-2">
+          <div>
+            <dt className="font-medium text-ink">Make admin / Revoke</dt>
+            <dd className="mt-1 text-muted">
+              Grants or removes dashboard access (the <code>is_admin</code> flag). Takes effect
+              instantly — a revoked admin's next admin request returns 403. You can&apos;t revoke
+              your own access (self-lockout protection), and emails listed in{" "}
+              <code>ADMIN_EMAILS</code> always keep access regardless of this flag.
+            </dd>
+          </div>
+          <div>
+            <dt className="font-medium text-ink">Tier</dt>
+            <dd className="mt-1 text-muted">
+              Overrides the user&apos;s subscription. Setting <b>free</b> immediately switches off
+              paid access (they lose Pro/Elite). <b>pro</b> / <b>elite</b> grants premium access
+              and marks them subscribed. This overrides Stripe until their next billing event.
+            </dd>
+          </div>
+        </dl>
+      </Card>
+
       <form
         onSubmit={(e) => {
           e.preventDefault();

@@ -138,6 +138,11 @@ export default function AdminUserDetail() {
               <option value="elite">elite</option>
             </select>
           </label>
+          <p className="w-full text-xs text-muted">
+            Make admin grants instant dashboard access; revoke takes effect immediately. Changing
+            the tier overrides their subscription — <b>free</b> also turns off paid access, while{" "}
+            <b>pro</b>/<b>elite</b> grants it. Every change is written to the audit log.
+          </p>
         </div>
       </Card>
 

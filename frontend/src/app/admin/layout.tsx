@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
+import { ArrowLeft } from "lucide-react";
 import { useAdminGate } from "@/hooks/useAdminGate";
 import { Spinner } from "@/components/ui/Skeleton";
 import { cn } from "@/lib/utils";
@@ -63,6 +64,12 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
               </Link>
             ))}
           </nav>
+          <Link
+            href="/dashboard"
+            className="ml-auto flex shrink-0 items-center gap-1.5 rounded-lg border border-border-soft px-3 py-1.5 text-xs font-medium text-muted transition-colors hover:border-gold/40 hover:text-ink"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" aria-hidden /> View app as user
+          </Link>
         </div>
       </header>
       <main className="mx-auto max-w-6xl px-4 py-6">{children}</main>
