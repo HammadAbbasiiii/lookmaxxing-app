@@ -6,6 +6,7 @@ services:
     plan: starter
     region: frankfurt
     buildCommand: |
+      set -e
       cd backend
       python -m venv venv
       source venv/bin/activate
@@ -15,7 +16,8 @@ services:
       mkdir -p app/ml
       curl -fsSL -o app/ml/face_landmarker.task \
         https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/latest/face_landmarker.task
-      echo "✅ MediaPipe model pre-downloaded"
+      test -s app/ml/face_landmarker.task || { echo "❌ MediaPipe model download failed/empty"; exit 1; }
+      echo "✅ MediaPipe model pre-downloaded ($(wc -c < app/ml/face_landmarker.task) bytes)"
     startCommand: |
       cd backend
       source venv/bin/activate

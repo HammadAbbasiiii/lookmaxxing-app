@@ -81,7 +81,13 @@ def _detect_face(image_bytes, w, h):
             result = detect_face_landmarks(image_bytes)
             if result.get("success") and result.get("landmarks"):
                 return True, _landmarks_ratio(result["landmarks"], w, h)
-            return False, None
+            # MediaPipe is loaded but found no face (e.g. corrupt model file or
+            # inference failure). Fall through to the Haar cascade backup below
+            # instead of rejecting every upload outright.
+            logger.warning(
+                "MediaPipe found no face (%s) — falling back to Haar cascade",
+                result.get("error", "no error detail"),
+            )
         except Exception as exc:
             logger.warning(f"MediaPipe face validation failed: {exc}")
 

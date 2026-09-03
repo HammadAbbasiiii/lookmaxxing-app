@@ -11,6 +11,8 @@ python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
 bcrypt==4.0.1
 Pillow>=10.4.0
+# Pin numpy to 1.26.x — mediapipe 0.10.x inference can break under numpy>=2.0.
+numpy==1.26.4
 opencv-python>=4.10.0.84
 mediapipe>=0.10.30
 psycopg2-binary>=2.9.10

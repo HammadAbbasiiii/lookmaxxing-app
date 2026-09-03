@@ -17,7 +17,10 @@ _MODEL_CANDIDATES = [
 
 MODEL_ASSET_PATH = None
 for candidate in _MODEL_CANDIDATES:
-    if os.path.exists(candidate):
+    # A truncated/empty download (e.g. a build-time curl failure) still "exists"
+    # on disk, so require a non-trivial size. The float16 landmarker is ~3.6 MB;
+    # anything under 1 KB is definitely broken and must not enable MediaPipe.
+    if os.path.exists(candidate) and os.path.getsize(candidate) > 1024:
         MODEL_ASSET_PATH = candidate
         break
 
