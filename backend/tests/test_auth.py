@@ -150,3 +150,28 @@ class TestAuth:
 
         assert response.status_code == 401
         assert "Not authenticated" in response.json().get("detail")
+
+    def test_signup_trims_email_whitespace(self, client):
+        """Signup with padded email/password should trim and normalize."""
+        response = client.post(
+            "/api/v1/auth/signup",
+            json={"email": "  Trimmed@Example.com  ", "password": "  testpass123  "},
+        )
+
+        assert response.status_code == 200
+        assert response.json()["email"] == "trimmed@example.com"
+
+    def test_login_trims_email_whitespace(self, client):
+        """Login with padded email should still find the normalized account."""
+        client.post(
+            "/api/v1/auth/signup",
+            json={"email": "padded@example.com", "password": "testpass123"},
+        )
+
+        response = client.post(
+            "/api/v1/auth/login",
+            data={"username": "  padded@example.com  ", "password": "testpass123"},
+        )
+
+        assert response.status_code == 200
+        assert "access_token" in response.json()

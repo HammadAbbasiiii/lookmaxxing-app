@@ -16,9 +16,12 @@ struct EmptyDashboardView: View {
             Spacer()
 
             // Icon
-            Image(systemName: "camera.fill")
-                .font(.system(size: 56))
-                .foregroundColor(LXColor.softGray)
+            ZStack {
+                GlowOrb(size: 180)
+                Image(systemName: "camera.fill")
+                    .font(.system(size: 56))
+                    .foregroundColor(LXColor.softGray)
+            }
 
             // Title
             Text("Welcome back, \(appState.currentUser?.username ?? "User")!")
@@ -34,6 +37,9 @@ struct EmptyDashboardView: View {
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 40)
 
+            MotivationalQuoteView(interval: 5)
+                .padding(.horizontal, 40)
+
             // CTA
             Button(action: onUpload) {
                 HStack(spacing: 8) {
@@ -45,8 +51,9 @@ struct EmptyDashboardView: View {
                 .frame(maxWidth: .infinity)
                 .frame(height: LXConstants.buttonHeight)
                 .background(LXColor.gold)
-                .cornerRadius(16)
+                .cornerRadius(LXConstants.cornerRadius)
             }
+            .buttonStyle(PressableButtonStyle())
             .padding(.horizontal, 40)
 
             Spacer()

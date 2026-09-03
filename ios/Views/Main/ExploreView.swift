@@ -14,12 +14,7 @@ struct ExploreView: View {
                 LXColor.black.ignoresSafeArea()
 
                 if case .loading = appState.exploreState, appState.exploreData == nil {
-                    VStack(spacing: 16) {
-                        ProgressView().tint(LXColor.gold)
-                        Text("Loading...")
-                            .lxBody()
-                            .foregroundColor(LXColor.white)
-                    }
+                    LXLoadingView(title: "Curating your feed")
                 } else if case .error(let err) = appState.exploreState, appState.exploreData == nil {
                     VStack(spacing: 16) {
                         Text("Something went wrong")

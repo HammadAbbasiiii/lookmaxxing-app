@@ -36,7 +36,7 @@ struct ProfileView: View {
                                     .padding(.horizontal, 12)
                                     .padding(.vertical, 4)
                                     .background(LXColor.gold.opacity(0.15))
-                                    .cornerRadius(12)
+                                    .cornerRadius(LXConstants.cornerRadius)
                             }
                         }
                         .padding(.top, 30)
@@ -68,21 +68,35 @@ struct ProfileView: View {
 
                         // Settings list
                         VStack(spacing: 0) {
-                            settingsRow(icon: "slider.horizontal.3", title: "My Plan", action: {
-                                // Switch to progress tab
-                            })
+                            Button(action: {
+                                appState.selectedTab = .plan
+                            }) {
+                                settingsRow(icon: "slider.horizontal.3", title: "My Plan")
+                            }
                             Divider().background(LXColor.white.opacity(0.1))
-                            settingsRow(icon: "chart.bar.fill", title: "Score History", action: {})
+                            NavigationLink {
+                                ScoreHistoryView()
+                            } label: {
+                                settingsRow(icon: "chart.bar.fill", title: "Score History")
+                            }
                             Divider().background(LXColor.white.opacity(0.1))
-                            settingsRow(icon: "photo.on.rectangle", title: "Progress Photos", action: {})
+                            NavigationLink {
+                                ProgressPhotosView()
+                            } label: {
+                                settingsRow(icon: "photo.on.rectangle", title: "Progress Photos")
+                            }
                             Divider().background(LXColor.white.opacity(0.1))
                             NavigationLink {
                                 SettingsView()
                             } label: {
-                                settingsRow(icon: "gearshape.fill", title: "Settings", action: {})
+                                settingsRow(icon: "gearshape.fill", title: "Settings")
                             }
                             Divider().background(LXColor.white.opacity(0.1))
-                            settingsRow(icon: "questionmark.circle", title: "Help & Support", action: {})
+                            NavigationLink {
+                                HelpView()
+                            } label: {
+                                settingsRow(icon: "questionmark.circle", title: "Help & Support")
+                            }
                         }
                         .background(LXColor.deepNavy)
                         .cornerRadius(LXConstants.cornerRadius)
@@ -93,8 +107,12 @@ struct ProfileView: View {
                             Text("Sign Out")
                                 .lxBody()
                                 .foregroundColor(LXColor.red)
+                                .frame(maxWidth: .infinity)
+                                .frame(height: LXConstants.buttonHeight)
+                                .background(LXColor.red.opacity(0.12))
+                                .cornerRadius(LXConstants.cornerRadius)
                         }
-                        .padding()
+                        .padding(.horizontal, LXConstants.standardPadding)
 
                         Spacer().frame(height: 40)
                     }
@@ -105,21 +123,20 @@ struct ProfileView: View {
         }
     }
 
-    private func settingsRow(icon: String, title: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack(spacing: 12) {
-                Image(systemName: icon)
-                    .foregroundColor(LXColor.gold)
-                    .frame(width: 24)
-                Text(title)
-                    .lxBody()
-                    .foregroundColor(LXColor.white)
-                Spacer()
-                Image(systemName: "chevron.right")
-                    .foregroundColor(LXColor.white.opacity(0.3))
-            }
-            .padding()
+    private func settingsRow(icon: String, title: String) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .foregroundColor(LXColor.gold)
+                .frame(width: 24)
+            Text(title)
+                .lxBody()
+                .foregroundColor(LXColor.white)
+            Spacer()
+            Image(systemName: "chevron.right")
+                .foregroundColor(LXColor.white.opacity(0.3))
         }
+        .padding()
+        .contentShape(Rectangle())
     }
 }
 

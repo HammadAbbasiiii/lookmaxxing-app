@@ -17,7 +17,7 @@ struct LoginView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                LXColor.black.ignoresSafeArea()
+                GoldGradientBackground()
 
                 ScrollView {
                     VStack(spacing: 24) {
@@ -38,7 +38,7 @@ struct LoginView: View {
                         .padding(.top, 32)
 
                         // Fields
-                        VStack(spacing: 16) {
+                        VStack(spacing: 20) {
                             if showSignUp {
                                 LXTextField(placeholder: "Full Name (optional)", text: $fullName)
                             }
@@ -71,6 +71,7 @@ struct LoginView: View {
                                 .background(LXColor.gold)
                                 .cornerRadius(LXConstants.cornerRadius)
                             }
+                            .buttonStyle(PressableButtonStyle())
                             .disabled(isLoading)
 
                             // Toggle between sign up / login
@@ -83,6 +84,7 @@ struct LoginView: View {
                             }
                             .lxCaption()
                             .foregroundColor(LXColor.gold)
+                            .padding(.top, 8)
                         }
                         .padding(.horizontal, LXConstants.standardPadding)
                     }
@@ -150,6 +152,12 @@ struct LoginView: View {
                 )
             } else {
                 await appState.login(email: email, password: password)
+            }
+
+            if case .error = appState.authState {
+                Haptics.warning()
+            } else if appState.isAuthenticated {
+                Haptics.success()
             }
         }
     }

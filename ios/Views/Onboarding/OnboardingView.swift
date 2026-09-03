@@ -10,13 +10,14 @@ struct OnboardingView: View {
 
     var body: some View {
         ZStack {
-            LXColor.black.ignoresSafeArea()
+            GoldGradientBackground()
 
             VStack(spacing: 40) {
                 Spacer()
 
                 // Hero image placeholder
                 ZStack {
+                    GlowOrb(size: 260)
                     Circle()
                         .fill(LXColor.deepNavy)
                         .frame(width: 200, height: 200)
@@ -49,6 +50,7 @@ struct OnboardingView: View {
                     .foregroundColor(LXColor.black)
                     .cornerRadius(LXConstants.cornerRadius)
                 }
+                .buttonStyle(PressableButtonStyle())
                 .padding(.horizontal, LXConstants.standardPadding)
 
                 // Low-commitment skip to login

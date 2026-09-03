@@ -21,13 +21,15 @@ struct PlanView: View {
                 LXColor.black.ignoresSafeArea()
 
                 if case .loading = appState.planState, appState.currentPlan == nil {
-                    VStack(spacing: 16) {
-                        ProgressView().tint(LXColor.gold)
+                    VStack(spacing: 24) {
+                        LXSpinnerRing(size: 96)
                         Text(loadingSteps[min(loadingStep, loadingSteps.count - 1)])
-                            .lxBody()
+                            .lxH3()
                             .foregroundColor(LXColor.white)
                             .multilineTextAlignment(.center)
-                            .animation(.easeInOut(duration: 0.4), value: loadingStep)
+                            .animation(LXAnimation.fadeIn, value: loadingStep)
+                        MotivationalQuoteView(interval: 4)
+                            .padding(.horizontal, LXConstants.standardPadding)
                         Text("This can take up to 30 seconds the first time.")
                             .lxCaption()
                             .foregroundColor(LXColor.white.opacity(0.5))

@@ -34,7 +34,7 @@ struct ScoreHistoryView: View {
             } else if case .error(let err) = appState.scoreHistoryState {
                 errorView(err)
             } else {
-                ProgressView().tint(LXColor.gold)
+                LXLoadingView(title: "Loading your score history")
             }
         }
         .navigationTitle("Score History")
@@ -81,7 +81,9 @@ struct ScoreHistoryView: View {
 
     private func header(_ data: ScoreHistoryResponse) -> some View {
         VStack(spacing: 8) {
-            Text(data.currentScore.map { String(format: "%.0f", $0) } ?? "—")
+            CountUpText(target: data.currentScore ?? 0,
+                        suffix: "",
+                        decimalPlaces: 0)
                 .font(.system(size: 56, weight: .bold, design: .rounded))
                 .foregroundColor(LXColor.gold)
             Text("Current Score")
@@ -95,6 +97,12 @@ struct ScoreHistoryView: View {
                 }
                 .lxCaption()
                 .foregroundColor(improvement >= 0 ? LXColor.green : LXColor.red)
+
+                Text(Motivation.line(for: data.currentScore ?? 0))
+                    .font(LXFont.motivational())
+                    .foregroundColor(LXColor.white.opacity(0.8))
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, LXConstants.standardPadding)
             }
         }
     }
@@ -252,7 +260,7 @@ struct ProgressPhotosView: View {
                 }
                 .padding()
             } else {
-                ProgressView().tint(LXColor.gold)
+                LXLoadingView(title: "Loading your photos")
             }
         }
         .navigationTitle("Progress Photos")
@@ -398,7 +406,11 @@ struct ProgressComparisonView: View {
 
     var body: some View {
         ZStack {
-            LXColor.black.ignoresSafeArea()
+            GoldGradientBackground()
+
+            if let comparison = appState.progressComparison, comparison.trend == "improving" {
+                ConfettiView()
+            }
 
             if let comparison = appState.progressComparison {
                 if let baseline = comparison.baseline, let latest = comparison.latest {
@@ -409,7 +421,7 @@ struct ProgressComparisonView: View {
             } else if case .error = appState.progressComparisonState {
                 noComparisonView
             } else {
-                ProgressView().tint(LXColor.gold)
+                LXLoadingView(title: "Preparing your comparison")
             }
         }
         .navigationTitle("Before & After")
@@ -446,11 +458,22 @@ struct ProgressComparisonView: View {
                     trendBadge(trend, weeks: comparison.weeksProgressed)
                 }
 
+                Text(Motivation.line(for: latest.score ?? 0))
+                    .font(LXFont.motivational())
+                    .foregroundColor(LXColor.white.opacity(0.8))
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, LXConstants.standardPadding)
+
                 Spacer().frame(height: 40)
             }
             .padding(.top, 20)
         }
         .refreshable { await appState.fetchProgressComparison() }
+        .onAppear {
+            if comparison.trend == "improving" {
+                Haptics.celebration()
+            }
+        }
     }
 
     private func scoreChangeHeader(_ comparison: ProgressComparison) -> some View {

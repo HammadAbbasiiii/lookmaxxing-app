@@ -28,8 +28,13 @@ async def signup(
     - **password**: Minimum 6 characters
     - **full_name**: Optional display name
     """
+    # Normalize credentials (defense-in-depth; the iOS client also trims).
+    # Lowercasing the email prevents duplicate accounts via case variations.
+    email = user_data.email.strip().lower()
+    password = user_data.password.strip()
+
     # Check if user already exists
-    existing_user = db.query(User).filter(User.email == user_data.email).first()
+    existing_user = db.query(User).filter(User.email == email).first()
     if existing_user:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -38,8 +43,8 @@ async def signup(
     
     # Create new user
     new_user = User(
-        email=user_data.email,
-        hashed_password=get_password_hash(user_data.password),
+        email=email,
+        hashed_password=get_password_hash(password),
         full_name=user_data.full_name,
         is_subscribed=False,
         subscription_tier="free",
@@ -62,8 +67,12 @@ async def login(
     
     Use username field for email and password for password.
     """
+    # Normalize credentials to match signup normalization.
+    email = form_data.username.strip().lower()
+    password = form_data.password.strip()
+
     # Find user by email
-    user = db.query(User).filter(User.email == form_data.username).first()
+    user = db.query(User).filter(User.email == email).first()
     
     if not user:
         raise HTTPException(
@@ -73,7 +82,7 @@ async def login(
         )
     
     # Verify password
-    if not verify_password(form_data.password, user.hashed_password):
+    if not verify_password(password, user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",

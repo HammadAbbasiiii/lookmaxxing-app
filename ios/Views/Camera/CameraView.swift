@@ -168,12 +168,14 @@ struct PhotoPreviewView: View {
                         .foregroundColor(LXColor.white)
                         .cornerRadius(LXConstants.cornerRadius)
                     }
+                    .buttonStyle(PressableButtonStyle())
 
                     Button(action: {
                         Task {
                             if let img = appState.currentPhoto {
                                 let success = await appState.uploadPhoto(image: img)
                                 if success {
+                                    Haptics.success()
                                     navigateToProcessing = true
                                 }
                             }
@@ -194,6 +196,7 @@ struct PhotoPreviewView: View {
                         .foregroundColor(LXColor.black)
                         .cornerRadius(LXConstants.cornerRadius)
                     }
+                    .buttonStyle(PressableButtonStyle())
                     .disabled(appState.isUploading)
                 }
                 .padding(.horizontal, LXConstants.standardPadding)

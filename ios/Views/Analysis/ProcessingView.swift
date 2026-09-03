@@ -24,6 +24,8 @@ struct ProcessingView: View {
 
                 // Animated spinner
                 ZStack {
+                    GlowOrb(size: 220)
+
                     Circle()
                         .strokeBorder(LXColor.gold.opacity(0.2), lineWidth: 4)
                         .frame(width: 160, height: 160)
@@ -52,6 +54,9 @@ struct ProcessingView: View {
                     .id(factIndex)
                     .transition(.asymmetric(insertion: .move(edge: .trailing), removal: .move(edge: .leading)))
                     .animation(.easeInOut(duration: 0.5), value: factIndex)
+
+                MotivationalQuoteView(interval: 4.5)
+                    .padding(.horizontal, LXConstants.standardPadding)
 
                 // Error state with retry
                 if showError {
@@ -132,6 +137,7 @@ struct ProcessingView: View {
 
             if result != nil {
                 progress = 1.0
+                Haptics.success()
                 // Small delay to show completed progress bar
                 try? await Task.sleep(nanoseconds: 500_000_000)
                 navigateToScore = true
@@ -165,7 +171,11 @@ struct ScoreView: View {
 
     var body: some View {
         ZStack {
-            LXColor.black.ignoresSafeArea()
+            GoldGradientBackground()
+
+            if shouldCelebrate {
+                ConfettiView()
+            }
 
             ScrollView {
                 VStack(spacing: 32) {
@@ -177,6 +187,8 @@ struct ScoreView: View {
 
                     // Score circle
                     ZStack {
+                        GlowOrb(size: 240)
+
                         Circle()
                             .strokeBorder(LXColor.gold.opacity(0.3), lineWidth: 6)
                             .frame(width: 200, height: 200)
@@ -189,7 +201,9 @@ struct ScoreView: View {
                             .animation(.easeOut(duration: 1.5), value: animateScore)
 
                         VStack(spacing: 4) {
-                            Text(String(format: "%.0f", appState.currentScore?.overallScore ?? 0))
+                            CountUpText(target: appState.currentScore?.overallScore ?? 0,
+                                        suffix: "",
+                                        decimalPlaces: 0)
                                 .font(.system(size: 56, weight: .bold, design: .rounded))
                                 .foregroundColor(LXColor.gold)
                             Text("/ 100")
@@ -208,6 +222,12 @@ struct ScoreView: View {
                             .background(LXColor.gold.opacity(0.15))
                             .cornerRadius(20)
                     }
+
+                    Text(Motivation.line(for: appState.currentScore?.overallScore ?? 0))
+                        .font(LXFont.motivational())
+                        .foregroundColor(LXColor.white.opacity(0.8))
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, LXConstants.standardPadding)
 
                     // Category scores
                     if let categories = appState.currentScore?.categoryScores, !categories.isEmpty {
@@ -298,7 +318,14 @@ struct ScoreView: View {
                 }
             }
         }
-        .onAppear { animateScore = true }
+        .onAppear {
+            animateScore = true
+            if shouldCelebrate { Haptics.celebration() } else { Haptics.success() }
+        }
+    }
+
+    private var shouldCelebrate: Bool {
+        (appState.currentScore?.overallScore ?? 0) >= 85
     }
 
     private var scorePercent: Double {

@@ -14,12 +14,7 @@ struct DashboardView: View {
                 LXColor.black.ignoresSafeArea()
 
                 if case .loading = appState.dashboardState, appState.dashboardData == nil {
-                    VStack(spacing: 16) {
-                        ProgressView().tint(LXColor.gold)
-                        Text("Loading...")
-                            .lxBody()
-                            .foregroundColor(LXColor.white)
-                    }
+                    LXLoadingView(title: "Preparing your dashboard")
                 } else if !hasAnalysisData {
                     EmptyDashboardView(onUpload: { showCamera = true })
                 } else {
@@ -44,6 +39,7 @@ struct DashboardView: View {
                                         .background(LXColor.deepNavy)
                                         .clipShape(Circle())
                                 }
+                                .buttonStyle(PressableButtonStyle())
                             }
                             .padding(.horizontal, LXConstants.standardPadding)
                             .padding(.top, 16)
@@ -52,6 +48,7 @@ struct DashboardView: View {
                                 HStack(spacing: 16) {
                                     // Streak
                                     VStack(spacing: 4) {
+                                        StreakFlameView(size: 30)
                                         Text("\(data.currentStreak)")
                                             .font(.system(size: 40, weight: .bold, design: .rounded))
                                             .foregroundColor(LXColor.gold)
@@ -97,6 +94,23 @@ struct DashboardView: View {
                                     .foregroundColor(delta >= 0 ? LXColor.green : LXColor.red)
                                     .padding(.horizontal, LXConstants.standardPadding)
                                 }
+
+                                // Daily motivation
+                                VStack(spacing: 8) {
+                                    HStack {
+                                        Text("DAILY MOTIVATION")
+                                            .lxCaption()
+                                            .foregroundColor(LXColor.gold.opacity(0.7))
+                                        Spacer()
+                                        Image(systemName: "sparkles")
+                                            .foregroundColor(LXColor.gold.opacity(0.6))
+                                    }
+                                    MotivationalQuoteView(quotes: Motivation.dailyTips, interval: 4)
+                                }
+                                .padding()
+                                .background(LXColor.deepNavy)
+                                .cornerRadius(LXConstants.cornerRadius)
+                                .padding(.horizontal, LXConstants.standardPadding)
 
                                 // Today's tasks
                                 if !data.tasksToday.isEmpty {
