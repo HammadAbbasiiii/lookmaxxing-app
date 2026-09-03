@@ -149,6 +149,21 @@ export default function ResultsPage() {
         />
       ) : null}
 
+      <Link
+        href="/peak-you"
+        className="mt-6 block rounded-card card-border p-5 transition-colors hover:border-gold/40"
+      >
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h3 className="font-display text-base font-semibold text-ink">Peak You</h3>
+            <p className="mt-1 text-sm text-muted">
+              Your peak score, day-by-day ascent and the person you&apos;re becoming.
+            </p>
+          </div>
+          <ArrowRight className="h-5 w-5 shrink-0 text-gold" aria-hidden />
+        </div>
+      </Link>
+
       {strengths.length || weaknesses.length ? (
         <div className="mt-6 grid gap-4 sm:grid-cols-2">
           {strengths.length ? (

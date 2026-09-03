@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowUpRight, Camera, Check, Flame, ListChecks, Lock, ShoppingBag, Sparkles } from "lucide-react";
+import { ArrowUpRight, Camera, Check, Flame, ListChecks, Lock, Rocket, ShoppingBag, Sparkles } from "lucide-react";
 import { getDashboard } from "@/lib/api/endpoints";
 import { useEntitlements } from "@/hooks/useEntitlements";
 import { STALE, scoreLabel } from "@/lib/constants";
@@ -294,6 +294,7 @@ export default function DashboardPage() {
         {[
           { href: "/upload", label: "Upload new photo", sub: "Track a new check-in", icon: Camera },
           { href: "/plan", label: "View plan", sub: "Today's 2-minute tasks", icon: ListChecks },
+          { href: "/peak-you", label: "Peak You", sub: "Meet your future self", icon: Rocket },
           { href: "/glow-up", label: "Your Glow-Up", sub: "Forecast, rank & harmony", icon: Sparkles },
           { href: "/products", label: "Shop products", sub: "Matched to your goals", icon: ShoppingBag },
         ].map(({ href, label, sub, icon: Icon }) => (

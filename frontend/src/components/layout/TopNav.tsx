@@ -16,6 +16,7 @@ const LINKS = [
   { href: "/plan", label: "Plan" },
   { href: "/coach", label: "Coach" },
   { href: "/glow-up", label: "Glow-Up" },
+  { href: "/peak-you", label: "Peak You" },
   { href: "/progress", label: "Progress" },
   { href: "/explore", label: "Explore" },
   { href: "/products", label: "Products" },
