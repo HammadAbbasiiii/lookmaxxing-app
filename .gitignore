@@ -1,12 +1,19 @@
 # macOS
 .DS_Store
 
-# Xcode / build artifacts
-ios/build/
-ios/DerivedData/
-xcuserdata/
-*.xcuserstate
-
 # Python
 __pycache__/
 *.py[cod]
+.venv/
+venv/
+.env
+.env.production
+*.db
+.pytest_cache/
+
+# Node / frontend
+node_modules/
+.next/
+dist/
+build/
+.env.local
