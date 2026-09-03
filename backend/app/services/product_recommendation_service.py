@@ -16,6 +16,10 @@ import json
 import os
 from typing import Optional
 
+from sqlalchemy.orm import Session
+
+from app.models import Product
+
 # ─── Category display name mapping ───
 CATEGORY_DISPLAY = {
     "skin_quality": "Skin Quality",
@@ -39,13 +43,43 @@ RATIONALE_TEMPLATES = {
 
 # ─── Load product database ───
 def _load_product_database() -> list[dict]:
-    """Load products from the JSON database file."""
+    """Load products from the JSON database file (dev/seed fallback)."""
     db_path = os.path.join(os.path.dirname(__file__), "product_database.json")
     try:
         with open(db_path, "r") as f:
             return json.load(f)
     except (FileNotFoundError, json.JSONDecodeError):
         return []
+
+
+def _product_to_dict(p: "Product") -> dict:
+    """Map a DB Product row to the dict shape the engine + clients expect."""
+    return {
+        "id": p.id,
+        "name": p.name,
+        "brand": p.brand,
+        "category": p.category,
+        "price": p.price,
+        "currency": p.currency,
+        "affiliate_link": p.affiliate_url,
+        "image_url": p.image_url,
+        "rating": p.rating,
+        "reviews_count": p.review_count or 0,
+        "tags": p.tags or [],
+        "recommended_for": p.recommended_for or [],
+        "tier": p.tier,
+        "social_proof": p.social_proof or p.description,
+        "commission": p.commission,
+    }
+
+
+def _load_products(db: Optional[Session] = None) -> list[dict]:
+    """Return active products as dicts — prefers the DB, falls back to JSON."""
+    if db is not None:
+        rows = db.query(Product).filter(Product.is_active.is_(True)).all()
+        if rows:
+            return [_product_to_dict(p) for p in rows]
+    return _load_product_database()
 
 
 # ─── Sort key helpers ───
@@ -109,6 +143,7 @@ def get_product_recommendations(
     user_profile: Optional[dict] = None,
     max_products: int = 8,
     budget_tier: Optional[str] = None,
+    db: Optional[Session] = None,
 ) -> list[dict]:
     """
     Generate personalised product recommendations.
@@ -132,7 +167,7 @@ def get_product_recommendations(
             "tier": "mid_range"
         }
     """
-    products = _load_product_database()
+    products = _load_products(db)
     if not products:
         return []
 
@@ -328,7 +363,7 @@ def _format_focus(score: float, tags: list[str], category: str) -> str:
     return fallbacks.get(category, "key areas of improvement")
 
 
-def get_products_by_category(category: str, tier: Optional[str] = None) -> list[dict]:
+def get_products_by_category(category: str, tier: Optional[str] = None, db: Optional[Session] = None) -> list[dict]:
     """
     Return all products for a given category, optionally filtered by budget tier.
 
@@ -340,16 +375,16 @@ def get_products_by_category(category: str, tier: Optional[str] = None) -> list[
     Returns:
         List of product dicts (full product objects).
     """
-    products = _load_product_database()
+    products = _load_products(db)
     result = [p for p in products if p.get("category") == category]
     if tier:
         result = [p for p in result if p.get("tier") == tier]
     return sorted(result, key=_sort_key_rating, reverse=True)
 
 
-def get_categories() -> list[dict]:
+def get_categories(db: Optional[Session] = None) -> list[dict]:
     """Return all available categories with display names and product counts."""
-    products = _load_product_database()
+    products = _load_products(db)
     cat_counts = {}
     for p in products:
         cat = p.get("category", "general")

@@ -37,6 +37,7 @@ class UserResponse(BaseModel):
     onboarding_completed: bool
     subscription_tier: str
     is_subscribed: bool
+    is_admin: bool
     total_checkins: int
     current_streak: int
     longest_streak: int
@@ -150,3 +151,42 @@ class APIResponse(BaseModel):
     success: bool
     message: str
     data: Optional[dict] = None
+
+
+# ──────────────────────────────────────────────────────────────────
+# Admin product schemas
+# ──────────────────────────────────────────────────────────────────
+class ProductCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=255)
+    brand: Optional[str] = None
+    category: str = Field(..., max_length=50)
+    price: float = Field(0.0, ge=0)
+    currency: str = Field("USD", max_length=10)
+    tier: str = Field("mid_range", max_length=20)
+    image_url: Optional[str] = None
+    affiliate_url: Optional[str] = None
+    description: Optional[str] = None
+    rating: Optional[float] = Field(None, ge=0, le=5)
+    review_count: int = Field(0, ge=0)
+    tags: Optional[List[str]] = None
+    recommended_for: Optional[List[str]] = None
+    social_proof: Optional[str] = None
+    commission: Optional[float] = Field(None, ge=0)
+
+
+class ProductUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=255)
+    brand: Optional[str] = None
+    category: Optional[str] = Field(None, max_length=50)
+    price: Optional[float] = Field(None, ge=0)
+    currency: Optional[str] = Field(None, max_length=10)
+    tier: Optional[str] = Field(None, max_length=20)
+    image_url: Optional[str] = None
+    affiliate_url: Optional[str] = None
+    description: Optional[str] = None
+    rating: Optional[float] = Field(None, ge=0, le=5)
+    review_count: Optional[int] = Field(None, ge=0)
+    tags: Optional[List[str]] = None
+    recommended_for: Optional[List[str]] = None
+    social_proof: Optional[str] = None
+    commission: Optional[float] = Field(None, ge=0)

@@ -181,3 +181,55 @@ class AnalyticsEvent(Base):
         Index("idx_event_name_created", "event_name", "created_at"),
         Index("idx_event_user_created", "user_id", "created_at"),
     )
+
+
+class Product(Base):
+    """Admin-managed product catalogue (affiliate recommendations).
+
+    Previously products lived in a static JSON file; they now live in the DB so
+    the owner can add / edit / archive / re-activate products from the admin UI
+    with no code changes or redeploys. `is_active` soft-deletes keep history.
+    """
+
+    __tablename__ = "products"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    name = Column(String(255), nullable=False)
+    brand = Column(String(255), nullable=True)
+    category = Column(String(50), nullable=False, index=True)
+    price = Column(Float, nullable=False, default=0.0)
+    currency = Column(String(10), default="USD")
+    tier = Column(String(20), default="mid_range", index=True)  # budget | mid_range | premium
+    image_url = Column(String(500), nullable=True)
+    affiliate_url = Column(String(500), nullable=True)
+    description = Column(Text, nullable=True)
+    rating = Column(Float, nullable=True)
+    review_count = Column(Integer, default=0)
+    tags = Column(JSON, nullable=True)
+    recommended_for = Column(JSON, nullable=True)
+    social_proof = Column(String(500), nullable=True)
+    commission = Column(Float, nullable=True)  # affiliate commission %/amount
+    is_active = Column(Boolean, default=True, index=True)
+
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, onupdate=func.now())
+
+    __table_args__ = (
+        Index("idx_product_cat_active", "category", "is_active"),
+        Index("idx_product_tier_active", "tier", "is_active"),
+    )
+
+
+class AdminAction(Base):
+    """Audit log of every mutating admin action (who changed what, when)."""
+
+    __tablename__ = "admin_actions"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    admin_email = Column(String(255), nullable=False, index=True)
+    action = Column(String(64), nullable=False)  # create | update | delete | activate | import
+    entity_type = Column(String(64), nullable=False)  # product | user | ...
+    entity_id = Column(String(255), nullable=True)
+    details = Column(JSON, nullable=True)
+
+    created_at = Column(DateTime, server_default=func.now(), index=True)

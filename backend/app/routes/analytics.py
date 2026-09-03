@@ -229,6 +229,52 @@ async def admin_user_detail(
                 durations.append(d)
     total_time_sec = round(sum(durations) / 1000, 1) if durations else 0
 
+    # ── Derived User 360 metrics (20+ per-user data points) ──────────
+    scored_photos = [p for p in photos if p.score is not None]
+    baseline_score = scored_photos[-1].score if scored_photos else None
+    latest_score = scored_photos[0].score if scored_photos else None
+    score_delta = (
+        round(latest_score - baseline_score, 1)
+        if latest_score is not None and baseline_score is not None
+        else None
+    )
+
+    def _ev_count(name: str) -> int:
+        return (
+            db.query(func.count(AnalyticsEvent.id))
+            .filter(AnalyticsEvent.user_id == user_id, AnalyticsEvent.event_name == name)
+            .scalar()
+            or 0
+        )
+
+    photos_viewed = _ev_count("photo_viewed") + _ev_count("gallery_opened")
+    products_viewed = _ev_count("product_viewed") + _ev_count("product_click")
+    pricing_viewed = _ev_count("pricing_viewed")
+    upgrade_clicks = _ev_count("upgrade_click")
+    checkout_started = _ev_count("checkout_started")
+    checkout_completed = _ev_count("checkout_completed")
+
+    last_exit = (
+        db.query(AnalyticsEvent)
+        .filter(AnalyticsEvent.user_id == user_id, AnalyticsEvent.event_name == "page_exit")
+        .order_by(AnalyticsEvent.created_at.desc())
+        .first()
+    )
+    last_page = last_exit.page if last_exit else None
+
+    if u.subscription_tier != "free":
+        stage = "paid"
+    elif checkout_started:
+        stage = "at_checkout"
+    elif pricing_viewed or upgrade_clicks:
+        stage = "at_paywall"
+    elif scored_photos:
+        stage = "active"
+    elif photos:
+        stage = "uploaded"
+    else:
+        stage = "signed_up"
+
     return {
         "success": True,
         "user": {
@@ -282,6 +328,22 @@ async def admin_user_detail(
                 for e in events[:50]
             ],
         },
+        "profile": {
+            "photos_uploaded": len(photos),
+            "photos_analyzed": len(scored_photos),
+            "baseline_score": baseline_score,
+            "latest_score": latest_score,
+            "score_delta": score_delta,
+            "photos_viewed": photos_viewed,
+            "products_viewed": products_viewed,
+            "pricing_viewed": pricing_viewed,
+            "upgrade_clicks": upgrade_clicks,
+            "checkout_started": checkout_started,
+            "checkout_completed": checkout_completed,
+            "last_page": last_page,
+            "funnel_stage": stage,
+            "session_count": _ev_count("session_start"),
+        },
     }
 
 
@@ -328,4 +390,162 @@ async def admin_events_summary(
         "top_pages": [{"page": p, "views": c} for p, c in page_rows],
         "events": [{"event": e, "count": c} for e, c in event_rows],
         "daily": daily,
+    }
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Admin: conversion funnel (signup → upload → score → plan → upgrade)
+# ─────────────────────────────────────────────────────────────────────
+@router.get("/admin/funnel")
+async def admin_funnel(
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    total_users = db.query(func.count(User.id)).scalar() or 0
+    uploaded = db.query(func.count(func.distinct(Photo.user_id))).scalar() or 0
+    scored = (
+        db.query(func.count(func.distinct(Photo.user_id)))
+        .filter(Photo.score.isnot(None))
+        .scalar()
+        or 0
+    )
+    planned = db.query(func.count(func.distinct(Plan.user_id))).scalar() or 0
+    upgraded = (
+        db.query(func.count(User.id)).filter(User.subscription_tier != "free").scalar() or 0
+    )
+
+    stages = [
+        ("signup", total_users),
+        ("upload", uploaded),
+        ("score", scored),
+        ("plan", planned),
+        ("upgrade", upgraded),
+    ]
+    funnel = []
+    prev = None
+    for name, count in stages:
+        funnel.append(
+            {
+                "stage": name,
+                "count": count,
+                "conversion_from_previous": (round(count / prev * 100, 1) if prev else None),
+                "of_signup": (round(count / total_users * 100, 1) if total_users else 0),
+            }
+        )
+        prev = count
+
+    return {"success": True, "funnel": funnel}
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Admin: weekly cohort retention (N-week retention after signup)
+# ─────────────────────────────────────────────────────────────────────
+@router.get("/admin/retention")
+async def admin_retention(
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+    weeks: int = Query(default=8, ge=1, le=26),
+):
+    users = db.query(User.id, User.created_at).all()
+    if not users:
+        return {"success": True, "cohorts": []}
+
+    # Last activity date per user (any event) — used to compute retention.
+    activity = (
+        db.query(AnalyticsEvent.user_id, func.max(AnalyticsEvent.created_at))
+        .filter(AnalyticsEvent.user_id.isnot(None))
+        .group_by(AnalyticsEvent.user_id)
+        .all()
+    )
+    last_active = {uid: ts for uid, ts in activity}
+
+    cohorts: Dict[str, List[str]] = {}
+    for uid, created in users:
+        if not created:
+            continue
+        week_start = created.date() - timedelta(days=created.weekday())
+        cohorts.setdefault(week_start.isoformat(), []).append(uid)
+
+    result = []
+    for week_key in sorted(cohorts.keys())[-weeks:]:
+        uids = cohorts[week_key]
+        wk = datetime.strptime(week_key, "%Y-%m-%d").date()
+        size = len(uids)
+        w0 = sum(1 for u in uids if u in last_active)
+        w1 = sum(
+            1 for u in uids
+            if last_active.get(u) and last_active[u].date() >= wk + timedelta(weeks=1)
+        )
+        w2 = sum(
+            1 for u in uids
+            if last_active.get(u) and last_active[u].date() >= wk + timedelta(weeks=2)
+        )
+        w3 = sum(
+            1 for u in uids
+            if last_active.get(u) and last_active[u].date() >= wk + timedelta(weeks=3)
+        )
+        result.append(
+            {
+                "week": week_key,
+                "users": size,
+                "w0": round(w0 / size * 100, 1) if size else 0,
+                "w1": round(w1 / size * 100, 1) if size else 0,
+                "w2": round(w2 / size * 100, 1) if size else 0,
+                "w3": round(w3 / size * 100, 1) if size else 0,
+            }
+        )
+
+    return {"success": True, "cohorts": result}
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Admin: event explorer (filter + paginate the raw event stream)
+# ─────────────────────────────────────────────────────────────────────
+@router.get("/admin/events")
+async def admin_events(
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+    event_name: Optional[str] = Query(default=None),
+    user_id: Optional[str] = Query(default=None),
+    page: Optional[str] = Query(default=None),
+    start: Optional[str] = Query(default=None, description="ISO date/time"),
+    end: Optional[str] = Query(default=None, description="ISO date/time"),
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+):
+    q = db.query(AnalyticsEvent)
+    if event_name:
+        q = q.filter(AnalyticsEvent.event_name == event_name)
+    if user_id:
+        q = q.filter(AnalyticsEvent.user_id == user_id)
+    if page:
+        q = q.filter(AnalyticsEvent.page == page)
+    if start:
+        try:
+            q = q.filter(AnalyticsEvent.created_at >= datetime.fromisoformat(start))
+        except ValueError:
+            raise HTTPException(status_code=400, detail="`start` must be an ISO date/time.")
+    if end:
+        try:
+            q = q.filter(AnalyticsEvent.created_at < datetime.fromisoformat(end))
+        except ValueError:
+            raise HTTPException(status_code=400, detail="`end` must be an ISO date/time.")
+
+    total = q.count()
+    rows = q.order_by(AnalyticsEvent.created_at.desc()).offset(offset).limit(limit).all()
+    return {
+        "success": True,
+        "total": total,
+        "events": [
+            {
+                "id": e.id,
+                "user_id": e.user_id,
+                "event": e.event_name,
+                "page": e.page,
+                "referrer": e.referrer,
+                "properties": e.properties,
+                "created_at": e.created_at.isoformat() if e.created_at else None,
+            }
+            for e in rows
+        ],
     }

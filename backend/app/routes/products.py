@@ -81,6 +81,7 @@ async def get_recommendations(
         user_profile={"id": user.id, "email": user.email},
         max_products=max_results,
         budget_tier=tier if tier in ("budget", "mid_range", "premium") else "mid_range",
+        db=db,
     )
 
     if not recommended:
@@ -130,7 +131,7 @@ async def get_category_products(
             detail=f"Invalid tier '{tier}'. Must be one of: budget, mid_range, premium",
         )
 
-    products = get_products_by_category(category, tier=tier)
+    products = get_products_by_category(category, tier=tier, db=db)
 
     if not products:
         return {
@@ -159,7 +160,7 @@ async def list_categories(
 
     Useful for building browse UIs in the iOS app.
     """
-    cats = get_categories()
+    cats = get_categories(db=db)
     return {
         "success": True,
         "categories": cats,

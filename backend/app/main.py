@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from app.routes import health, auth, photos, analysis, plan, products, upload
-from app.routes import profile, progress, dashboard, explore, analytics
+from app.routes import profile, progress, dashboard, explore, analytics, admin_products
 from app.middleware.rate_limit import rate_limit_middleware
 from app.middleware.error_handler import global_error_handler
 from app.database import engine
@@ -50,6 +50,43 @@ try:
         _db.close()
 except Exception as _recovery_e:
     print(f"⚠️ Recovery scan failed: {_recovery_e}")
+
+# ── Seed product catalogue from JSON (one-time, idempotent) ─────────
+try:
+    from app.database import SessionLocal as _SL
+    from app.models import Product as _Product
+    from app.services.product_recommendation_service import _load_product_database
+    _seed_db = _SL()
+    try:
+        if _seed_db.query(_Product).count() == 0:
+            _seed_products = _load_product_database()
+            for _sp in _seed_products:
+                _seed_db.add(
+                    _Product(
+                        id=_sp.get("id"),
+                        name=_sp.get("name", ""),
+                        brand=_sp.get("brand"),
+                        category=_sp.get("category", "general"),
+                        price=float(_sp.get("price") or 0),
+                        currency=_sp.get("currency", "USD"),
+                        tier=_sp.get("tier", "mid_range"),
+                        image_url=_sp.get("image_url"),
+                        affiliate_url=_sp.get("affiliate_link"),
+                        description=_sp.get("social_proof"),
+                        rating=_sp.get("rating"),
+                        review_count=int(_sp.get("reviews_count") or 0),
+                        tags=_sp.get("tags"),
+                        recommended_for=_sp.get("recommended_for"),
+                        social_proof=_sp.get("social_proof"),
+                        is_active=True,
+                    )
+                )
+            _seed_db.commit()
+            print(f"🌱 Seeded {len(_seed_products)} products from JSON")
+    finally:
+        _seed_db.close()
+except Exception as _seed_e:
+    print(f"⚠️ Product seed skipped: {_seed_e}")
 
 # PyTorch model, MediaPipe & Redis are all lazy-loaded on first request.
 # Loading the 94MB model at boot consumes 200-300MB and OOMs Render starter tier.
@@ -114,3 +151,4 @@ app.include_router(progress.router, prefix="/api/v1", tags=["Progress"])
 app.include_router(dashboard.router, prefix="/api/v1", tags=["Dashboard"])
 app.include_router(explore.router, prefix="/api/v1", tags=["Explore"])
 app.include_router(analytics.router, prefix="/api/v1", tags=["Analytics"])
+app.include_router(admin_products.router, prefix="/api/v1", tags=["Admin"])
