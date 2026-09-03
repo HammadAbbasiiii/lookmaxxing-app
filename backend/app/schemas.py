@@ -82,6 +82,10 @@ class PhotoStatusResponse(BaseModel):
     id: str
     analysis_status: str  # pending | processing | completed | failed
     score: Optional[float] = None
+    potential_score: Optional[float] = None
+    raw_score: Optional[float] = None
+    model_used: Optional[bool] = None
+    improvement_potential: Optional[str] = None
     category_breakdown: Optional[dict] = None
     strengths: Optional[list] = None
     weaknesses: Optional[list] = None
@@ -93,6 +97,7 @@ class PhotoStatusResponse(BaseModel):
 
 class PhotoAnalysisResponse(BaseModel):
     score: float
+    potential_score: Optional[float] = None
     symmetry_score: Optional[float]
     skin_score: Optional[float]
     jawline_score: Optional[float]

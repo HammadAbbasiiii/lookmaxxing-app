@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 # second graph to fail after torch loaded, which left category_breakdown empty.
 # All landmark extraction now delegates to the shared loader.
 from app.services.face_service import MEDIAPIPE_AVAILABLE, detect_face_landmarks
+from app.services.score_calibration import anchor_categories
 
 
 def is_mediapipe_available() -> bool:
@@ -891,12 +892,45 @@ def get_category_breakdown(
     structure_score, structure_desc = calculate_facial_structure(landmarks)
     mascfem_score, mascfem_desc = calculate_masculinity_femininity(landmarks, gender)
 
+    raw_categories = {
+        "facial_harmony": harmony_score,
+        "skin_quality": skin_score,
+        "jawline_definition": jawline_score,
+        "eye_appeal": eye_score,
+        "facial_structure": structure_score,
+        "masculinity_femininity": mascfem_score,
+    }
+
+    # Anchor the (generous, uncalibrated) landmark scores to the holistic score
+    # so the category breakdown stays coherent with the overall score, while
+    # preserving each category's relative strength/weakness ordering. When no
+    # holistic score is supplied, anchor to the raw mean (no shift) so the
+    # relative ordering is still surfaced.
+    anchor = (
+        overall_score
+        if overall_score is not None
+        else sum(raw_categories.values()) / len(raw_categories)
+    )
+    anchored = anchor_categories(raw_categories, anchor)
+
+    def describe(score: float, category_name: str) -> str:
+        if score >= 80:
+            return f"Excellent {category_name.lower()}"
+        elif score >= 65:
+            return f"Good {category_name.lower()}"
+        elif score >= 50:
+            return f"Adequate {category_name.lower()}"
+        elif score >= 35:
+            return f"{category_name} needs attention"
+        else:
+            return f"{category_name} requires focus"
+
     return {
-        "facial_harmony": {"score": harmony_score, "description": harmony_desc},
-        "skin_quality": {"score": skin_score, "description": skin_desc},
-        "jawline_definition": {"score": jawline_score, "description": jawline_desc},
-        "eye_appeal": {"score": eye_score, "description": eye_desc},
-        "facial_structure": {"score": structure_score, "description": structure_desc},
-        "masculinity_femininity": {"score": mascfem_score, "description": mascfem_desc},
+        "facial_harmony": {"score": anchored["facial_harmony"], "description": describe(anchored["facial_harmony"], "Facial Harmony")},
+        "skin_quality": {"score": anchored["skin_quality"], "description": describe(anchored["skin_quality"], "Skin Quality")},
+        "jawline_definition": {"score": anchored["jawline_definition"], "description": describe(anchored["jawline_definition"], "Jawline Definition")},
+        "eye_appeal": {"score": anchored["eye_appeal"], "description": describe(anchored["eye_appeal"], "Eye Appeal")},
+        "facial_structure": {"score": anchored["facial_structure"], "description": describe(anchored["facial_structure"], "Facial Structure")},
+        "masculinity_femininity": {"score": anchored["masculinity_femininity"], "description": describe(anchored["masculinity_femininity"], "Gender Appeal")},
         "heuristic": False,
     }

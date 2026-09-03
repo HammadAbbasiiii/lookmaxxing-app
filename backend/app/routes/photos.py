@@ -18,6 +18,7 @@ from app.services.face_analysis_service import get_category_breakdown
 from app.services.ai_service import analyze_face_with_deepseek, generate_fallback_analysis
 from app.services.plan_generator_service import generate_action_plan, generate_fallback_plan
 from app.services.score_labels import get_score_label
+from app.services.score_calibration import compute_potential_score
 from app.services.prediction_service import prediction_service
 from app.services.background_analysis import run_analysis_in_background
 from app.config import settings
@@ -230,14 +231,26 @@ async def get_analysis_status(
 
     category_breakdown = None
     validation_error = None
+    potential_score = None
+    raw_score = None
+    model_used = None
+    improvement_potential = None
     if photo.analysis_details:
         category_breakdown = photo.analysis_details.get("category_breakdown")
         validation_error = photo.analysis_details.get("validation_error")
+        potential_score = photo.analysis_details.get("potential_score")
+        raw_score = photo.analysis_details.get("raw_score")
+        model_used = photo.analysis_details.get("model_used")
+        improvement_potential = photo.analysis_details.get("improvement_potential")
 
     return {
         "id": photo.id,
         "analysis_status": photo.analysis_status or "pending",
         "score": photo.score,
+        "potential_score": potential_score,
+        "raw_score": raw_score,
+        "model_used": model_used,
+        "improvement_potential": improvement_potential,
         "category_breakdown": category_breakdown,
         "strengths": photo.strengths,
         "weaknesses": photo.weaknesses,
@@ -433,6 +446,10 @@ async def analyze_photo(
         "category_breakdown": category_breakdown,
         "deepseek_analysis": {},
         "source": "template",
+        "potential_score": compute_potential_score(overall_score),
+        "raw_score": None,
+        "model_used": False,
+        "improvement_potential": analysis_data.get("improvement_potential", "Up to +8 points in 90 days"),
     }
 
     # Save plan
@@ -526,6 +543,7 @@ async def analyze_photo(
         "photo_id": photo.id,
         "analysis": {
             "overall_score": overall_score,
+            "potential_score": compute_potential_score(overall_score),
             "overall_score_label": overall_score_label,
             "scores": {
                 "symmetry": symmetry_score,

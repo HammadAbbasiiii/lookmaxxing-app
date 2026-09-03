@@ -35,3 +35,13 @@ class Settings:
     MODEL_PATH: str = os.getenv("MODEL_PATH", "./models/rank_info_net_full.pth")
 
 settings = Settings()
+
+# Security: never allow the insecure default JWT signing key in production.
+if settings.SECRET_KEY == "change_this_in_production":
+    _env = os.getenv("ENVIRONMENT", "development").lower()
+    if _env == "production":
+        raise RuntimeError(
+            "SECRET_KEY is still the insecure default ('change_this_in_production'). "
+            "Set a strong SECRET_KEY environment variable before running in production."
+        )
+    print("⚠️  SECRET_KEY is using the insecure default — set a real value before deploying.")

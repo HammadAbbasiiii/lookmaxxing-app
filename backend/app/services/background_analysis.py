@@ -23,6 +23,7 @@ from app.services.face_analysis_service import get_category_breakdown
 from app.services.ai_service import generate_fallback_analysis
 from app.services.plan_generator_service import generate_fallback_plan
 from app.services.score_labels import get_score_label
+from app.services.score_calibration import compute_potential_score
 from app.services.validation_service import validate_image
 import uuid
 import asyncio
@@ -67,14 +68,19 @@ def run_analysis_background(photo_id: str, user_id: str, image_bytes: bytes, gen
 
         # ── 1. ML prediction (holistic score) ─────────────────────
         score = None
+        raw_score = None
+        model_used = False
         try:
             prediction = prediction_service.predict(image_bytes, gender=gender)
             score = prediction.get("score_100", None)
+            raw_score = prediction.get("raw_score", None)
+            model_used = bool(prediction.get("model_used", False))
         except Exception as exc:
             logger.warning(f"Background prediction failed for {photo_id}: {exc}")
 
         # ── 2. Face landmark detection + per-category scoring ─────
-        overall_score = score or 50.0
+        # landmark_overall is only a fallback; the torch score is authoritative.
+        landmark_overall = score
         symmetry_score = None
         skin_score = None
         jawline_score = None
@@ -117,7 +123,16 @@ def run_analysis_background(photo_id: str, user_id: str, image_bytes: bytes, gen
                 "nose": 70.0,
                 "lips": 75.0,
             }
-            overall_score = generate_overall_score(scores)
+            landmark_overall = generate_overall_score(scores)
+
+        # Authoritative holistic score: torch model first, landmark fallback.
+        # None when neither system produced a real score (don't fabricate one).
+        if score is not None:
+            holistic = score
+        elif landmarks and len(landmarks) >= 100:
+            holistic = landmark_overall
+        else:
+            holistic = None
 
         # Always produce a category breakdown — never leave it empty.
         try:
@@ -125,23 +140,25 @@ def run_analysis_background(photo_id: str, user_id: str, image_bytes: bytes, gen
                 image_bytes=image_bytes,
                 landmarks=landmarks if landmarks and len(landmarks) >= 100 else None,
                 gender=gender,
-                overall_score=overall_score,
+                overall_score=holistic,
             )
         except Exception as exc:
             logger.warning(f"Category breakdown failed for {photo_id}: {exc}")
+            _fallback_score = holistic if holistic is not None else 70.0
             category_breakdown = {
-                "facial_harmony": {"score": round(overall_score, 1), "description": "Estimate based on overall score"},
-                "skin_quality": {"score": round(overall_score, 1), "description": "Estimate based on overall score"},
-                "jawline_definition": {"score": round(overall_score, 1), "description": "Estimate based on overall score"},
-                "eye_appeal": {"score": round(overall_score, 1), "description": "Estimate based on overall score"},
-                "facial_structure": {"score": round(overall_score, 1), "description": "Estimate based on overall score"},
-                "masculinity_femininity": {"score": round(overall_score, 1), "description": "Estimate based on overall score"},
+                "facial_harmony": {"score": round(_fallback_score, 1), "description": "Estimate based on overall score"},
+                "skin_quality": {"score": round(_fallback_score, 1), "description": "Estimate based on overall score"},
+                "jawline_definition": {"score": round(_fallback_score, 1), "description": "Estimate based on overall score"},
+                "eye_appeal": {"score": round(_fallback_score, 1), "description": "Estimate based on overall score"},
+                "facial_structure": {"score": round(_fallback_score, 1), "description": "Estimate based on overall score"},
+                "masculinity_femininity": {"score": round(_fallback_score, 1), "description": "Estimate based on overall score"},
                 "heuristic": True,
             }
 
         # ── 3. Template-based analysis + plan ────────────────────
+        _holistic_for_template = holistic if holistic is not None else 50.0
         score_data = {
-            "overall_score": overall_score,
+            "overall_score": _holistic_for_template,
             "symmetry_score": symmetry_score,
             "skin_score": skin_score,
             "jawline_score": jawline_score,
@@ -155,7 +172,7 @@ def run_analysis_background(photo_id: str, user_id: str, image_bytes: bytes, gen
             logger.warning(f"Background template analysis failed for {photo_id}: {exc}")
 
         try:
-            plan_data = generate_fallback_plan(overall_score, gender=gender)
+            plan_data = generate_fallback_plan(_holistic_for_template, gender=gender)
         except Exception as exc:
             logger.warning(f"Background plan generation failed for {photo_id}: {exc}")
 
@@ -181,8 +198,8 @@ def run_analysis_background(photo_id: str, user_id: str, image_bytes: bytes, gen
             return obj
 
         # ── 5. Update photo record ───────────────────────────────
-        if score is not None:
-            photo.score = _py(score)
+        if holistic is not None:
+            photo.score = _py(holistic)
         photo.symmetry_score = _py(symmetry_score)
         photo.skin_score = _py(skin_score)
         photo.jawline_score = _py(jawline_score)
@@ -194,6 +211,10 @@ def run_analysis_background(photo_id: str, user_id: str, image_bytes: bytes, gen
             "category_breakdown": category_breakdown,
             "deepseek_analysis": {},
             "source": "template",
+            "potential_score": compute_potential_score(holistic) if holistic is not None else None,
+            "raw_score": raw_score,
+            "model_used": model_used,
+            "improvement_potential": analysis_data.get("improvement_potential", "Up to +8 points in 90 days"),
         })
         photo.analysis_status = "completed"
 

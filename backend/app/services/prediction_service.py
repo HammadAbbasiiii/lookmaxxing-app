@@ -19,6 +19,7 @@ from PIL import Image, ImageEnhance, ImageOps
 
 from app.services.quality_service import run_quality_checks
 from app.services.score_labels import get_score_label
+from app.services.score_calibration import raw_to_100, compute_potential_score
 
 logger = logging.getLogger(__name__)
 
@@ -234,7 +235,9 @@ class PredictionService:
 
         return {
             "score": round(score, 5),
+            "raw_score": round(score, 5),
             "score_100": round(score_100, 1),
+            "potential_score": compute_potential_score(score_100),
             "label": tier.get("label", "Average"),
             "emoji": tier.get("emoji", "😐"),
             "message": tier.get("description", ""),
@@ -247,15 +250,19 @@ class PredictionService:
     # ── Helpers ──────────────────────────────────────────────────────
     @staticmethod
     def _raw_to_100(raw_score: float) -> float:
-        """Convert model output (1–5 range) to 0–100 scale."""
-        return (raw_score - 1.0) / 4.0 * 100.0
+        """Monotonic, human-plausible map from model raw output to 0–100.
+
+        Thin wrapper for backward compatibility — delegates to the shared
+        calibration module (single source of truth).
+        """
+        return raw_to_100(raw_score)
 
     @staticmethod
     def _mock_score() -> tuple:
         """Generate a plausible mock score when model is unavailable."""
         import random
         raw = 1.0 + random.random() * 4.0
-        score_100 = (raw - 1.0) / 4.0 * 100.0
+        score_100 = raw_to_100(raw)
         return raw, score_100
 
     @staticmethod
