@@ -59,6 +59,9 @@ Base: `https://lookmaxx-api.onrender.com/api/v1`
 | POST | `/auth/login` | ❌ | OAuth2 form login → JWT |
 | GET | `/auth/me` | ✅ | Current user |
 | POST | `/auth/logout` | — | No-op (client discards token) |
+| POST | `/auth/forgot-password` | ❌ | Request reset link (anti-enumeration 200) |
+| POST | `/auth/reset-password` | ❌ | Set new password (single-use token) |
+| GET | `/auth/reset-password/verify` | ❌ | Check reset-link validity |
 | POST | `/photos/upload` | ✅ | Multipart upload → bg analysis |
 | GET | `/photos/{id}` | ✅ | Photo status/score |
 | POST | `/photos/analyze/{id}` | ✅ | Trigger analysis |

@@ -106,6 +106,12 @@ export function LoginForm({
           {...register("password")}
         />
 
+        <div className="flex justify-end">
+          <Link href="/forgot-password" className="text-xs font-medium text-muted transition-colors hover:text-gold">
+            Forgot password?
+          </Link>
+        </div>
+
         <Button type="submit" fullWidth loading={isSubmitting}>
           {isSubmitting ? "Logging in…" : "Log in"}
         </Button>

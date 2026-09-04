@@ -92,6 +92,30 @@ export async function logout(): Promise<void> {
   await apiFetch<unknown>("/auth/logout", { method: "POST" });
 }
 
+export async function requestPasswordReset(email: string): Promise<{ message: string }> {
+  const data = await apiFetch<unknown>("/auth/forgot-password", {
+    method: "POST",
+    body: { email: email.trim().toLowerCase() },
+  });
+  const root = data && typeof data === "object" ? (data as Record<string, unknown>) : {};
+  return { message: typeof root.message === "string" ? root.message : "" };
+}
+
+export async function resetPassword(token: string, newPassword: string): Promise<{ message: string }> {
+  const data = await apiFetch<unknown>("/auth/reset-password", {
+    method: "POST",
+    body: { token, new_password: newPassword },
+  });
+  const root = data && typeof data === "object" ? (data as Record<string, unknown>) : {};
+  return { message: typeof root.message === "string" ? root.message : "" };
+}
+
+export async function verifyResetToken(token: string): Promise<boolean> {
+  const qs = new URLSearchParams({ token }).toString();
+  await apiFetch<unknown>(`/auth/reset-password/verify?${qs}`);
+  return true;
+}
+
 // ── Upload / analysis (critical path §4.4) ──────────────────────────
 export async function getUploadSignature(): Promise<UploadSignature> {
   const data = await apiFetch<unknown>("/upload/signature");

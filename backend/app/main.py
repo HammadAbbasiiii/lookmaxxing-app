@@ -33,6 +33,18 @@ try:
 except Exception as _mig_e:
     print(f"⚠️ users.is_admin migration skipped: {_mig_e}")
 
+# ── Migrate: add users.token_version (auth session revocation on reset) ──────
+try:
+    from sqlalchemy import inspect as _inspect_tv, text as _text_tv
+    _insp_tv = _inspect(engine)
+    _cols_tv = {c["name"] for c in _insp_tv.get_columns("users")}
+    if "token_version" not in _cols_tv:
+        with engine.begin() as _conn_tv:
+            _conn_tv.execute(_text_tv("ALTER TABLE users ADD COLUMN token_version INTEGER DEFAULT 0 NOT NULL"))
+        print("✅ Migrated: added users.token_version")
+except Exception as _mig_tv_e:
+    print(f"⚠️ users.token_version migration skipped: {_mig_tv_e}")
+
 # ── Promote admin emails to is_admin=True + grant Elite (testing convenience) ──────
 # The owner/admin account defaults to Elite so every Pro/Elite surface is testable
 # without manual tier fiddling. To temporarily test free/pro gating, flip your own

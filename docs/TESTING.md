@@ -29,6 +29,7 @@ npm run typecheck                     # tsc --noEmit
 | File | What it proves |
 |---|---|
 | `tests/test_auth.py` | Password hashing, JWT creation, signup/login/me, duplicate email, email trimming, wrong password, invalid/missing token. |
+| `tests/test_password_reset.py` | **NEW** — forgot-password (anti-enumeration 200 for known/unknown email, hashed token storage, prior-token invalidation), reset (valid → login, single-use replay 400, forged/expired 400, short password 422), `verify`, session revocation on reset, per-email throttle → 429. |
 | `tests/test_admin.py` | Admin user list, promote/demote (+audit), idempotency, self-demote blocked, tier override (pro/elite/free, case-insensitive, invalid). |
 | `tests/test_admin_products.py` | **NEW** — product CRUD (create/update/archive/activate), category/tier/price/rating validation, search/filter, audit log, `/track`, `/admin/overview|events|funnel|retention|events/summary` + 403 gates. |
 | `tests/test_plan.py` | Plan check-in JSON body, empty tasks, check-in without active plan. |
@@ -48,6 +49,7 @@ npm run typecheck                     # tsc --noEmit
 - **No password hashes in any response** (signup, `/me`, admin user list).
 - **IDOR blocked** — user A cannot read user B's photo/report (`404`, not `403`).
 - **JWT hardening** — tampered, expired, wrong-key, `alg=none`, malformed and empty tokens all `401`.
+- **Password reset** — anti-enumeration (identical 200 for known/unknown email), single-use hashed token, 30-min expiry, per-email throttle, and session revocation (`token_version` bump) on reset.
 - **Rate limiting is per-identity** — anonymous bucket (60/min) and authenticated bucket (200/min, keyed on the JWT `sub`).
 - **Freemium is server-authoritative** — free tier is hard-capped at 1 analysis/photo via `enforce_analysis_limit` / `enforce_photo_limit`.
 - **Premium gating is per-endpoint** — coach/report/insights need Pro, harmony needs Elite; the 403 carries a machine-readable `code: "upgrade_required"`.

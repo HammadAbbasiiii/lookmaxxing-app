@@ -35,6 +35,10 @@ class User(Base):
 
     # Admin (flag OR email listed in ADMIN_EMAILS env)
     is_admin = Column(Boolean, default=False)
+
+    # Auth session version — bumped on password reset so every previously issued
+    # access token is invalidated (see get_current_user in dependencies.py).
+    token_version = Column(Integer, default=0, nullable=False)
     
     # Subscription
     is_subscribed = Column(Boolean, default=False)
@@ -239,3 +243,22 @@ class AdminAction(Base):
     details = Column(JSON, nullable=True)
 
     created_at = Column(DateTime, server_default=func.now(), index=True)
+
+
+class PasswordResetToken(Base):
+    """Single-use, expiring password-reset token.
+
+    Stores only a SHA-256 **hash** of the random token (never the raw token), so a
+    DB leak reveals nothing usable. One outstanding token per user; successful use
+    (or a new request) invalidates the previous one.
+    """
+
+    __tablename__ = "password_reset_tokens"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    token_hash = Column(String(64), unique=True, index=True, nullable=False)
+    expires_at = Column(DateTime, nullable=False, index=True)
+    used_at = Column(DateTime, nullable=True)
+
+    created_at = Column(DateTime, server_default=func.now())

@@ -42,13 +42,24 @@ def db_session():
     yield session
 
     # Clean up all data after each test
-    from app.models import User, Photo, Plan, UserCheckin
+    from app.models import User, Photo, Plan, UserCheckin, PasswordResetToken
+    session.query(PasswordResetToken).delete()
     session.query(UserCheckin).delete()
     session.query(Photo).delete()
     session.query(Plan).delete()
     session.query(User).delete()
     session.commit()
     session.close()
+
+
+@pytest.fixture(scope="function", autouse=True)
+def _reset_password_reset_throttle():
+    """Start each test with a clean per-email reset throttle."""
+    from app.services.password_reset_service import reset_throttle
+
+    reset_throttle()
+    yield
+    reset_throttle()
 
 
 @pytest.fixture(scope="function", autouse=True)

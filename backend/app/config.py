@@ -42,6 +42,20 @@ class Settings:
     # without a real charge. Ignored when ENVIRONMENT == "production".
     ALLOW_TEST_PAYMENTS: bool = os.getenv("ALLOW_TEST_PAYMENTS", "0") == "1"
 
+    # Email / password reset
+    # EMAIL_PROVIDER: "console" (logs the reset link — dev/test default) or "smtp".
+    # In production set EMAIL_PROVIDER=smtp + SMTP_* so reset links are actually
+    # delivered; otherwise the link is logged and no email is sent (never crashes).
+    EMAIL_PROVIDER: str = os.getenv("EMAIL_PROVIDER", "console")
+    SMTP_HOST: str = os.getenv("SMTP_HOST", "")
+    SMTP_PORT: int = int(os.getenv("SMTP_PORT", "587"))
+    SMTP_USERNAME: str = os.getenv("SMTP_USERNAME", "")
+    SMTP_PASSWORD: str = os.getenv("SMTP_PASSWORD", "")
+    SMTP_FROM_EMAIL: str = os.getenv("SMTP_FROM_EMAIL", "no-reply@lookmaxx.app")
+    SMTP_FROM_NAME: str = os.getenv("SMTP_FROM_NAME", "LookMaxx")
+    SMTP_USE_TLS: bool = os.getenv("SMTP_USE_TLS", "1") == "1"
+    PASSWORD_RESET_EXPIRE_MINUTES: int = int(os.getenv("PASSWORD_RESET_EXPIRE_MINUTES", "30"))
+
     # Freemium limits (server-authoritative §5.2).
     FREE_ANALYSIS_LIMIT: int = int(os.getenv("FREE_ANALYSIS_LIMIT", "1"))
 

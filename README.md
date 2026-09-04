@@ -35,7 +35,7 @@ Cloudinary (signed)                  Postgres · DeepSeek · Redis
 
 - **Server-authoritative premium gating** — the browser (and DevTools/Inspect Element) is treated as untrusted. Entitlements are read from the DB on every request via a `require_pro` dependency; the JWT carries only the user id, so editing localStorage or unhiding a button cannot unlock Pro.
 - **Payments** — Stripe Checkout (server-created session) + **signed webhook** is the *only* writer of subscription state; the client never mutates entitlements.
-- **Auth** — bcrypt password hashing, HS256 JWT (30-min TTL), anti-enumeration login, email normalization.
+- **Auth** — bcrypt password hashing, HS256 JWT (30-min TTL), anti-enumeration login, email normalization, and a secure **forgot-password** flow (single-use hashed reset tokens, anti-enumeration responses, per-email throttling, session revocation on reset).
 - **Abuse** — Redis-backed sliding-window rate limiting with in-memory fallback.
 - **XSS/CSRF** — strict CSP, zero third-party scripts, React text-node rendering (no `dangerouslySetInnerHTML` on user/AI text).
 - **Never crashes on bad data** — every response is decoded through Zod with safe fallbacks; every error has a recovery action (see `PRODUCT_SPEC.md` §9).
@@ -88,7 +88,7 @@ The **master specification** is [`PRODUCT_SPEC.md`](./PRODUCT_SPEC.md) — it co
 ## 🧪 Testing
 
 ```bash
-# Backend — 187 tests (auth, admin, premium gating, security, rate limiting,
+# Backend — 202 tests (auth, password reset, admin, premium gating, security, rate limiting,
 # IDOR, profile, progress/streak, payments, products, plan, dashboard, explore)
 cd backend && pytest
 
