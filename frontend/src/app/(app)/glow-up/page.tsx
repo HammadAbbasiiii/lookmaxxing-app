@@ -13,6 +13,7 @@ import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { ApiError } from "@/lib/api/client";
 import { STALE } from "@/lib/constants";
+import { Reveal } from "@/components/landing/Reveal";
 
 /** Dedicated premium surface: latest analysis's Pro insights + Elite harmony. */
 export default function GlowUpPage() {
@@ -95,10 +96,16 @@ export default function GlowUpPage() {
             </>
           ) : null}
 
-          {isPro ? <InsightsSection insights={insights.data} loading={insights.isLoading} /> : null}
+          {isPro ? (
+            <Reveal>
+              <InsightsSection insights={insights.data} loading={insights.isLoading} />
+            </Reveal>
+          ) : null}
 
           {isElite ? (
-            <HarmonySection harmony={harmony.data} loading={harmony.isLoading} />
+            <Reveal delay={0.1}>
+              <HarmonySection harmony={harmony.data} loading={harmony.isLoading} />
+            </Reveal>
           ) : isPro ? (
             <PaywallLock
               className="mt-6"

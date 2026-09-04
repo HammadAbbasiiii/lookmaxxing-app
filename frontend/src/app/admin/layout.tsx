@@ -44,32 +44,36 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-screen bg-background">
       <header className="sticky top-0 z-40 border-b border-border-soft bg-background/90 backdrop-blur">
-        <div className="mx-auto flex h-14 max-w-6xl items-center gap-4 px-4">
-          <Link href="/admin" className="font-display text-sm font-semibold text-gold">
-            LookMaxx Admin
-          </Link>
-          <nav className="flex gap-1 overflow-x-auto">
-            {NAV.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={cn(
-                  "whitespace-nowrap rounded-lg px-3 py-1.5 text-sm",
-                  pathname === item.href
-                    ? "bg-surface-2 text-ink"
-                    : "text-muted hover:text-ink",
-                )}
-              >
-                {item.label}
-              </Link>
-            ))}
-          </nav>
-          <Link
-            href="/dashboard"
-            className="ml-auto flex shrink-0 items-center gap-1.5 rounded-lg border border-border-soft px-3 py-1.5 text-xs font-medium text-muted transition-colors hover:border-gold/40 hover:text-ink"
-          >
-            <ArrowLeft className="h-3.5 w-3.5" aria-hidden /> View app as user
-          </Link>
+        <div className="mx-auto max-w-6xl px-4">
+          <div className="flex h-14 items-center gap-3">
+            <Link href="/admin" className="shrink-0 font-display text-sm font-semibold text-gold">
+              LookMaxx Admin
+            </Link>
+            <nav className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
+              {NAV.map((item) => (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={cn(
+                    "whitespace-nowrap rounded-lg px-3 py-1.5 text-sm",
+                    pathname === item.href
+                      ? "bg-surface-2 text-ink"
+                      : "text-muted hover:text-ink",
+                  )}
+                >
+                  {item.label}
+                </Link>
+              ))}
+            </nav>
+            <Link
+              href="/dashboard"
+              aria-label="View app as user"
+              className="flex shrink-0 items-center gap-1.5 rounded-lg border border-border-soft px-2.5 py-1.5 text-xs font-medium text-muted transition-colors hover:border-gold/40 hover:text-ink sm:px-3"
+            >
+              <ArrowLeft className="h-3.5 w-3.5" aria-hidden />
+              <span className="hidden sm:inline">View app as user</span>
+            </Link>
+          </div>
         </div>
       </header>
       <main className="mx-auto max-w-6xl px-4 py-6">{children}</main>

@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { LayoutDashboard, LogOut, Settings as SettingsIcon, User as UserIcon } from "lucide-react";
+import { LayoutDashboard, LogOut, Menu, Settings as SettingsIcon, User as UserIcon, X } from "lucide-react";
 import { useMe } from "@/hooks/useMe";
 import { logout } from "@/lib/api/endpoints";
 import { clearToken } from "@/lib/auth";
@@ -28,6 +28,8 @@ export function TopNav() {
   const { data: user } = useMe();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const mobileRef = useRef<HTMLDivElement>(null);
 
   const tier = user?.subscription_tier ?? "free";
   const isFree = tier === "free";
@@ -38,10 +40,19 @@ export function TopNav() {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
         setMenuOpen(false);
       }
+      if (mobileRef.current && !mobileRef.current.contains(e.target as Node)) {
+        setMobileOpen(false);
+      }
     }
     document.addEventListener("mousedown", onDocClick);
     return () => document.removeEventListener("mousedown", onDocClick);
   }, []);
+
+  // Close the mobile menu and account menu whenever the route changes.
+  useEffect(() => {
+    setMobileOpen(false);
+    setMenuOpen(false);
+  }, [pathname]);
 
   async function handleSignOut() {
     setMenuOpen(false);
@@ -94,6 +105,47 @@ export function TopNav() {
               {tier === "elite" ? "Elite" : "Pro"}
             </Badge>
           )}
+
+          <div className="relative md:hidden" ref={mobileRef}>
+            <button
+              type="button"
+              onClick={() => setMobileOpen((o) => !o)}
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-surface-2 text-ink ring-1 ring-border-soft transition-colors hover:ring-gold/40"
+              aria-label="Menu"
+              aria-expanded={mobileOpen}
+            >
+              {mobileOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
+            </button>
+
+            {mobileOpen ? (
+              <nav
+                className="absolute right-0 top-11 w-64 overflow-hidden rounded-xl card-border shadow-lg"
+                aria-label="Mobile"
+              >
+                <div className="p-2">
+                  {LINKS.map((link) => {
+                    const active = pathname.startsWith(link.href);
+                    return (
+                      <Link
+                        key={link.href}
+                        href={link.href}
+                        onClick={() => setMobileOpen(false)}
+                        className={cn(
+                          "flex items-center justify-between rounded-lg px-3 py-2.5 text-sm font-medium",
+                          active
+                            ? "bg-surface-2 text-ink"
+                            : "text-muted hover:bg-surface-2 hover:text-ink",
+                        )}
+                        aria-current={active ? "page" : undefined}
+                      >
+                        {link.label}
+                      </Link>
+                    );
+                  })}
+                </div>
+              </nav>
+            ) : null}
+          </div>
 
           <div className="relative" ref={menuRef}>
             <button

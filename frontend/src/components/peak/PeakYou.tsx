@@ -46,7 +46,7 @@ export function TwoFutures({ currentScore }: { currentScore: number }) {
 export function PeakYouReveal({ peak }: { peak: PeakYou }) {
   return (
     <div className="space-y-4">
-      <div className="rounded-card card-border p-6 text-center">
+      <div className="rounded-card card-border card-hover p-6 text-center">
         <p className="text-[11px] font-semibold uppercase tracking-widest text-gold">Your potential</p>
         <div className="mt-4 flex justify-center">
           <ScoreRing score={peak.peak} size={176} label={scoreLabel(peak.peak)} />
@@ -116,7 +116,7 @@ export function PeakYouReveal({ peak }: { peak: PeakYou }) {
 /** Elite: the daily message from the person you're becoming. */
 export function FutureSelfCard({ message }: { message: FutureSelfMessage }) {
   return (
-    <div className="mt-4 rounded-card card-border p-5">
+    <div className="mt-4 rounded-card card-border card-hover p-5">
       <div className="flex items-center gap-3">
         <span className="flex h-10 w-10 items-center justify-center rounded-full bg-gold/15 text-lg" aria-hidden>
           {message.emoji}

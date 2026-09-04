@@ -14,6 +14,7 @@ import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { ApiError } from "@/lib/api/client";
 import { STALE } from "@/lib/constants";
+import { Reveal } from "@/components/landing/Reveal";
 
 /** "Peak You" — meet the version of you that's already on the other side of 90 days. */
 export default function PeakYouPage() {
@@ -94,14 +95,18 @@ export default function PeakYouPage() {
       ) : (
         <>
           {peak ? (
-            <PeakYouReveal peak={peak} />
+            <Reveal>
+              <PeakYouReveal peak={peak} />
+            </Reveal>
           ) : insights.isLoading ? (
             <Skeleton className="h-64 w-full rounded-card" />
           ) : null}
 
           {isElite ? (
             message ? (
-              <FutureSelfCard message={message} />
+              <Reveal delay={0.1}>
+                <FutureSelfCard message={message} />
+              </Reveal>
             ) : null
           ) : (
             <PaywallLock

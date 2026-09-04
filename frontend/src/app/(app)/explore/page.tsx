@@ -11,6 +11,7 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { ErrorCard } from "@/components/ui/ErrorCard";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
+import { Reveal } from "@/components/landing/Reveal";
 import type { Transformation } from "@/lib/zod";
 
 export default function ExplorePage() {
@@ -38,13 +39,18 @@ export default function ExplorePage() {
 
       {/* Transformations — anonymized, no raw face URLs rendered (§5.11) */}
       <h2 className="font-display text-lg font-semibold text-ink">Transformations</h2>
-      <p className="mb-3 mt-1 text-sm text-muted">
+      <p className="mb-1 mt-1 text-sm text-muted">
         Face-score gains from real members on their 90-day plans.
+      </p>
+      <p className="mb-3 text-xs text-muted/80">
+        Names are anonymized to protect members&apos; privacy.
       </p>
       {transformations.length ? (
         <div className="mb-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {transformations.map((t) => (
-            <TransformationCard key={t.id} t={t} />
+          {transformations.map((t, i) => (
+            <Reveal key={t.id} delay={i * 0.05} y={16} className="h-full">
+              <TransformationCard t={t} />
+            </Reveal>
           ))}
         </div>
       ) : (
@@ -87,7 +93,7 @@ export default function ExplorePage() {
 function TransformationCard({ t }: { t: Transformation }) {
   const delta = t.after_score - t.before_score;
   return (
-    <div className="card-border rounded-card p-5">
+    <div className="card-border card-hover h-full rounded-card p-5">
       <div className="flex items-center justify-between">
         <p className="font-medium text-ink">{t.username}</p>
         <Badge variant="success">+{formatScore(delta)} pts</Badge>

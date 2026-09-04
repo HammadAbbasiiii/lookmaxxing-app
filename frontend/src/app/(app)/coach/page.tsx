@@ -9,6 +9,7 @@ import { Card } from "@/components/ui/Card";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { PaywallLock } from "@/components/ui/PaywallLock";
+import { Reveal } from "@/components/landing/Reveal";
 
 export default function CoachPage() {
   const { data: user } = useMe();
@@ -53,22 +54,24 @@ export default function CoachPage() {
           Couldn&apos;t load today&apos;s tip. Try again.
         </p>
       ) : (
-        <Card className="border-gold/30">
-          <div className="flex items-center gap-2 text-gold-bright">
-            <Sparkles className="h-4 w-4" aria-hidden />
-            <p className="text-xs font-semibold uppercase tracking-wide">
-              {q.data?.focus ? `Today's focus · ${q.data.focus}` : "Today's tip"}
-            </p>
-          </div>
-          <p className="mt-3 font-display text-lg font-semibold text-ink">{q.data?.message}</p>
-          <ul className="mt-4 space-y-2">
-            {(q.data?.tasks ?? []).map((t, i) => (
-              <li key={i} className="flex items-start gap-2 text-sm text-muted">
-                <span className="mt-0.5 text-gold">✓</span> {t}
-              </li>
-            ))}
-          </ul>
-        </Card>
+        <Reveal>
+          <Card className="border-gold/30">
+            <div className="flex items-center gap-2 text-gold-bright">
+              <Sparkles className="h-4 w-4" aria-hidden />
+              <p className="text-xs font-semibold uppercase tracking-wide">
+                {q.data?.focus ? `Today's focus · ${q.data.focus}` : "Today's tip"}
+              </p>
+            </div>
+            <p className="mt-3 font-display text-lg font-semibold text-ink">{q.data?.message}</p>
+            <ul className="mt-4 space-y-2">
+              {(q.data?.tasks ?? []).map((t, i) => (
+                <li key={i} className="flex items-start gap-2 text-sm text-muted">
+                  <span className="mt-0.5 text-gold">✓</span> {t}
+                </li>
+              ))}
+            </ul>
+          </Card>
+        </Reveal>
       )}
 
       <p className="mt-4 text-center text-xs text-muted">
