@@ -12,6 +12,8 @@ Articles are curated, evergreen seed content covering looksmaxxing / grooming /
 skincare topics. Replace `ARTICLES` with your own blog or CMS content when ready.
 """
 
+import hashlib
+
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
@@ -68,14 +70,37 @@ ARTICLES = [
 ]
 
 
+# Friendly, deterministic pseudonyms used when a member has no usable display
+# name (e.g. an empty name or short initials like "ML"). Real-sounding names
+# keep the social-proof feed from showing embarrassing placeholder text.
+_PSEUDONYMS = [
+    "Marcus", "Jamal", "Alex", "Jordan", "Chris", "Sam",
+    "Daniel", "Leo", "Noah", "Omar", "Tariq", "Kai",
+    "Ryan", "Devon", "Mateo", "Eli", "Andre", "Zayn",
+]
+
+
+def _looks_like_person_name(first: str) -> bool:
+    """A short all-caps token like 'ML' is initials, not a first name."""
+    if len(first) < 2:
+        return False
+    if len(first) <= 3 and first.isupper():
+        return False
+    return first.isalpha()
+
+
+def _pseudonym(user_id: str) -> str:
+    digest = hashlib.md5(user_id.encode("utf-8")).hexdigest()
+    return _PSEUDONYMS[int(digest, 16) % len(_PSEUDONYMS)]
+
+
 def _anonymize(user: User) -> str:
-    """Return a privacy-safe display name (first name only, or 'Member xxxx')."""
+    """Return a privacy-safe display name (first name only, or a pseudonym)."""
     name = (user.full_name or "").strip()
-    if name:
-        first = name.split()[0]
-        if first:
-            return first
-    return f"Member {user.id[:4].upper()}"
+    first = name.split()[0] if name else ""
+    if _looks_like_person_name(first):
+        return first
+    return _pseudonym(user.id)
 
 
 @router.get("")

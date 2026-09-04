@@ -14,6 +14,7 @@ from typing import Any, Dict, List, Optional
 
 from app.services.score_calibration import compute_potential_score
 from app.services.score_labels import get_score_label
+from app.services.category_breakdown import normalize_breakdown
 
 
 def gender_of(user_gender: Optional[str]) -> str:
@@ -95,9 +96,9 @@ def build_archetype(
     shape = (face_shape or "oval").strip().lower()
     name, emoji = table.get(shape, table["oval"])
 
-    categories = categories or {}
-    if isinstance(categories, dict) and categories:
-        ranked = sorted(categories.items(), key=lambda kv: (kv[1] or 0), reverse=True)
+    categories = normalize_breakdown(categories)
+    if categories:
+        ranked = sorted(categories.items(), key=lambda kv: kv[1], reverse=True)
         reasons = [CATEGORY_REASONS.get(k, k.replace("_", " ")) for k, _ in ranked[:3]]
     else:
         reasons = [SHAPE_NOTE.get(shape, "balanced proportions")]
@@ -195,7 +196,7 @@ def build_golden_ratio(
     categories: Optional[Dict[str, Any]],
     scores: Optional[Dict[str, Any]],
 ) -> Dict[str, Any]:
-    categories = categories if isinstance(categories, dict) else {}
+    categories = normalize_breakdown(categories)
     scores = scores if isinstance(scores, dict) else {}
 
     metrics: List[Dict[str, Any]] = []

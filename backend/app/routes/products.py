@@ -19,6 +19,7 @@ from app.services.product_recommendation_service import (
     get_products_by_category,
     get_categories,
 )
+from app.services.category_breakdown import normalize_breakdown
 
 router = APIRouter(prefix="/products", tags=["Products"])
 
@@ -58,15 +59,14 @@ async def get_recommendations(
             "message": "No face analysis found. Upload and analyse a photo first to get personalised recommendations.",
         }
 
-    # Extract category breakdown from analysis_details
+    # Extract category breakdown from analysis_details (nested or flat).
     analysis = latest_photo.analysis_details
     category_breakdown = {}
+    if isinstance(analysis, dict):
+        category_breakdown = normalize_breakdown(analysis.get("category_breakdown"))
 
-    # Try to get category_breakdown directly if present
-    if isinstance(analysis, dict) and "category_breakdown" in analysis:
-        category_breakdown = analysis["category_breakdown"]
-    else:
-        # Fall back to individual score fields on the photo
+    # Fall back to individual score fields on the photo if no breakdown exists.
+    if not category_breakdown:
         category_breakdown = {
             "skin_quality": latest_photo.skin_score or 50,
             "jawline_definition": latest_photo.jawline_score or 50,

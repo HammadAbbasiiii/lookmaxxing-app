@@ -5,6 +5,7 @@ from app.models import User, Photo, Plan
 from app.dependencies import get_current_user, require_pro, require_elite
 from app.services.score_calibration import compute_potential_score
 from app.services.score_labels import get_score_label
+from app.services.category_breakdown import normalize_breakdown
 from app.services.insights_service import (
     build_archetype,
     build_blueprint,
@@ -79,9 +80,7 @@ async def get_full_report(
         )
 
     details = photo.analysis_details or {}
-    breakdown = details.get("category_breakdown") or {}
-    if not isinstance(breakdown, dict):
-        breakdown = {}
+    breakdown = normalize_breakdown(details.get("category_breakdown"))
 
     categories = [
         {"key": k, "score": v, "label": k.replace("_", " ").title()}
@@ -361,9 +360,7 @@ async def get_insights(
     """Pro/Elite: Glow-Up Forecast, Percentile Rank and Look-Alike Archetype."""
     photo = _get_scored_photo(photo_id, current_user, db)
     details = photo.analysis_details or {}
-    breakdown = details.get("category_breakdown") or {}
-    if not isinstance(breakdown, dict):
-        breakdown = {}
+    breakdown = normalize_breakdown(details.get("category_breakdown"))
 
     gender = (current_user.gender or "other").lower()
 
@@ -384,9 +381,7 @@ async def get_harmony(
     """Elite: Golden-Ratio Harmony Map, Weekly Blueprint and Shareable Card."""
     photo = _get_scored_photo(photo_id, current_user, db)
     details = photo.analysis_details or {}
-    breakdown = details.get("category_breakdown") or {}
-    if not isinstance(breakdown, dict):
-        breakdown = {}
+    breakdown = normalize_breakdown(details.get("category_breakdown"))
 
     gender = (current_user.gender or "other").lower()
 

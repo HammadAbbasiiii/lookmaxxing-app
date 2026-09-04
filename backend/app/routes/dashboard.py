@@ -9,6 +9,7 @@ from app.database import get_db
 from app.models import User, Photo, Plan, UserCheckin
 from app.dependencies import get_current_user
 from app.services.score_labels import get_score_label
+from app.services.category_breakdown import normalize_breakdown
 from app.services.progress_engine import compute_current_day
 from datetime import datetime
 
@@ -140,15 +141,13 @@ async def get_dashboard(
     initial_score_label = get_score_label(initial_score) if initial_score is not None else None
     current_score_label = get_score_label(current_score) if current_score is not None else None
 
-    # Per-category labels from latest analysis
+    # Per-category labels from latest analysis (nested or flat breakdown).
     category_labels = None
-    if latest_photo and latest_photo.analysis_details and isinstance(latest_photo.analysis_details, dict):
-        breakdown = latest_photo.analysis_details.get("category_breakdown", {})
+    if latest_photo and isinstance(latest_photo.analysis_details, dict):
+        breakdown = normalize_breakdown(latest_photo.analysis_details.get("category_breakdown"))
         if breakdown:
             category_labels = {
-                cat: get_score_label(data["score"]) if isinstance(data, dict) and "score" in data else None
-                for cat, data in breakdown.items()
-                if cat not in ("heuristic",) and isinstance(data, dict)
+                cat: get_score_label(score) for cat, score in breakdown.items()
             }
 
     progress_info = {

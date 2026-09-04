@@ -19,6 +19,7 @@ from app.database import get_db
 from app.dependencies import require_pro
 from app.models import Photo, User
 from app.services.score_labels import get_score_label
+from app.services.category_breakdown import normalize_breakdown
 
 router = APIRouter(tags=["Coach"])
 
@@ -147,8 +148,8 @@ async def get_coach(
     score = latest.score if latest else None
     weakest: List[str] = []
     if latest and isinstance(latest.analysis_details, dict):
-        breakdown = latest.analysis_details.get("category_breakdown") or {}
-        if isinstance(breakdown, dict) and breakdown:
+        breakdown = normalize_breakdown(latest.analysis_details.get("category_breakdown"))
+        if breakdown:
             weakest = sorted(breakdown, key=lambda k: breakdown.get(k, 0))[:2]
 
     tip = _deepseek_tip(current_user, score, weakest) or _fallback_tip(current_user, weakest, score)

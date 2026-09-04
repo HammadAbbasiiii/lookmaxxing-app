@@ -20,6 +20,7 @@ from app.services.ai_service import analyze_face_with_deepseek, generate_fallbac
 from app.services.plan_generator_service import generate_action_plan, generate_fallback_plan
 from app.services.score_labels import get_score_label
 from app.services.score_calibration import compute_potential_score
+from app.services.category_breakdown import normalize_breakdown
 from app.services.prediction_service import prediction_service
 from app.services.background_analysis import run_analysis_in_background
 from app.services.entitlements_service import enforce_analysis_limit, enforce_photo_limit
@@ -249,7 +250,7 @@ async def get_analysis_status(
     model_used = None
     improvement_potential = None
     if photo.analysis_details:
-        category_breakdown = photo.analysis_details.get("category_breakdown")
+        category_breakdown = normalize_breakdown(photo.analysis_details.get("category_breakdown"))
         validation_error = photo.analysis_details.get("validation_error")
         potential_score = photo.analysis_details.get("potential_score")
         raw_score = photo.analysis_details.get("raw_score")
