@@ -23,6 +23,36 @@ _redis = None
 _redis_checked = False
 
 
+def _extract_user_id(request: Request):
+    """Pull the authenticated user id from the bearer token, if present.
+
+    The rate limiter is a pure middleware (it runs *before* the auth dependency),
+    so it can't rely on ``get_current_user``. We do a lightweight JWT decode of
+    the Authorization header here; on any failure we simply fall back to the
+    anonymous bucket. This gives authenticated users their own, larger bucket
+    instead of sharing the anonymous one — previously ``request.state.user_id``
+    was never populated anywhere, so *every* request was rate-limited as
+    "anonymous" (a single shared bucket + dead authenticated code path).
+    """
+    auth = request.headers.get("authorization", "")
+    if not auth.lower().startswith("bearer "):
+        return None
+    token = auth[7:].strip()
+    if not token:
+        return None
+    try:
+        from jose import jwt as _jwt
+        from app.config import settings as _settings
+
+        payload = _jwt.decode(
+            token, _settings.SECRET_KEY, algorithms=[_settings.ALGORITHM]
+        )
+        sub = payload.get("sub")
+        return f"user:{sub}" if sub else None
+    except Exception:
+        return None
+
+
 def _get_redis():
     """Lazily connect to Redis once; return None if unavailable."""
     global _redis, _redis_checked
@@ -46,7 +76,11 @@ def _get_redis():
 
 async def rate_limit_middleware(request: Request, call_next):
     """Rate limit incoming requests based on user identity."""
-    user_id = getattr(request.state, "user_id", None) or "anonymous"
+    user_id = (
+        getattr(request.state, "user_id", None)
+        or _extract_user_id(request)
+        or "anonymous"
+    )
     limit = AUTHENTICATED_LIMIT if user_id != "anonymous" else ANONYMOUS_LIMIT
 
     r = _get_redis()

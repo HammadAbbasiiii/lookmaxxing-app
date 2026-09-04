@@ -105,6 +105,7 @@ async def get_category_products(
     category: str,
     tier: str = Query(default=None, description="Optional: filter by budget tier"),
     user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
     """
     Browse all products in a specific category.
@@ -154,6 +155,7 @@ async def get_category_products(
 @router.get("/categories")
 async def list_categories(
     user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
     """
     List all product categories with display names and product counts.

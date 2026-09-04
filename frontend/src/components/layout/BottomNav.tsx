@@ -27,7 +27,7 @@ export function BottomNav() {
 
   return (
     <nav
-      className="fixed inset-x-0 bottom-0 z-40 border-t border-border-soft bg-background/95 backdrop-blur md:hidden"
+      className="fixed inset-x-0 bottom-0 z-40 border-t border-border-soft bg-background/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden"
       aria-label="Bottom"
     >
       <div className="mx-auto grid max-w-md grid-cols-6">
@@ -39,13 +39,13 @@ export function BottomNav() {
               key={tab.href}
               href={tab.href}
               className={cn(
-                "flex flex-col items-center gap-1 py-2.5 text-[11px] font-medium transition-colors",
+                "flex min-w-0 flex-col items-center gap-1 overflow-hidden px-0.5 py-2.5 text-[11px] font-medium leading-none transition-colors",
                 active ? "text-gold" : "text-muted hover:text-ink",
               )}
               aria-current={active ? "page" : undefined}
             >
-              <Icon className="h-5 w-5" aria-hidden />
-              {tab.label}
+              <Icon className="h-5 w-5 shrink-0" aria-hidden />
+              <span className="w-full truncate text-center">{tab.label}</span>
             </Link>
           );
         })}

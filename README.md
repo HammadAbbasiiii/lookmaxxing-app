@@ -88,8 +88,16 @@ The **master specification** is [`PRODUCT_SPEC.md`](./PRODUCT_SPEC.md) — it co
 ## 🧪 Testing
 
 ```bash
+# Backend — 187 tests (auth, admin, premium gating, security, rate limiting,
+# IDOR, profile, progress/streak, payments, products, plan, dashboard, explore)
 cd backend && pytest
+
+# Frontend — type safety
+cd frontend && npm run typecheck
 ```
+
+Full coverage matrix, the security guarantees each test locks in, and the issues
+this pass found & fixed live in [`docs/TESTING.md`](./docs/TESTING.md).
 
 ## 📄 License
 

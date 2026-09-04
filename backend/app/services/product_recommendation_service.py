@@ -84,9 +84,15 @@ def _load_products(db: Optional[Session] = None) -> list[dict]:
 
 # ─── Sort key helpers ───
 def _sort_key_rating(product: dict) -> float:
-    """Sort by rating × log(reviews) to balance quality and social proof volume."""
+    """Sort by rating × log(reviews) to balance quality and social proof volume.
+
+    Coerces missing/None rating and review counts to 0 so products with no
+    rating (e.g. freshly added admin products) never crash the sort.
+    """
     import math
-    return product.get("rating", 0) * math.log(product.get("reviews_count", 10) + 1)
+    rating = product.get("rating") or 0
+    reviews = product.get("reviews_count") or 0
+    return float(rating) * math.log(float(reviews) + 1)
 
 
 # ─── Category→display key mapping for category_breakdown lookup ───

@@ -51,6 +51,20 @@ def db_session():
     session.close()
 
 
+@pytest.fixture(scope="function", autouse=True)
+def _reset_rate_limiter():
+    """Start each test with a clean in-memory rate-limit window.
+
+    The middleware's in-memory fallback store is module-global, so a test that
+    hammers a bucket would otherwise poison the next test's requests with 429s.
+    """
+    from app.middleware.rate_limit import _fallback_store
+
+    _fallback_store.clear()
+    yield
+    _fallback_store.clear()
+
+
 @pytest.fixture(scope="function")
 def client(db_session):
     """Test client for API calls"""
