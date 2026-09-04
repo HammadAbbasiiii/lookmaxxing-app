@@ -198,12 +198,12 @@ export default function AdminProducts() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3">
-        <div>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
           <h1 className="text-2xl font-semibold text-ink">Products</h1>
           <p className="text-sm text-muted">Add, edit, archive and re-activate products — no redeploys.</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex shrink-0 flex-wrap gap-2">
           <Button variant="secondary" size="sm" loading={importMut.isPending} onClick={() => importMut.mutate()}>
             Re-import JSON
           </Button>
