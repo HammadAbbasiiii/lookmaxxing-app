@@ -31,6 +31,56 @@ def get_password_hash(password: str) -> str:
     """Hash password for storage"""
     return pwd_context.hash(password)
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Password strength (§7, §13) — a real minimum bar, not just a length check.
+# Rejects the top handful of trivially-guessable passwords and requires a mix of
+# at least two character classes (lower / upper / digit / symbol). The frontend
+# mirrors these rules in its live strength meter so messages never disagree.
+# ─────────────────────────────────────────────────────────────────────────────
+
+COMMON_PASSWORDS = {
+    "password", "password1", "password123", "12345678", "123456789", "1234567890",
+    "qwerty", "qwerty123", "qwertyuiop", "letmein", "lookmaxx", "lookmaxxing",
+    "iloveyou", "admin123", "welcome1", "monkey123", "football", "baseball",
+    "dragon123", "sunshine", "princess", "trustno1", "abc123", "11111111",
+    "00000000", "aaaaaaaa", "changeme", "master123", "superman1", "batman123",
+}
+
+
+def validate_password_strength(password: str, email: str | None = None) -> tuple[bool, str]:
+    """Return ``(ok, error_message)`` for a candidate password.
+
+    Length bounds are enforced by the Pydantic schema (min 8 / max 128); this
+    function adds the human checks Pydantic can't express: blacklisted/common
+    passwords, email-adjacent passwords, and the two-class mix requirement.
+    """
+    lowered = password.lower()
+
+    if lowered in COMMON_PASSWORDS:
+        return False, "That password is too common. Choose something more unique."
+
+    if email:
+        clean_email = email.strip().lower()
+        local = clean_email.split("@")[0]
+        if lowered == clean_email or (len(local) >= 4 and local in lowered):
+            return False, "Password can't be your email address."
+
+    classes = 0
+    if any(c.islower() for c in password):
+        classes += 1
+    if any(c.isupper() for c in password):
+        classes += 1
+    if any(c.isdigit() for c in password):
+        classes += 1
+    if any(not c.isalnum() for c in password):
+        classes += 1
+
+    if classes < 2:
+        return False, "Password must use at least two of: lowercase, uppercase, numbers, or symbols."
+
+    return True, ""
+
 def create_access_token(data: dict, expires_delta: timedelta = None) -> str:
     """Create JWT access token"""
     to_encode = data.copy()

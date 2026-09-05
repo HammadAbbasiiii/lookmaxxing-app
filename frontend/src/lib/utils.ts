@@ -59,6 +59,12 @@ const ALLOWED_NEXT_PREFIXES = [
   "/analyzing",
   "/results",
   "/onboarding",
+  "/coach",
+  "/glow-up",
+  "/peak-you",
+  "/arc",
+  "/glow",
+  "/glowups",
 ];
 
 export function safeNext(raw: string | null | undefined): string {

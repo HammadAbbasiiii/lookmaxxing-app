@@ -140,13 +140,6 @@ export async function apiFetch<T>(path: string, options: FetchOptions = {}): Pro
   }
   clearTimeout(timer);
 
-  // Session invalid → clear + global redirect (§9.1 #3).
-  if (response.status === 401) {
-    clearToken();
-    emitUnauthorized();
-    throw new ApiError(401, "http", "Incorrect email or password.");
-  }
-
   // Defensive parse: a proxy/HTML error page is treated as a 500 (§9.5).
   const text = await response.text().catch(() => "");
   let data: unknown = null;
@@ -156,6 +149,22 @@ export async function apiFetch<T>(path: string, options: FetchOptions = {}): Pro
     } catch {
       data = null;
     }
+  }
+
+  // Session invalid → clear + global redirect, but only when a token was
+  // actually attached (an expired/invalid session). A login/signup 401 with no
+  // token is an ordinary "bad credentials" result — not a session expiry (§9.1
+  // #3). Showing "Incorrect email or password" for a stale token was confusing.
+  if (response.status === 401) {
+    const hadToken = Boolean(getToken());
+    const message = hadToken
+      ? "Your session expired. Please log in again."
+      : httpErrorMessage(401, data) || "Incorrect email or password.";
+    if (hadToken) {
+      clearToken();
+      emitUnauthorized();
+    }
+    throw new ApiError(401, "http", message);
   }
 
   if (!response.ok) {

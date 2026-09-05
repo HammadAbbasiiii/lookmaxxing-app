@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowUpRight, Camera, Check, Flame, ListChecks, Lock, Rocket, ShoppingBag, Sparkles } from "lucide-react";
+import { ArrowUpRight, Camera, Check, Clapperboard, Flame, ListChecks, Lock, Rocket, ShoppingBag, Sparkles, Swords } from "lucide-react";
 import { getDashboard } from "@/lib/api/endpoints";
 import { useEntitlements } from "@/hooks/useEntitlements";
 import { STALE, scoreLabel } from "@/lib/constants";
@@ -293,6 +293,9 @@ export default function DashboardPage() {
       <div className="mt-6 grid gap-3 sm:grid-cols-3">
         {[
           { href: "/upload", label: "Upload new photo", sub: "Track a new check-in", icon: Camera },
+          { href: "/glow", label: "Daily Glow", sub: "Open today's reveal", icon: Flame },
+          { href: "/arc", label: "The Arc", sub: "XP, quests & badges", icon: Swords },
+          { href: "/glowups", label: "Glow-Ups", sub: "Real transformations", icon: Clapperboard },
           { href: "/plan", label: "View plan", sub: "Today's 2-minute tasks", icon: ListChecks },
           { href: "/peak-you", label: "Peak You", sub: "Meet your future self", icon: Rocket },
           { href: "/glow-up", label: "Your Glow-Up", sub: "Forecast, rank & harmony", icon: Sparkles },

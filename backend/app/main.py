@@ -3,9 +3,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from app.routes import health, auth, photos, analysis, plan, products, upload
 from app.routes import profile, progress, dashboard, explore, analytics, admin_products
-from app.routes import entitlements, coach, payments
+from app.routes import entitlements, coach, payments, glow, arc, glowups
 from app.middleware.rate_limit import rate_limit_middleware
 from app.middleware.error_handler import global_error_handler
+from app.middleware.security_headers import security_headers_middleware
 from app.database import engine
 from app.models import Base
 from app.config import settings
@@ -183,17 +184,22 @@ app = FastAPI(
     version="0.1.0"
 )
 
-# CORS - allow iOS app to connect
+# CORS — explicit allow-list (see config.CORS_ORIGINS). Bearer-token auth means
+# `allow_credentials` is unnecessary; keeping it False also removes the invalid
+# "*" + credentials combination that browsers reject.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Replace with your app's domain in production
-    allow_credentials=True,
+    allow_origins=settings.CORS_ORIGINS,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 # GZip compression — compress responses > 1KB
 app.add_middleware(GZipMiddleware, minimum_size=500)
+
+# Security response headers (§19) — cheap, defense-in-depth for every response.
+app.middleware("http")(security_headers_middleware)
 
 # Global error handler — outermost middleware, catches all unhandled exceptions
 app.middleware("http")(global_error_handler)
@@ -218,3 +224,6 @@ app.include_router(admin_products.router, prefix="/api/v1", tags=["Admin"])
 app.include_router(entitlements.router, prefix="/api/v1", tags=["Entitlements"])
 app.include_router(coach.router, prefix="/api/v1", tags=["Coach"])
 app.include_router(payments.router, prefix="/api/v1", tags=["Payments"])
+app.include_router(glow.router, prefix="/api/v1", tags=["Glow"])
+app.include_router(arc.router, prefix="/api/v1", tags=["Arc"])
+app.include_router(glowups.router, prefix="/api/v1", tags=["Glow-Ups"])

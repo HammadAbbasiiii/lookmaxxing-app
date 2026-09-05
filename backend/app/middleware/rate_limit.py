@@ -102,6 +102,7 @@ async def rate_limit_middleware(request: Request, call_next):
                 return JSONResponse(
                     status_code=429,
                     content={"detail": "Rate limit exceeded. Please wait a moment."},
+                    headers={"Retry-After": str(WINDOW_SECONDS)},
                 )
             return await call_next(request)
         except Exception:
@@ -116,6 +117,13 @@ async def rate_limit_middleware(request: Request, call_next):
         return JSONResponse(
             status_code=429,
             content={"detail": "Rate limit exceeded. Please wait a moment."},
+            headers={"Retry-After": str(WINDOW_SECONDS)},
         )
     _fallback_store[user_id].append(now)
+
+    # Keep the fallback dict from growing without bound on long-lived workers:
+    # drop keys whose window has fully expired (bounded by WINDOW_SECONDS here).
+    for key in [k for k in _fallback_store if not _fallback_store[k]]:
+        _fallback_store.pop(key, None)
+
     return await call_next(request)

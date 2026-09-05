@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { MotionConfig } from "framer-motion";
 import { Toaster } from "sonner";
 
 export function Providers({ children }: { children: ReactNode }) {
@@ -23,7 +24,9 @@ export function Providers({ children }: { children: ReactNode }) {
 
   return (
     <QueryClientProvider client={client}>
-      {children}
+      {/* Respect the OS "reduce motion" preference for every framer-motion
+          animation (§13 accessibility) — no vestibular-triggering motion. */}
+      <MotionConfig reducedMotion="user">{children}</MotionConfig>
       <Toaster
         position="top-center"
         theme="dark"

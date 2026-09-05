@@ -12,14 +12,12 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { ApiError } from "@/lib/api/client";
 import { resetPassword, verifyResetToken } from "@/lib/api/endpoints";
+import { passwordSchema } from "@/lib/password";
+import { PasswordStrengthMeter } from "@/components/ui/PasswordStrengthMeter";
 
 const resetSchema = z
   .object({
-    new_password: z
-      .string()
-      .trim()
-      .min(6, "Password must be at least 6 characters.")
-      .max(128, "Password is too long."),
+    new_password: passwordSchema,
     confirm: z.string(),
   })
   .refine((d) => d.new_password === d.confirm, {
@@ -37,12 +35,14 @@ export function ResetPasswordForm({ token }: { token: string }) {
     register,
     handleSubmit,
     setError,
+    watch,
     formState: { errors, isSubmitting },
   } = useForm<ResetInput>({
     resolver: zodResolver(resetSchema),
     mode: "onBlur",
     defaultValues: { new_password: "", confirm: "" },
   });
+  const passwordValue = watch("new_password") ?? "";
 
   useEffect(() => {
     let cancelled = false;
@@ -127,10 +127,11 @@ export function ResetPasswordForm({ token }: { token: string }) {
           autoComplete="new-password"
           enterKeyHint="next"
           label="New password"
-          placeholder="At least 6 characters"
+          placeholder="At least 8 characters"
           error={errors.new_password?.message}
           {...register("new_password")}
         />
+        <PasswordStrengthMeter password={passwordValue} />
         <Input
           id="confirm"
           type="password"

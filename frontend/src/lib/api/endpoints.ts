@@ -58,6 +58,24 @@ import {
   type LatestPhoto,
   CheckoutSchema,
   type Checkout,
+  GlowStateResponseSchema,
+  type GlowStateResponse,
+  GlowOpenResponseSchema,
+  type GlowOpenResponse,
+  GlowRevealsResponseSchema,
+  type GlowReveal,
+  ArcStateSchema,
+  type ArcState,
+  ArcClaimSchema,
+  type ArcClaim,
+  ArcBadgeSchema,
+  type ArcBadge,
+  GlowupFeedSchema,
+  type GlowupFeed,
+  GlowupConsentSchema,
+  type GlowupConsent,
+  GlowupMovieSchema,
+  type GlowupMovie,
 } from "@/lib/zod";
 
 // ── Auth ────────────────────────────────────────────────────────────
@@ -487,5 +505,131 @@ export async function testUpgrade(tier: "pro" | "elite"): Promise<{ success: boo
   const data = await apiFetch<unknown>("/payments/test-upgrade", { method: "POST", body: { tier } });
   const root = data && typeof data === "object" ? (data as Record<string, unknown>) : {};
   return { success: Boolean(root.success), tier: typeof root.tier === "string" ? root.tier : tier };
+}
+
+// ── Momentum: Glow (daily reveal) ──────────────────────────────────
+const emptyGlowReveal = (): GlowReveal => ({
+  id: "",
+  day: 1,
+  rarity: "common",
+  reward_type: "micro_win",
+  payload: {
+    kind: "", emoji: "", headline: "", body: "", photo_url: null, blur_px: null,
+    before_url: null, after_url: null, before_score: null, after_score: null,
+    delta: null, share_text: null,
+  },
+  opened_at: null,
+});
+
+const emptyGlowState = () => ({
+  journey_day: 1,
+  glow_streak: 0,
+  longest_glow_streak: 0,
+  opens_count: 0,
+  blur_next: 24,
+  full_reveal: { eligible: false, unlocked: false },
+  weights: { common: 70, rare: 24, epic: 5, legendary: 1 },
+});
+
+export async function getGlowState(): Promise<GlowStateResponse> {
+  const data = await apiFetch<unknown>("/glow/state");
+  return decode(GlowStateResponseSchema, data, {
+    can_open: false,
+    opened_today: false,
+    today_reveal: null,
+    state: emptyGlowState(),
+  });
+}
+
+export async function openGlow(): Promise<GlowOpenResponse> {
+  const data = await apiFetch<unknown>("/glow/open", { method: "POST" });
+  return decode(GlowOpenResponseSchema, data, {
+    already_opened: false,
+    reveal: emptyGlowReveal(),
+    state: emptyGlowState(),
+  });
+}
+
+export async function getGlowReveals(): Promise<{ reveals: GlowReveal[]; total: number }> {
+  const data = await apiFetch<unknown>("/glow/reveals");
+  return decode(GlowRevealsResponseSchema, data, { reveals: [], total: 0 });
+}
+
+// ── Momentum: The Arc (XP / levels / quests / badges) ───────────────
+const emptyArcState = (): ArcState => ({
+  level: 1,
+  total_xp: 0,
+  xp_to_next: 100,
+  title: "",
+  archetype: "Rookie",
+  milestone_title: null,
+  premium: false,
+  today_quests: [],
+  badges: [],
+  skill_tree: [],
+});
+
+export async function getArcState(): Promise<ArcState> {
+  const data = await apiFetch<unknown>("/arc/state");
+  return decode(ArcStateSchema, data, emptyArcState());
+}
+
+export async function claimArcQuest(questId: string): Promise<ArcClaim> {
+  const data = await apiFetch<unknown>(`/arc/quests/${questId}/claim`, { method: "POST" });
+  return decode(ArcClaimSchema, data, {
+    xp_awarded: 0, level: 1, total_xp: 0, leveled_up: false, new_title: null,
+  });
+}
+
+export async function getArcBadges(): Promise<{ badges: ArcBadge[] }> {
+  const data = await apiFetch<unknown>("/arc/badges");
+  const root = data && typeof data === "object" ? (data as Record<string, unknown>) : {};
+  const raw = Array.isArray(root.badges) ? root.badges : [];
+  const badges = raw.map((b) =>
+    decode(ArcBadgeSchema, b, { badge_key: "", name: "", emoji: "🏅", description: "", unlocked_at: null }),
+  );
+  return { badges };
+}
+
+// ── Momentum: Glow-Ups (feed + movie) ───────────────────────────────
+export async function getGlowupsFeed(cursor = 0): Promise<GlowupFeed> {
+  const data = await apiFetch<unknown>(`/glowups/feed?cursor=${cursor}`);
+  return decode(GlowupFeedSchema, data, { items: [], next_cursor: null, locked: false });
+}
+
+export async function setGlowupsConsent(shareEnabled: boolean): Promise<GlowupConsent> {
+  const data = await apiFetch<unknown>("/glowups/consent", {
+    method: "POST",
+    body: { share_enabled: shareEnabled },
+  });
+  return decode(GlowupConsentSchema, data, { share_enabled: false, error: null });
+}
+
+export async function getGlowupsConsent(): Promise<GlowupConsent> {
+  const data = await apiFetch<unknown>("/glowups/consent");
+  return decode(GlowupConsentSchema, data, { share_enabled: false, error: null });
+}
+
+export async function getGlowupsMovie(): Promise<GlowupMovie> {
+  const data = await apiFetch<unknown>("/glowups/movie");
+  return decode(GlowupMovieSchema, data, {
+    status: "pending", trailers: [], full_movie_url: null, photo_urls: [], delta: 0,
+  });
+}
+
+export async function generateGlowupsMovie(): Promise<{ job_id: string | null; status: string; throttled?: boolean }> {
+  const data = await apiFetch<unknown>("/glowups/movie/generate", { method: "POST" });
+  const root = data && typeof data === "object" ? (data as Record<string, unknown>) : {};
+  return {
+    job_id: typeof root.job_id === "string" ? root.job_id : null,
+    status: typeof root.status === "string" ? root.status : "pending",
+    throttled: Boolean(root.throttled),
+  };
+}
+
+export async function reportGlowupsItem(itemId: string): Promise<{ reported: boolean }> {
+  const data = await apiFetch<unknown>(`/glowups/items/${itemId}/report`, { method: "POST" });
+  const root = data && typeof data === "object" ? (data as Record<string, unknown>) : {};
+  return { reported: Boolean(root.reported) };
 }
 

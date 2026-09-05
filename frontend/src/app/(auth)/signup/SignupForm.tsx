@@ -13,6 +13,8 @@ import { Input } from "@/components/ui/Input";
 import { ApiError } from "@/lib/api/client";
 import { login, signup } from "@/lib/api/endpoints";
 import { setToken } from "@/lib/auth";
+import { passwordSchema } from "@/lib/password";
+import { PasswordStrengthMeter } from "@/components/ui/PasswordStrengthMeter";
 
 // Email check is intentionally lenient so it never over-rejects international
 // (Unicode) addresses (§9.2 #17); the backend EmailStr is the real validator.
@@ -24,11 +26,7 @@ const signupSchema = z.object({
     .min(1, "Email is required.")
     .max(254, "Email is too long.")
     .refine((v) => /^[^\s@]+@[^\s@]+$/.test(v), "Enter a valid email address."),
-  password: z
-    .string()
-    .trim()
-    .min(1, "Password is required.")
-    .min(6, "Password must be at least 6 characters."),
+  password: passwordSchema,
   full_name: z.string().trim().max(255, "Name is too long.").optional(),
   consent: z.boolean().refine((v) => v === true, "Please agree to continue."),
 });
@@ -43,12 +41,14 @@ export function SignupForm() {
     register,
     handleSubmit,
     setError,
+    watch,
     formState: { errors, isSubmitting },
   } = useForm<SignupInput>({
     resolver: zodResolver(signupSchema),
     mode: "onBlur",
     defaultValues: { email: "", password: "", full_name: "", consent: false },
   });
+  const passwordValue = watch("password") ?? "";
 
   async function onSubmit(values: SignupInput) {
     setDuplicate(false);
@@ -119,10 +119,11 @@ export function SignupForm() {
           type="password"
           autoComplete="new-password"
           label="Password"
-          placeholder="At least 6 characters"
+          placeholder="At least 8 characters"
           error={errors.password?.message}
           {...register("password")}
         />
+        <PasswordStrengthMeter password={passwordValue} />
 
         <label className="flex items-start gap-2.5 text-xs text-muted">
           <input

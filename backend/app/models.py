@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, Float, JSON, Boolean, Text, ForeignKey, Index
+from sqlalchemy import Column, Integer, String, DateTime, Date, Float, JSON, Boolean, Text, ForeignKey, Index, UniqueConstraint
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from app.database import Base
@@ -262,3 +262,97 @@ class PasswordResetToken(Base):
     used_at = Column(DateTime, nullable=True)
 
     created_at = Column(DateTime, server_default=func.now())
+
+
+# ── Momentum engine: Glow (daily variable-reward reveal) ───────────────────
+class GlowState(Base):
+    """Daily Glow open state + streak. One row per user.
+
+    Reveal *quality* is day-based (never streak-based, so a missed day is
+    gain-framed — "pick up where you left off"), while the streak jackpot
+    (Day 7 / Day 30) is streak-based, mirroring the plan streaks.
+    """
+
+    __tablename__ = "glow_states"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, unique=True, index=True)
+
+    last_open_date = Column(Date, nullable=True)           # server UTC date of last open
+    glow_streak = Column(Integer, default=0)               # consecutive daily opens
+    longest_glow_streak = Column(Integer, default=0)
+    opens_count = Column(Integer, default=0)               # total opens (first-open hook detection)
+    consecutive_commons = Column(Integer, default=0)       # pity timer
+    milestone_flags = Column(JSON, nullable=True)          # {"streak7_claimed": true, "day90_claimed": true}
+
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, onupdate=func.now())
+
+
+class GlowReveal(Base):
+    """Audit log of every opened Glow reward (one per user per calendar day)."""
+
+    __tablename__ = "glow_reveals"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    open_date = Column(Date, nullable=False, index=True)   # server UTC date (idempotency key)
+    journey_day = Column(Integer, nullable=False)          # plan day 1..90 at open time
+    rarity = Column(String(16), nullable=False)            # common|rare|epic|legendary
+    reward_type = Column(String(32), nullable=False)       # micro_win|glimpse|unlock|gold_glow|full_reveal
+    payload = Column(JSON, nullable=True)
+
+    opened_at = Column(DateTime, server_default=func.now())
+
+    __table_args__ = (
+        Index("idx_glow_user_date", "user_id", "open_date"),
+    )
+
+
+# ── Momentum engine: The Arc (RPG XP / levels / quests / badges) ────────────
+class ArcState(Base):
+    __tablename__ = "arc_states"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, unique=True, index=True)
+    total_xp = Column(Integer, default=0)
+    current_level = Column(Integer, default=1)             # derived from total_xp
+    quest_date = Column(Date, nullable=True)               # server UTC date quests were generated for
+    quests = Column(JSON, nullable=True)                   # [{"id","focus","task","xp","claimed"}]
+    xp_events = Column(JSON, nullable=True)                # {event_key: xp} idempotency ledger
+
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, onupdate=func.now())
+
+
+class UserBadge(Base):
+    __tablename__ = "user_badges"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    badge_key = Column(String(64), nullable=False)
+    awarded_at = Column(DateTime, server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "badge_key", name="uq_user_badge"),
+    )
+
+
+# ── Momentum engine: Glow-Ups (transformation movie + anonymized feed) ──────
+class Transformation(Base):
+    __tablename__ = "transformations"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    photo_ids = Column(JSON, nullable=True)                # ordered baseline → latest
+    share_enabled = Column(Boolean, default=False)         # opt-in only
+    status = Column(String(32), default="pending")         # pending|trailer|ready|removed
+    movie_url = Column(String(500), nullable=True)
+    movie_generated_at = Column(DateTime, nullable=True)   # render throttle (1/day)
+    delta_score = Column(Float, nullable=True)
+    headline = Column(String(255), nullable=True)          # the user's own one-liner
+    reported_count = Column(Integer, default=0)
+    is_active = Column(Boolean, default=True, index=True)  # soft-delete for moderation
+
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, onupdate=func.now())

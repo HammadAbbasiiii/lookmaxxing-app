@@ -43,7 +43,13 @@ def db_session():
 
     # Clean up all data after each test
     from app.models import User, Photo, Plan, UserCheckin, PasswordResetToken
+    from app.models import GlowState, GlowReveal, ArcState, UserBadge, Transformation
     session.query(PasswordResetToken).delete()
+    session.query(GlowReveal).delete()
+    session.query(GlowState).delete()
+    session.query(ArcState).delete()
+    session.query(UserBadge).delete()
+    session.query(Transformation).delete()
     session.query(UserCheckin).delete()
     session.query(Photo).delete()
     session.query(Plan).delete()
@@ -60,6 +66,16 @@ def _reset_password_reset_throttle():
     reset_throttle()
     yield
     reset_throttle()
+
+
+@pytest.fixture(scope="function", autouse=True)
+def _reset_login_throttle():
+    """Start each test with a clean failed-login throttle."""
+    from app.routes.auth import _login_failures
+
+    _login_failures.clear()
+    yield
+    _login_failures.clear()
 
 
 @pytest.fixture(scope="function", autouse=True)

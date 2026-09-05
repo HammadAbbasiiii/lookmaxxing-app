@@ -7,7 +7,7 @@ from datetime import datetime
 # ──────────────────────────────────────────────────────────────────
 class UserCreate(BaseModel):
     email: EmailStr
-    password: str = Field(..., min_length=6)
+    password: str = Field(..., min_length=8, max_length=128)
     full_name: Optional[str] = None
 
 class UserLogin(BaseModel):
@@ -21,7 +21,7 @@ class ForgotPasswordRequest(BaseModel):
 
 class ResetPasswordRequest(BaseModel):
     token: str = Field(..., min_length=20, max_length=512)
-    new_password: str = Field(..., min_length=6, max_length=128)
+    new_password: str = Field(..., min_length=8, max_length=128)
 
 class TokenResponse(BaseModel):
     access_token: str

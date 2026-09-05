@@ -47,7 +47,6 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
             onClick={() => setShow((s) => !s)}
             className="absolute right-3 top-1/2 -translate-y-1/2 text-muted transition-colors hover:text-ink"
             aria-label={show ? "Hide password" : "Show password"}
-            tabIndex={-1}
           >
             {show ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
           </button>

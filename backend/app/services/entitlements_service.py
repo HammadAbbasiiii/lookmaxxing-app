@@ -106,6 +106,41 @@ FEATURES: List[Dict[str, Any]] = [
         "teaser": "Show off your score with a share-ready card.",
         "tier": "elite",
     },
+    {
+        "key": "glow_daily",
+        "name": "Daily Glow reveal",
+        "description": "One free 'open' every day that reveals a piece of your own future — sharper every day you show up.",
+        "teaser": "What's behind today's reveal? Open it to see.",
+        "tier": "free",
+    },
+    {
+        "key": "glow_full_reveal",
+        "name": "Day-90 full reveal",
+        "description": "Your full before/after at Day 90 — 0 blur, side-by-side slider and a share card.",
+        "teaser": "Your Day-90 proof is waiting — see the full change.",
+        "tier": "elite",
+    },
+    {
+        "key": "arc_engine",
+        "name": "The Arc — XP, levels & badges",
+        "description": "Every real action earns XP that levels you up through titles, quests and a skill tree.",
+        "teaser": "Your XP bar is filling — unlock your full journey.",
+        "tier": "pro",
+    },
+    {
+        "key": "glowups_feed",
+        "name": "Anonymized transformations",
+        "description": "Real members' real progress — blurred, first-name-only, and always opt-in.",
+        "teaser": "See what real members achieved on their plans.",
+        "tier": "free",
+    },
+    {
+        "key": "glowups_movie",
+        "name": "Your transformation movie",
+        "description": "Your photos compiled into a personal before/after movie with teaser trailers.",
+        "teaser": "Your transformation, in motion.",
+        "tier": "elite",
+    },
 ]
 
 TIER_RANK = {"free": 0, "pro": 1, "elite": 2}

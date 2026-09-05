@@ -1,4 +1,7 @@
-from fastapi import APIRouter, HTTPException, status, Depends, Query
+import time
+from collections import defaultdict, deque
+
+from fastapi import APIRouter, HTTPException, status, Depends, Query, Request
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
@@ -20,6 +23,7 @@ from app.dependencies import (
     get_current_user,
     pwd_context,
     is_admin_user,
+    validate_password_strength,
 )
 from app.config import settings
 from app.services.password_reset_service import (
@@ -31,6 +35,37 @@ from app.services.password_reset_service import (
 from app.services.email_service import send_password_reset_email
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Failed-login throttle (§7) — per email+IP, in-memory (mirrors the rate-limiter
+# fallback; swap for Redis in a multi-instance deploy). Locks an attacker out of
+# a single account after repeated misses without punishing other users sharing
+# the IP. The generic request limiter still bounds overall traffic.
+# ─────────────────────────────────────────────────────────────────────────────
+_login_failures: dict[str, deque] = defaultdict(deque)
+LOGIN_THROTTLE_WINDOW_SECONDS = 15 * 60   # 15 minutes
+LOGIN_THROTTLE_MAX_ATTEMPTS = 10          # failed tries before a temporary lock
+
+
+def _login_key(email: str, request: Request | None) -> str:
+    ip = request.client.host if request and request.client else "unknown"
+    return f"{email}|{ip}"
+
+
+def _login_is_throttled(email: str, request: Request | None) -> bool:
+    window = _login_failures[_login_key(email, request)]
+    now = time.time()
+    while window and window[0] < now - LOGIN_THROTTLE_WINDOW_SECONDS:
+        window.popleft()
+    return len(window) >= LOGIN_THROTTLE_MAX_ATTEMPTS
+
+
+def _login_record_failure(email: str, request: Request | None) -> None:
+    _login_failures[_login_key(email, request)].append(time.time())
+
+
+def _login_clear_failures(email: str, request: Request | None) -> None:
+    _login_failures.pop(_login_key(email, request), None)
 
 @router.post("/signup", response_model=UserResponse)
 async def signup(
@@ -46,8 +81,14 @@ async def signup(
     """
     # Normalize credentials (defense-in-depth; the web client also trims).
     # Lowercasing the email prevents duplicate accounts via case variations.
+    # The password is NOT stripped — leading/trailing spaces are a valid part of
+    # a passphrase, and silently altering it would be a login footgun.
     email = user_data.email.strip().lower()
-    password = user_data.password.strip()
+    password = user_data.password
+
+    ok, reason = validate_password_strength(password, email)
+    if not ok:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=reason)
 
     # Check if user already exists
     existing_user = db.query(User).filter(User.email == email).first()
@@ -76,35 +117,38 @@ async def signup(
 @router.post("/login", response_model=TokenResponse)
 async def login(
     form_data: OAuth2PasswordRequestForm = Depends(),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    request: Request = None,
 ):
     """
     Login and receive access token.
     
     Use username field for email and password for password.
     """
-    # Normalize credentials to match signup normalization.
+    # Normalize credentials to match signup normalization (email only; a
+    # password is never stripped so padded passphrases stay byte-identical).
     email = form_data.username.strip().lower()
-    password = form_data.password.strip()
+    password = form_data.password
+
+    if _login_is_throttled(email, request):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many failed attempts. Wait a few minutes and try again.",
+        )
 
     # Find user by email
     user = db.query(User).filter(User.email == email).first()
     
-    if not user:
+    if not user or not verify_password(password, user.hashed_password):
+        _login_record_failure(email, request)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
-    # Verify password
-    if not verify_password(password, user.hashed_password):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    
+
+    _login_clear_failures(email, request)
+
     # Create access token (carries `ver` so a later password reset revokes it).
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
@@ -244,6 +288,10 @@ async def reset_password(
     user = db.query(User).filter(User.id == reset.user_id).first()
     if user is None:
         raise invalid
+
+    ok, reason = validate_password_strength(req.new_password, user.email)
+    if not ok:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=reason)
 
     user.hashed_password = get_password_hash(req.new_password)
     user.token_version = (user.token_version or 0) + 1  # revoke existing sessions

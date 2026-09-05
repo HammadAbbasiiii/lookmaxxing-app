@@ -621,6 +621,157 @@ export const LatestPhotoSchema = z.object({
 });
 export type LatestPhoto = z.infer<typeof LatestPhotoSchema>;
 
+// ── Momentum: Glow (daily reveal) ────────────────────────────────────
+export const GlowStateSchema = z.object({
+  journey_day: z.number().catch(1),
+  glow_streak: z.number().catch(0),
+  longest_glow_streak: z.number().catch(0),
+  opens_count: z.number().catch(0),
+  blur_next: z.number().catch(24),
+  full_reveal: z.object({
+    eligible: z.boolean().catch(false),
+    unlocked: z.boolean().catch(false),
+  }).catch({ eligible: false, unlocked: false }),
+  weights: z.object({
+    common: z.number().catch(0),
+    rare: z.number().catch(0),
+    epic: z.number().catch(0),
+    legendary: z.number().catch(0),
+  }).catch({ common: 70, rare: 24, epic: 5, legendary: 1 }),
+});
+
+export const GlowPayloadSchema = z.object({
+  kind: z.string().catch(""),
+  emoji: z.string().catch(""),
+  headline: z.string().catch(""),
+  body: z.string().catch(""),
+  photo_url: z.string().nullable().catch(null),
+  blur_px: z.number().nullable().catch(null),
+  before_url: z.string().nullable().catch(null),
+  after_url: z.string().nullable().catch(null),
+  before_score: z.number().nullable().catch(null),
+  after_score: z.number().nullable().catch(null),
+  delta: z.number().nullable().catch(null),
+  share_text: z.string().nullable().catch(null),
+});
+
+export const GlowRevealSchema = z.object({
+  id: z.string().catch(""),
+  day: z.number().catch(1),
+  rarity: z.string().catch("common"),
+  reward_type: z.string().catch("micro_win"),
+  payload: GlowPayloadSchema.catch({
+    kind: "", emoji: "", headline: "", body: "", photo_url: null, blur_px: null,
+    before_url: null, after_url: null, before_score: null, after_score: null,
+    delta: null, share_text: null,
+  }),
+  opened_at: z.string().nullable().catch(null),
+});
+
+export const GlowStateResponseSchema = z.object({
+  can_open: z.boolean().catch(false),
+  opened_today: z.boolean().catch(false),
+  today_reveal: GlowRevealSchema.nullable().catch(null),
+  state: GlowStateSchema,
+});
+export const GlowOpenResponseSchema = z.object({
+  already_opened: z.boolean().catch(false),
+  reveal: GlowRevealSchema,
+  state: GlowStateSchema,
+});
+export const GlowRevealsResponseSchema = z.object({
+  reveals: z.array(GlowRevealSchema).catch([]),
+  total: z.number().catch(0),
+});
+export type GlowState = z.infer<typeof GlowStateSchema>;
+export type GlowReveal = z.infer<typeof GlowRevealSchema>;
+export type GlowStateResponse = z.infer<typeof GlowStateResponseSchema>;
+export type GlowOpenResponse = z.infer<typeof GlowOpenResponseSchema>;
+
+// ── Momentum: The Arc (XP / levels / quests / badges) ────────────────
+export const ArcQuestSchema = z.object({
+  id: z.string().catch(""),
+  focus: z.string().catch(""),
+  task: z.string().catch(""),
+  why: z.string().catch(""),
+  xp: z.number().catch(0),
+  claimed: z.boolean().catch(false),
+  locked: z.boolean().catch(true),
+});
+export const ArcBadgeSchema = z.object({
+  badge_key: z.string().catch(""),
+  name: z.string().catch(""),
+  emoji: z.string().catch("🏅"),
+  description: z.string().catch(""),
+  unlocked_at: z.string().nullable().catch(null),
+});
+export const ArcSkillNodeSchema = z.object({
+  key: z.string().catch(""),
+  name: z.string().catch(""),
+  emoji: z.string().catch(""),
+  unlocked: z.boolean().catch(false),
+});
+export const ArcStateSchema = z.object({
+  level: z.number().catch(1),
+  total_xp: z.number().catch(0),
+  xp_to_next: z.number().catch(100),
+  title: z.string().catch(""),
+  archetype: z.string().catch("Rookie"),
+  milestone_title: z.string().nullable().catch(null),
+  premium: z.boolean().catch(false),
+  today_quests: z.array(ArcQuestSchema).catch([]),
+  badges: z.array(ArcBadgeSchema).catch([]),
+  skill_tree: z.array(ArcSkillNodeSchema).catch([]),
+});
+export const ArcClaimSchema = z.object({
+  xp_awarded: z.number().catch(0),
+  level: z.number().catch(1),
+  total_xp: z.number().catch(0),
+  leveled_up: z.boolean().catch(false),
+  new_title: z.string().nullable().catch(null),
+});
+export type ArcState = z.infer<typeof ArcStateSchema>;
+export type ArcClaim = z.infer<typeof ArcClaimSchema>;
+export type ArcQuest = z.infer<typeof ArcQuestSchema>;
+export type ArcBadge = z.infer<typeof ArcBadgeSchema>;
+
+// ── Momentum: Glow-Ups (feed + movie) ────────────────────────────────
+export const GlowupFeedItemSchema = z.object({
+  id: z.string().catch(""),
+  first_name: z.string().catch(""),
+  age: z.number().nullable().catch(null),
+  day: z.number().catch(1),
+  delta: z.number().catch(0),
+  headline: z.string().catch(""),
+  cover_url: z.string().nullable().catch(null),
+  blur: z.boolean().catch(true),
+  seed: z.boolean().catch(false),
+});
+export const GlowupFeedSchema = z.object({
+  items: z.array(GlowupFeedItemSchema).catch([]),
+  next_cursor: z.number().nullable().catch(null),
+  locked: z.boolean().catch(false),
+});
+export const GlowupConsentSchema = z.object({
+  share_enabled: z.boolean().catch(false),
+  error: z.string().nullable().catch(null),
+});
+export const GlowupMovieSchema = z.object({
+  status: z.string().catch("pending"),
+  trailers: z.array(z.object({
+    day: z.number().catch(0),
+    title: z.string().catch(""),
+    photo_urls: z.array(z.string()).catch([]),
+  })).catch([]),
+  full_movie_url: z.string().nullable().catch(null),
+  photo_urls: z.array(z.string()).catch([]),
+  delta: z.number().catch(0),
+});
+export type GlowupFeedItem = z.infer<typeof GlowupFeedItemSchema>;
+export type GlowupFeed = z.infer<typeof GlowupFeedSchema>;
+export type GlowupConsent = z.infer<typeof GlowupConsentSchema>;
+export type GlowupMovie = z.infer<typeof GlowupMovieSchema>;
+
 export type DeleteAccountResult = z.infer<typeof DeleteAccountSchema>;
 
 

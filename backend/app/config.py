@@ -10,8 +10,8 @@ class Settings:
     DEEPSEEK_BASE_URL: str = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
     DEEPSEEK_MODEL: str = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
     
-    # Database
-    DATABASE_URL: str = os.getenv("DATABASE_URL", "")
+    # Database (empty env var → local SQLite so the app can always boot).
+    DATABASE_URL: str = os.getenv("DATABASE_URL") or "sqlite:///./lookmaxx.db"
     
     # Redis
     REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379")
@@ -32,6 +32,19 @@ class Settings:
     # Environment / payments
     ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development").lower()
     FRONTEND_URL: str = os.getenv("FRONTEND_URL", "http://localhost:3000")
+
+    # CORS allow-list (§19). The API authenticates via bearer tokens in the
+    # Authorization header (not cookies), so `allow_credentials` stays False and
+    # the browser can send any of these origins without a wildcard+credentials
+    # conflict. Native iOS clients don't enforce CORS, so they are unaffected.
+    CORS_ORIGINS: list = [
+        o.strip() for o in os.getenv("CORS_ORIGINS", "").split(",") if o.strip()
+    ] or [
+        FRONTEND_URL,
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:3001",
+    ]
     STRIPE_SECRET_KEY: str = os.getenv("STRIPE_SECRET_KEY", "")
     STRIPE_WEBHOOK_SECRET: str = os.getenv("STRIPE_WEBHOOK_SECRET", "")
     STRIPE_PRICE_PRO_MONTHLY: str = os.getenv("STRIPE_PRICE_PRO_MONTHLY", "")
