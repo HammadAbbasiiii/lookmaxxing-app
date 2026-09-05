@@ -198,14 +198,15 @@ app.add_middleware(
 # GZip compression — compress responses > 1KB
 app.add_middleware(GZipMiddleware, minimum_size=500)
 
-# Security response headers (§19) — cheap, defense-in-depth for every response.
-app.middleware("http")(security_headers_middleware)
-
-# Global error handler — outermost middleware, catches all unhandled exceptions
+# Global error handler — catches all unhandled exceptions
 app.middleware("http")(global_error_handler)
 
 # Rate limiting — prevent API abuse
 app.middleware("http")(rate_limit_middleware)
+
+# Security response headers (§19) — registered last so it is the OUTERMOST
+# wrapper and applies to every response, including 429s and error-handler 500s.
+app.middleware("http")(security_headers_middleware)
 
 # Include routers
 app.include_router(health.router, prefix="/api/v1", tags=["Health"])
