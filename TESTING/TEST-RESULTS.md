@@ -49,7 +49,7 @@
 - **P0 (critical):** none.
 - **P1 (high):** none.
 - **P2 (medium):** DEF-001 a11y link contrast (FIXED); DEF-004 postcss/next
-  dependency advisories via npm audit (OPEN — requires Next 16, deferred).
+  dependency advisories via npm audit (FIXED — non-breaking npm `overrides`).
 - **P3 (low):** DEF-002 health memory metric (FIXED); DEF-005 deprecation
   warnings (OPEN); DEF-006 in-memory rate limit/login throttle (OPEN, pre-existing).
 
@@ -64,5 +64,5 @@
 **READY WITH ACCEPTED RISKS** for the current local/staging state. Core
 functionality, authentication, authorization gating, security headers, momentum
 features, and the browser matrix all pass. Before a production deploy, complete
-the deploy gates in `RELEASE-CHECKLIST.md` (SECRET_KEY, CORS tighten, Stripe,
-Cloudinary, SMTP, Redis, Next 16 upgrade assessment).
+the deploy gates in `RELEASE-CHECKLIST.md` (set SECRET_KEY / CORS / FRONTEND_URL
+in Render, plus Stripe, Cloudinary, SMTP, Redis — code-side hardening is done).
