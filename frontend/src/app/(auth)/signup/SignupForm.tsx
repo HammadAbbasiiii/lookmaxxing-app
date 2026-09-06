@@ -134,11 +134,11 @@ export function SignupForm() {
           />
           <span>
             I agree to the{" "}
-            <Link href="/terms" className="text-gold hover:text-gold-bright">
+            <Link href="/terms" className="text-gold underline underline-offset-2 hover:text-gold-bright">
               Terms
             </Link>{" "}
             and{" "}
-            <Link href="/privacy" className="text-gold hover:text-gold-bright">
+            <Link href="/privacy" className="text-gold underline underline-offset-2 hover:text-gold-bright">
               Privacy Policy
             </Link>
             , and I consent to my photo being used to generate my score.

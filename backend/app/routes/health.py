@@ -23,13 +23,14 @@ def _get_redis_status() -> str:
 
 
 def _get_memory_usage() -> dict | None:
-    """Get current memory usage in MB (Linux/Mac only)."""
+    """Get current max RSS in MB (Linux/macOS only)."""
     try:
         import resource
+        import sys
         usage = resource.getrusage(resource.RUSAGE_SELF)
-        return {
-            "max_rss_mb": round(usage.ru_maxrss / (1024 * 1024), 1) if os.name != "posix" else round(usage.ru_maxrss / 1024, 1),
-        }
+        # macOS reports ru_maxrss in bytes; Linux reports it in kilobytes.
+        divisor = 1024 * 1024 if sys.platform == "darwin" else 1024
+        return {"max_rss_mb": round(usage.ru_maxrss / divisor, 1)}
     except Exception:
         return None
 
