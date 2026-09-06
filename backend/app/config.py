@@ -37,14 +37,21 @@ class Settings:
     # Authorization header (not cookies), so `allow_credentials` stays False and
     # the browser can send any of these origins without a wildcard+credentials
     # conflict. Native iOS clients don't enforce CORS, so they are unaffected.
+    # Explicit CORS_ORIGINS always wins. In production we never fall back to
+    # localhost origins (only FRONTEND_URL); in development the local origins are
+    # included so the web client works out of the box.
     CORS_ORIGINS: list = [
         o.strip() for o in os.getenv("CORS_ORIGINS", "").split(",") if o.strip()
-    ] or [
-        FRONTEND_URL,
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "http://localhost:3001",
-    ]
+    ] or (
+        [FRONTEND_URL]
+        if ENVIRONMENT == "production"
+        else [
+            FRONTEND_URL,
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+            "http://localhost:3001",
+        ]
+    )
     STRIPE_SECRET_KEY: str = os.getenv("STRIPE_SECRET_KEY", "")
     STRIPE_WEBHOOK_SECRET: str = os.getenv("STRIPE_WEBHOOK_SECRET", "")
     STRIPE_PRICE_PRO_MONTHLY: str = os.getenv("STRIPE_PRICE_PRO_MONTHLY", "")
@@ -87,12 +94,18 @@ class Settings:
 
 settings = Settings()
 
-# Security: never allow the insecure default JWT signing key in production.
-if settings.SECRET_KEY == "change_this_in_production":
-    _env = os.getenv("ENVIRONMENT", "development").lower()
-    if _env == "production":
+# Security: never allow a weak/default JWT signing key in production.
+if settings.ENVIRONMENT == "production":
+    if settings.SECRET_KEY == "change_this_in_production":
         raise RuntimeError(
             "SECRET_KEY is still the insecure default ('change_this_in_production'). "
             "Set a strong SECRET_KEY environment variable before running in production."
         )
-    print("⚠️  SECRET_KEY is using the insecure default — set a real value before deploying.")
+    if len(settings.SECRET_KEY) < 32:
+        raise RuntimeError(
+            f"SECRET_KEY must be at least 32 characters in production "
+            f"(got {len(settings.SECRET_KEY)}). Generate one with: "
+            "python -c \"import secrets; print(secrets.token_urlsafe(48))\""
+        )
+elif settings.SECRET_KEY == "change_this_in_production" or len(settings.SECRET_KEY) < 32:
+    print("⚠️  SECRET_KEY is weak (default or <32 chars) — set a strong value before deploying.")
