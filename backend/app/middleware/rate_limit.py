@@ -7,14 +7,17 @@ ever limited a single process, which is a real hole on any multi-worker deploy.
 If Redis is unreachable, it degrades to the in-memory store so the API keeps
 working (and still rate-limits per process).
 """
+import os
 import time
 from collections import defaultdict
 from fastapi import Request
 from starlette.responses import JSONResponse
 
 WINDOW_SECONDS = 60  # 1-minute sliding window
-ANONYMOUS_LIMIT = 60   # 60 requests per minute for unauthenticated users
-AUTHENTICATED_LIMIT = 200  # 200 requests per minute for authenticated users
+# Overridable for test/staging environments (E2E runs drive far more anonymous
+# traffic than 60/min). Production defaults stay unchanged.
+ANONYMOUS_LIMIT = int(os.getenv("RATE_LIMIT_ANONYMOUS", "60"))
+AUTHENTICATED_LIMIT = int(os.getenv("RATE_LIMIT_AUTHENTICATED", "200"))
 
 # In-process fallback store
 _fallback_store: dict[str, list[float]] = defaultdict(list)
