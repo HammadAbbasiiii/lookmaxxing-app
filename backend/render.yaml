@@ -5,6 +5,7 @@ services:
     repo: https://github.com/HammadAbbasiiii/lookmaxxing-app
     plan: pro
     region: frankfurt
+    healthCheckPath: /api/v1/health
     buildCommand: |
       set -e
       cd backend
@@ -67,6 +68,41 @@ services:
         value: 1
       - key: PYTHONPATH
         value: /opt/render/project/src/backend
+      # ── Frontend / CORS ────────────────────────────────────────────
+      - key: FRONTEND_URL
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false
+      # ── Stripe payments (leave unset to keep /payments/* in honest 503) ──
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: STRIPE_PRICE_PRO_MONTHLY
+        sync: false
+      - key: STRIPE_PRICE_PRO_ANNUAL
+        sync: false
+      - key: STRIPE_PRICE_ELITE_MONTHLY
+        sync: false
+      - key: STRIPE_PRICE_ELITE_ANNUAL
+        sync: false
+      # ── Email (password reset) ─────────────────────────────────────
+      - key: EMAIL_PROVIDER
+        sync: false
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        sync: false
+      - key: SMTP_USERNAME
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      # ── Cloudinary upload preset (optional) ────────────────────────
+      - key: CLOUDINARY_UPLOAD_PRESET
+        sync: false
+      # ── Admin emails (comma-separated, optional) ───────────────────
+      - key: ADMIN_EMAILS
+        sync: false
 
   - type: redis
     name: lookmaxx-redis

@@ -19,8 +19,13 @@ opencv-python>=4.10.0.84,<5.0
 mediapipe==0.10.21
 psycopg2-binary>=2.9.10
 cloudinary==1.36.0
-torch
-torchvision
+# CPU-only wheels keep the Render image ~4GB smaller and the build far faster
+# (inference runs on CPU — Render has no GPU). Pinned to 2.2.2 because torch
+# >=2.6 flips torch.load() to weights_only=True by default, which can break
+# loading the 98MB rank_info_net_full.pth state dict.
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.2.2+cpu
+torchvision==0.17.2+cpu
 pytest==8.3.4
 pytest-asyncio==0.24.0
 httpx==0.28.1
