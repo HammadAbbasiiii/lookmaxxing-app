@@ -240,7 +240,7 @@ async def create_checkout(
     if not price_id:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail={"code": "price_missing", "message": "This plan isn't available yet."},
+            detail={"code": "price_missing", "message": "This plan's price isn't configured yet."},
         )
 
     # 7-day free trial on Elite — Stripe collects the card up front and charges
