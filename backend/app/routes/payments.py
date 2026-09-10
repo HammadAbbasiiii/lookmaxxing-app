@@ -348,6 +348,14 @@ async def stripe_webhook(
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid webhook signature.")
 
+    # The Stripe SDK returns a stripe.Event (with nested Stripe objects), not a
+    # plain dict, so `.get()` doesn't exist on it. Normalize to a real dict once
+    # so the `.get()` calls below — and the dict-based helpers like
+    # _resolve_user/_tier_from_obj/_plan_days/_invoice_period_end — work uniformly.
+    # (Guarded so a dict-like mock in tests still passes through unchanged.)
+    if hasattr(event, "to_dict"):
+        event = event.to_dict()
+
     event_type = event.get("type")
 
     # 2) Allowlist — ignore anything we don't explicitly handle.
