@@ -11,6 +11,7 @@ expensive face-detection + DeepSeek work never runs for a user who shouldn't be
 paying for it.
 """
 
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from fastapi import HTTPException, status
@@ -148,6 +149,15 @@ TIER_RANK = {"free": 0, "pro": 1, "elite": 2}
 
 def get_tier(user: User) -> str:
     tier = (user.subscription_tier or "free").lower()
+    # Safety net: a lapsed subscription reads as "free" everywhere (gating, the
+    # /entitlements view, and the client's /auth/me tier), even if a revocation
+    # webhook was missed. `subscription_end` is None for never-subscribed users.
+    if (
+        tier in ("pro", "elite")
+        and user.subscription_end is not None
+        and user.subscription_end < datetime.utcnow()
+    ):
+        return "free"
     return tier if tier in TIER_RANK else "free"
 
 

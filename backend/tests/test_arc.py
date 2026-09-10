@@ -160,7 +160,7 @@ class TestArcStateAPI:
         headers = _h(_token(u))
         first = client.get("/api/v1/arc/state", headers=headers).json()
         st = arc_service._get_state(u, db_session)
-        st.quest_date = dt.date.today() - dt.timedelta(days=1)
+        st.quest_date = dt.datetime.utcnow().date() - dt.timedelta(days=1)
         st.quests = []
         db_session.commit()
         second = client.get("/api/v1/arc/state", headers=headers).json()

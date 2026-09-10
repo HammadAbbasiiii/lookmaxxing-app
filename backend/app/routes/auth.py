@@ -33,6 +33,7 @@ from app.services.password_reset_service import (
     record_request,
 )
 from app.services.email_service import send_password_reset_email
+from app.services.entitlements_service import get_tier
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
@@ -175,8 +176,14 @@ async def get_current_user_profile(
     `is_admin` is computed (flag OR admin email) so the client-side admin gate
     matches the server-side `require_admin`, which also honours ADMIN_EMAILS.
     """
-    current_user.is_admin = is_admin_user(current_user)
-    return current_user
+    resp = UserResponse.model_validate(current_user)
+    # Expose the *effective* tier so an expired subscription reads as "free" in
+    # the UI (the server gates access independently — this just keeps it honest).
+    effective_tier = get_tier(current_user)
+    resp.subscription_tier = effective_tier
+    resp.is_subscribed = effective_tier in ("pro", "elite")
+    resp.is_admin = is_admin_user(current_user)
+    return resp
 
 @router.post("/logout")
 async def logout():

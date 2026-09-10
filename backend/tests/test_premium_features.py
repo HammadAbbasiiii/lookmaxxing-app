@@ -69,19 +69,22 @@ def test_normalize_breakdown_accepts_both_shapes():
     assert normalize_breakdown("nope") == {}
 
 
-def test_anonymize_hides_short_initials():
+def test_anonymize_uses_stable_member_alias():
     class U:
         def __init__(self, id_, full_name):
             self.id = id_
             self.full_name = full_name
 
-    # "ML" reads as initials, not a name — must become a pseudonym.
-    assert _anonymize(U("user-ml-1", "ML")) != "ML"
-    assert _anonymize(U("user-ml-1", "ML")) != "Member ML"
-    # Real names are preserved (first name only).
-    assert _anonymize(U("user-hammad", "Hammad Khan")) == "Hammad"
-    # Empty name gets a pseudonym too.
-    assert _anonymize(U("user-empty", None)) != ""
+    ml = _anonymize(U("user-ml-1", "ML"))
+    hammad = _anonymize(U("user-hammad", "Hammad Khan"))
+    empty = _anonymize(U("user-empty", None))
+
+    # Every member gets an unambiguous, deterministic "Member #XXXX" label —
+    # no real first names, no confusing fake names like "Alex"/"Noah".
+    assert ml.startswith("Member #") and ml.split("#")[1]
+    assert hammad.startswith("Member #")
+    assert empty.startswith("Member #")
+    assert ml == _anonymize(U("user-ml-1", "ML"))  # deterministic per user
 
 
 def test_coach_loads_with_nested_breakdown(client, db_session, monkeypatch):

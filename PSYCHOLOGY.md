@@ -106,11 +106,14 @@
 
 ## 5. Monetization psychology (freemium)
 
-- **Free tier**: 1 analysis + basic score + streak. Enough to get hooked.
+- **Free tier**: 1 analysis + basic score + streak. Enough to get hooked, capped so users feel the loss when they hit the limit.
 - **Paywall timing**: *after* the first score is revealed (the hook), never before. Reveal score → "Want your full 90-day plan + unlimited check-ins?" → paywall.
-- **Anchoring**: show monthly equivalent *next to* the annual price ("$9.99/mo, billed yearly — save 58%").
-- **Decoy effect**: 3 tiers — **Free / Pro / Elite**. Pro is the target; Elite exists to make Pro look like the smart choice.
-- **Loss framing**: "Your streak data and photo history stay synced on Pro" + "Cancel anytime" (reduces risk, the #1 objection).
+- **Anchoring**: show monthly price *first*, then the annual offer as a savings comparison with strike-through (`~~$119.88~~ → $50.40/yr`, `~~$239.88~~ → $100.80/yr`). Never show the annual price alone.
+- **Decoy effect**: 3 tiers — **Free / Pro / Elite**. Pro is the target; Elite exists to make Pro look like the smart choice. Cards render **Elite → Pro → Free** so Elite anchors the price and Pro feels like a bargain.
+- **Badges (social proof + aspiration)**: Pro = "Most popular" (everyone else is choosing it), Elite = "Best value" (aspirational), Free = "Start here" (low barrier).
+- **$1 first month (low barrier + loss aversion)**: "Get started for $1 — your first month is $1, then $9.99/mo." A card is required up front, so the user is already "invested" and more likely to stay. Server-tracked (`has_used_first_month_offer`) so it can't be reused.
+- **7-day free trial (Elite)**: card required (converts better than no-card trials); the audience is young and impulsive, so 7 days is enough to see value.
+- **Loss framing**: "Your streak data and photo history stay synced on Pro" + "Cancel anytime" (reduces risk, the #1 objection). Downgrading loses Pro/Elite features.
 - **Affiliate products** (`/products`) are the *secondary* monetization — never before the plan value.
 
 ---

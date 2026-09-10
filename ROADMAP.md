@@ -310,7 +310,7 @@ Every error gets: **status code → user-facing toast/inline copy → next actio
 
 ## 12. Monetization — Stripe plan (backend gap, to build)
 
-**Tiers**: Free (1 analysis + streak) / **Pro $9.99/mo** (unlimited analyses + full plan + check-ins) / **Elite $19.99/mo** (decoy — adds 1:1 "coach" Q&A + priority). Annual toggle = anchor (show "save 58%").
+**Tiers**: Free (1 analysis + streak) / **Pro $9.99/mo** (unlimited analyses + full plan + check-ins) / **Elite $19.99/mo** (decoy — adds 1:1 "coach" Q&A + priority). Annual −58% ($50.40/$100.80) with strike-through anchoring. Order **Elite → Pro → Free**; badges "Best value" / "Most popular" / "Start here"; one-time **$1 first month** (Pro) + **7-day free trial** (Elite).
 
 **Backend endpoints to add** (does not exist yet — see `CONTEXT.md`):
 1. `POST /payments/create-checkout` → creates Stripe Checkout Session, returns URL.

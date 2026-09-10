@@ -4,22 +4,14 @@ import Link from "next/link";
 import { useState } from "react";
 import { Check, Crown } from "lucide-react";
 import { Reveal } from "@/components/landing/Reveal";
-import { ANNUAL_DISCOUNT_PCT, PLANS } from "@/lib/constants";
+import { ANNUAL_DISCOUNT_PCT, PLAN_ORDER, PLANS } from "@/lib/constants";
 import { cn } from "@/lib/utils";
-
-const FEATURES: Record<string, string[]> = {
-  free: ["1 analysis", "Baseline score", "Streak tracking"],
-  pro: ["Unlimited analyses", "Full 90-day plan", "Daily check-ins", "Product recommendations"],
-  elite: ["Everything in Pro", "1:1 coach Q&A", "Priority support"],
-};
 
 export function Pricing() {
   const [annual, setAnnual] = useState(true);
 
-  function price(monthly: number): string {
-    if (monthly === 0) return "$0";
-    const effective = annual ? monthly * (1 - ANNUAL_DISCOUNT_PCT / 100) : monthly;
-    return `$${effective.toFixed(2)}`;
+  function usd(amount: number): string {
+    return `$${amount.toFixed(2)}`;
   }
 
   return (
@@ -57,9 +49,11 @@ export function Pricing() {
         </Reveal>
 
         <div className="grid gap-5 md:grid-cols-3">
-          {(Object.keys(PLANS) as (keyof typeof PLANS)[]).map((key, i) => {
+          {PLAN_ORDER.map((key, i) => {
             const plan = PLANS[key];
             const isPro = plan.tier === "pro";
+            const isElite = plan.tier === "elite";
+            const isFree = plan.tier === "free";
             return (
               <Reveal key={plan.tier} delay={i * 0.07}>
                 <div
@@ -68,31 +62,52 @@ export function Pricing() {
                     isPro ? "glow-gold border border-gold/60 bg-surface" : "card-border",
                   )}
                 >
-                  {isPro ? (
-                    <span className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full gold-gradient px-3 py-1 text-xs font-bold text-black">
-                      Most popular
-                    </span>
-                  ) : null}
+                  <span
+                    className={cn(
+                      "absolute -top-3 left-1/2 -translate-x-1/2 rounded-full px-3 py-1 text-xs font-bold",
+                      isPro
+                        ? "gold-gradient text-black"
+                        : isElite
+                          ? "border border-success/30 bg-success/15 text-success"
+                          : "border border-border-soft bg-surface-2 text-muted",
+                    )}
+                  >
+                    {plan.badge}
+                  </span>
 
                   <div className="flex items-center gap-2">
                     <h3 className="font-display text-xl font-bold text-ink">{plan.name}</h3>
-                    {plan.tier !== "free" ? <Crown className="h-4 w-4 text-gold" aria-hidden /> : null}
+                    {!isFree ? <Crown className="h-4 w-4 text-gold" aria-hidden /> : null}
                   </div>
 
                   <p className="mt-2 min-h-[40px] text-sm text-muted">{plan.blurb}</p>
 
-                  <p className="mt-4">
-                    <span className="tabular font-display text-4xl font-bold text-ink">
-                      {price(plan.monthly)}
-                    </span>
-                    {plan.monthly > 0 ? <span className="text-sm text-muted">/mo</span> : null}
-                  </p>
-                  {annual && plan.monthly > 0 ? (
-                    <p className="mt-1 text-xs text-muted">billed annually</p>
-                  ) : null}
+                  {plan.monthly > 0 ? (
+                    <div className="mt-4">
+                      <p className="flex items-baseline gap-1">
+                        <span className="tabular font-display text-4xl font-bold text-ink">
+                          {usd(annual ? plan.perMonth : plan.monthly)}
+                        </span>
+                        <span className="text-sm text-muted">/mo</span>
+                      </p>
+                      {annual ? (
+                        <p className="mt-1 text-xs text-muted">billed {usd(plan.annual)}/yr</p>
+                      ) : null}
+                      <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+                        <s className="tabular text-muted">{usd(plan.annualOriginal)}</s>
+                        <span className="tabular font-semibold text-ink">{usd(plan.annual)}/yr</span>
+                        <span className="font-medium text-success">Save {ANNUAL_DISCOUNT_PCT}%</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="mt-4 flex items-baseline gap-1">
+                      <span className="tabular font-display text-4xl font-bold text-ink">$0</span>
+                      <span className="text-sm text-muted">/mo</span>
+                    </p>
+                  )}
 
                   <ul className="mt-5 flex-1 space-y-2">
-                    {FEATURES[plan.tier].map((f) => (
+                    {(plan.features as readonly string[]).map((f) => (
                       <li key={f} className="flex items-start gap-2 text-sm text-ink">
                         <Check className="mt-0.5 h-4 w-4 shrink-0 text-gold" aria-hidden />
                         {f}
@@ -109,7 +124,7 @@ export function Pricing() {
                         : "border border-border-soft bg-surface text-ink hover:bg-surface-2",
                     )}
                   >
-                    {plan.tier === "free" ? "Start free" : `Start ${plan.name}`}
+                    {isFree ? "Start free" : `Start ${plan.name}`}
                   </Link>
                 </div>
               </Reveal>
@@ -119,7 +134,7 @@ export function Pricing() {
 
         <Reveal delay={0.1}>
           <p className="mt-8 text-center text-xs text-muted">
-            Cancel anytime. No card required to start.
+            Cancel anytime. Free starts with no card.
           </p>
         </Reveal>
       </div>

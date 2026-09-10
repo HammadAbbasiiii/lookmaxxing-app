@@ -46,6 +46,9 @@ class User(Base):
     subscription_start = Column(DateTime, nullable=True)
     subscription_end = Column(DateTime, nullable=True)
     subscription_customer_id = Column(String(255), nullable=True)
+    # One-time "$1 first month" offer (Pro monthly). Flipped to True once the
+    # discounted checkout is fulfilled, so the offer can't be reused.
+    has_used_first_month_offer = Column(Boolean, default=False)
     
     # Progress & streak
     plan_start_date = Column(DateTime, nullable=True)
@@ -241,6 +244,23 @@ class AdminAction(Base):
     entity_type = Column(String(64), nullable=False)  # product | user | ...
     entity_id = Column(String(255), nullable=True)
     details = Column(JSON, nullable=True)
+
+    created_at = Column(DateTime, server_default=func.now(), index=True)
+
+
+class StripeEvent(Base):
+    """Idempotency ledger for processed Stripe webhook events.
+
+    Stripe redelivers events (network retries, crashes mid-handler), so we record
+    each event id after successfully processing it and skip any id we've already
+    seen. This makes grant/revoke safe to replay.
+    """
+
+    __tablename__ = "stripe_events"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    event_id = Column(String(255), nullable=False, unique=True, index=True)
+    type = Column(String(128), nullable=False)
 
     created_at = Column(DateTime, server_default=func.now(), index=True)
 

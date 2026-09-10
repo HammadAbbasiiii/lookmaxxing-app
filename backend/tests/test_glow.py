@@ -140,7 +140,7 @@ class TestGlowAPI:
         u = _user(db_session, "glowrollover@example.com")
         _scored_photo(db_session, u)
         st = glow_service._get_state(u, db_session)
-        st.last_open_date = dt.date.today() - dt.timedelta(days=1)
+        st.last_open_date = dt.datetime.utcnow().date() - dt.timedelta(days=1)
         st.glow_streak = 3
         st.opens_count = 3
         db_session.commit()
@@ -151,7 +151,7 @@ class TestGlowAPI:
         u = _user(db_session, "glowreset@example.com")
         _scored_photo(db_session, u)
         st = glow_service._get_state(u, db_session)
-        st.last_open_date = dt.date.today() - dt.timedelta(days=3)
+        st.last_open_date = dt.datetime.utcnow().date() - dt.timedelta(days=3)
         st.glow_streak = 9
         st.opens_count = 9
         db_session.commit()
@@ -178,7 +178,7 @@ class TestGlowAPI:
         st = glow_service._get_state(u, db_session)
         st.consecutive_commons = 2
         st.opens_count = 5
-        st.last_open_date = dt.date.today() - dt.timedelta(days=1)
+        st.last_open_date = dt.datetime.utcnow().date() - dt.timedelta(days=1)
         db_session.commit()
         res = client.post("/api/v1/glow/open", headers=_h(_token(u))).json()
         assert res["reveal"]["rarity"] == "rare"

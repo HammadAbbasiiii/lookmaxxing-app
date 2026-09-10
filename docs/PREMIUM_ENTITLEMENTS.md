@@ -23,6 +23,12 @@
 The feature matrix lives in `app/services/entitlements_service.py` (`FEATURES`) —
 one source of truth for both the backend gate and the frontend lock chips.
 
+### 2.1 Pricing display (psychology, see `PSYCHOLOGY.md` §5)
+
+- Tier cards render **Elite → Pro → Free** with badges: Elite "Best value", Pro "Most popular", Free "Start here".
+- Prices lead with **monthly** (`$9.99` / `$19.99`), then show annual as a strike-through savings comparison: `~~$119.88~~ → $50.40/yr`, `~~$239.88~~ → $100.80/yr`.
+- **$1 first month** (Pro monthly, one-time — `User.has_used_first_month_offer`) and a **7-day free trial** (Elite, card required) are surfaced in `/upgrade`.
+
 ## 3. Endpoints
 
 | Method | Path | Auth | Purpose |
@@ -72,5 +78,7 @@ height 100–250, weight 30–300).
 
 - `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`
 - `STRIPE_PRICE_PRO_MONTHLY/ANNUAL`, `STRIPE_PRICE_ELITE_MONTHLY/ANNUAL`
+- `STRIPE_FIRST_MONTH_COUPON_ID` (Stripe coupon, `duration=once`, `amount_off=899` USD) — powers the $1 first month
+- `STRIPE_ELITE_TRIAL_DAYS=7` — Elite free trial length
 - `ALLOW_TEST_PAYMENTS=1`, `ENVIRONMENT=production`
 - `FREE_ANALYSIS_LIMIT=1`, `FRONTEND_URL=http://localhost:3000`

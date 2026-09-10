@@ -13,7 +13,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       <OfflineBanner />
       <TopNav />
       <AdminModeBanner />
-      <main className="mx-auto w-full max-w-5xl px-4 pb-28 pt-6 md:pb-16 md:pt-8">
+      <main className="mx-auto w-full max-w-5xl px-5 pb-28 pt-4 md:pb-16 md:pt-6">
         {children}
       </main>
       <BottomNav />

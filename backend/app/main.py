@@ -46,6 +46,18 @@ try:
 except Exception as _mig_tv_e:
     print(f"⚠️ users.token_version migration skipped: {_mig_tv_e}")
 
+# ── Migrate: add users.has_used_first_month_offer (one-time $1 first-month offer) ──
+try:
+    from sqlalchemy import inspect as _inspect_fmo, text as _text_fmo
+    _insp_fmo = _inspect(engine)
+    _cols_fmo = {c["name"] for c in _insp_fmo.get_columns("users")}
+    if "has_used_first_month_offer" not in _cols_fmo:
+        with engine.begin() as _conn_fmo:
+            _conn_fmo.execute(_text_fmo("ALTER TABLE users ADD COLUMN has_used_first_month_offer BOOLEAN DEFAULT FALSE"))
+        print("✅ Migrated: added users.has_used_first_month_offer")
+except Exception as _mig_fmo_e:
+    print(f"⚠️ users.has_used_first_month_offer migration skipped: {_mig_fmo_e}")
+
 # ── Promote admin emails to is_admin=True + grant Elite (testing convenience) ──────
 # The owner/admin account defaults to Elite so every Pro/Elite surface is testable
 # without manual tier fiddling. To temporarily test free/pro gating, flip your own

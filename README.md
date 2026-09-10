@@ -13,7 +13,7 @@ LookMaxx is a browser-based web app that quantifies facial aesthetics and turns 
 - **Personalized 90-day plan** — Phase 1/2/3, daily tasks, weekly timeline (DeepSeek AI with deterministic fallback).
 - **Engagement engine** — streaks, milestone celebrations (Day 7/14/21/30/45/60/75/90), before/after slider, anonymized transformations.
 - **Affiliate product recommendations** targeted at your weakest features.
-- **Premium tiers** — Free / **Pro $9.99/mo** / Elite $19.99/mo, with **server-authoritative gating** (no Inspect-Element bypass).
+- **Premium tiers** — Free / **Pro $9.99/mo** / Elite $19.99/mo (annual −58% → $50.40 / $100.80), a one-time **$1 first month** (Pro) and a **7-day free trial** (Elite), with **server-authoritative gating** (no Inspect-Element bypass).
 
 ## 🏗 Architecture
 

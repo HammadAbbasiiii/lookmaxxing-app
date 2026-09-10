@@ -6,7 +6,7 @@ Endpoints:
 
 Transformations are derived from real user progress: users with at least two
 scored photos whose score improved between their earliest and latest photo.
-Usernames are anonymised to a first name (or "Member xxxx") to protect privacy.
+Usernames are anonymised to a stable "Member #XXXX" label to protect privacy.
 
 Articles are curated, evergreen seed content covering looksmaxxing / grooming /
 skincare topics. Replace `ARTICLES` with your own blog or CMS content when ready.
@@ -70,37 +70,15 @@ ARTICLES = [
 ]
 
 
-# Friendly, deterministic pseudonyms used when a member has no usable display
-# name (e.g. an empty name or short initials like "ML"). Real-sounding names
-# keep the social-proof feed from showing embarrassing placeholder text.
-_PSEUDONYMS = [
-    "Marcus", "Jamal", "Alex", "Jordan", "Chris", "Sam",
-    "Daniel", "Leo", "Noah", "Omar", "Tariq", "Kai",
-    "Ryan", "Devon", "Mateo", "Eli", "Andre", "Zayn",
-]
-
-
-def _looks_like_person_name(first: str) -> bool:
-    """A short all-caps token like 'ML' is initials, not a first name."""
-    if len(first) < 2:
-        return False
-    if len(first) <= 3 and first.isupper():
-        return False
-    return first.isalpha()
-
-
-def _pseudonym(user_id: str) -> str:
-    digest = hashlib.md5(user_id.encode("utf-8")).hexdigest()
-    return _PSEUDONYMS[int(digest, 16) % len(_PSEUDONYMS)]
-
-
 def _anonymize(user: User) -> str:
-    """Return a privacy-safe display name (first name only, or a pseudonym)."""
-    name = (user.full_name or "").strip()
-    first = name.split()[0] if name else ""
-    if _looks_like_person_name(first):
-        return first
-    return _pseudonym(user.id)
+    """Return a stable, privacy-safe label for a member.
+
+    We never show a real name or a fake first name ("Alex", "Noah", …) — both
+    confused members and weakened privacy. Instead every transformation gets an
+    unambiguous, deterministic alias like "Member #A1B2" derived from the user id.
+    """
+    digest = hashlib.md5(user.id.encode("utf-8")).hexdigest()
+    return f"Member #{digest[:4].upper()}"
 
 
 @router.get("")

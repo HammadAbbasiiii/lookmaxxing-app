@@ -15,8 +15,10 @@ const VARIANT_CLASSES: Record<Variant, string> = {
 };
 
 const SIZE_CLASSES: Record<Size, string> = {
+  // `sm` is a deliberate compact exception for dense inline actions; the
+  // default `md` and `lg` meet the 50px minimum tap target.
   sm: "h-9 px-3 text-sm rounded-lg",
-  md: "h-11 px-5 text-sm rounded-xl",
+  md: "h-[50px] px-5 text-sm rounded-xl",
   lg: "h-[52px] px-7 text-base rounded-full",
 };
 

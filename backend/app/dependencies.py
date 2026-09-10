@@ -168,9 +168,22 @@ def require_admin(user: User = Depends(get_current_user)):
 VALID_TIERS = ("free", "pro", "elite")
 
 
+def _subscription_expired(user: User) -> bool:
+    """True when a paid subscription's term has lapsed.
+
+    Server-side safety net: even if a Stripe cancellation webhook is missed or
+    delayed, access auto-expires at `subscription_end` so a non-paying user can
+    never stay gated as premium indefinitely.
+    """
+    end = user.subscription_end
+    return end is not None and end < datetime.utcnow()
+
+
 def is_premium(user: User) -> bool:
-    """True when the user is on a paid tier (pro or elite)."""
-    return (user.subscription_tier or "free").lower() in ("pro", "elite")
+    """True when the user is on a paid tier (pro or elite) that hasn't lapsed."""
+    if (user.subscription_tier or "free").lower() not in ("pro", "elite"):
+        return False
+    return not _subscription_expired(user)
 
 
 def require_pro(user: User = Depends(get_current_user)):
@@ -188,7 +201,7 @@ def require_pro(user: User = Depends(get_current_user)):
 
 def require_elite(user: User = Depends(get_current_user)):
     """Gate elite-only endpoints."""
-    if (user.subscription_tier or "free").lower() != "elite":
+    if (user.subscription_tier or "free").lower() != "elite" or _subscription_expired(user):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={

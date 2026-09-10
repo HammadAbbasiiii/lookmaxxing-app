@@ -50,6 +50,7 @@ class UserResponse(BaseModel):
     subscription_tier: str
     is_subscribed: bool
     is_admin: bool
+    has_used_first_month_offer: bool = False
     total_checkins: int
     current_streak: int
     longest_streak: int
@@ -218,6 +219,9 @@ class OnboardingUpdate(BaseModel):
 class CheckoutIn(BaseModel):
     tier: str = Field(..., pattern="^(pro|elite)$")
     annual: bool = True
+    # "$1 first month" offer — Pro monthly only, one-time (server checks
+    # has_used_first_month_offer so a repeat request charges full price).
+    first_month_offer: bool = False
 
 
 class TestUpgradeIn(BaseModel):

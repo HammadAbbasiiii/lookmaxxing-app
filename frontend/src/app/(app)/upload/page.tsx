@@ -13,6 +13,7 @@ import { analyzePhoto, getUploadSignature, saveDirectUpload } from "@/lib/api/en
 import { uploadDirectToCloudinary } from "@/lib/api/cloudinary";
 import { useEntitlements } from "@/hooks/useEntitlements";
 import { PaywallLock } from "@/components/ui/PaywallLock";
+import { CameraCapture } from "@/components/upload/CameraCapture";
 import { ACCEPTED_IMAGE_TYPES, MAX_DIMENSION_PX, MAX_FILE_SIZE_MB } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 
@@ -29,12 +30,12 @@ const STAGE_LABEL: Record<Stage, string> = {
 export default function UploadPage() {
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
-  const cameraRef = useRef<HTMLInputElement>(null);
 
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [stage, setStage] = useState<Stage>("idle");
   const [error, setError] = useState<string | null>(null);
+  const [cameraOpen, setCameraOpen] = useState(false);
 
   const ent = useEntitlements();
   const hitLimit = Boolean(
@@ -198,34 +199,36 @@ export default function UploadPage() {
           className="hidden"
           onChange={(e) => onSelectFile(e.target.files?.[0] ?? null)}
         />
-        <input
-          ref={cameraRef}
-          type="file"
-          accept="image/jpeg,image/png,image/heic"
-          capture="user"
-          className="hidden"
-          onChange={(e) => onSelectFile(e.target.files?.[0] ?? null)}
-        />
 
         <div className="mt-5 flex gap-3">
-          <Button variant="secondary" onClick={() => cameraRef.current?.click()} disabled={busy} fullWidth>
-            <Camera className="h-4 w-4" /> Take photo
+          <Button variant="secondary" onClick={() => setCameraOpen(true)} disabled={busy} fullWidth>
+            <Camera className="h-4 w-4" /> Open camera
           </Button>
-          <Button
-            onClick={() => (file ? handleUpload() : fileRef.current?.click())}
-            disabled={busy}
-            loading={busy}
-            fullWidth
-          >
-            {file ? (busy ? "Working…" : "Analyze photo") : "Choose photo"}
+          <Button variant="secondary" onClick={() => fileRef.current?.click()} disabled={busy} fullWidth>
+            <ImagePlus className="h-4 w-4" /> Upload photo
           </Button>
         </div>
+
+        {file ? (
+          <Button onClick={handleUpload} disabled={busy} loading={busy} fullWidth className="mt-3">
+            {busy ? "Working…" : "Analyze photo"}
+          </Button>
+        ) : null}
 
         <p className="mt-4 flex items-center justify-center gap-1.5 text-center text-xs text-muted">
           <ShieldCheck className="h-3.5 w-3.5 text-gold" aria-hidden />
           Your photo is private and deleted anytime. Max 10MB.
         </p>
       </div>
+
+      <CameraCapture
+        open={cameraOpen}
+        onClose={() => setCameraOpen(false)}
+        onCapture={(f) => {
+          setCameraOpen(false);
+          onSelectFile(f);
+        }}
+      />
     </div>
   );
 }

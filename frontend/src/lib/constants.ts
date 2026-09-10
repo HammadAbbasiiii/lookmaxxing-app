@@ -73,31 +73,73 @@ export const PRODUCT_TIERS = [
   { value: "premium", label: "Premium" },
 ] as const;
 
-// Paywall tiers (§12.1). Prices are the marketing anchor; the backend is the
-// authoritative gate. Until /payments/* ships, /upgrade shows a waitlist.
+// ── Paywall tiers (§12.1) ────────────────────────────────────────────
+// Prices are the marketing anchor; the backend is the authoritative gate.
+// Display order is intentional (psychology, see PSYCHOLOGY.md §5): Elite first
+// (price anchor) → Pro (feels like a bargain) → Free (low barrier).
+
+export const PLAN_ORDER = ["elite", "pro", "free"] as const;
+
+// Annual prices are fixed in Stripe (Pro £50.40, Elite £100.80). We list them
+// explicitly so the UI never drifts from what the customer is actually charged.
+export const ANNUAL_DISCOUNT_PCT = 58;
+
+// "£1 first month" offer — Pro monthly only, one-time. The backend flags
+// User.has_used_first_month_offer to prevent repeat use.
+export const FIRST_MONTH_PRICE = 1;
+
+// 7-day free trial on Elite (Stripe collects the card up front).
+export const ELITE_TRIAL_DAYS = 7;
+
 export const PLANS = {
   free: {
     tier: "free",
     name: "Free",
+    badge: "Start Here",
     monthly: 0,
-    blurb: "1 analysis, streak tracking, baseline score.",
+    annual: 0,
+    annualOriginal: 0,
+    perMonth: 0,
+    blurb: "1 analysis, baseline score, streak tracking.",
+    features: ["1 analysis", "Basic score", "Streak tracking"],
   },
   pro: {
     tier: "pro",
     name: "Pro",
+    badge: "Most Popular",
     monthly: 9.99,
-    blurb: "Unlimited analyses, 90-day plan, Glow-Up Forecast, percentile rank & your look-alike archetype.",
-    highlight: true,
+    annual: 50.4,
+    annualOriginal: 119.88,
+    perMonth: 4.2,
+    blurb: "Unlimited analyses, full 90-day plan, product recs & progress tracking.",
+    features: [
+      "Unlimited analyses",
+      "Full 90-day plan + check-ins",
+      "Product recommendations",
+      "Progress tracking",
+      "Glow-Up Forecast (Day 30/60/90)",
+      "Daily AI coach",
+    ],
   },
   elite: {
     tier: "elite",
     name: "Elite",
+    badge: "Best Value",
     monthly: 19.99,
-    blurb: "Everything in Pro + golden-ratio harmony map, weekly blueprint & a shareable glow-up card.",
+    annual: 100.8,
+    annualOriginal: 239.88,
+    perMonth: 8.4,
+    blurb: "Everything in Pro + personal coaching, priority support & exclusive content.",
+    features: [
+      "Everything in Pro",
+      "Personal coaching (1:1 Q&A)",
+      "Priority support",
+      "Exclusive content",
+      "Golden-Ratio Harmony Map",
+      "Shareable Glow-Up Card",
+    ],
   },
 } as const;
-
-export const ANNUAL_DISCOUNT_PCT = 58;
 
 // Score labels (mirrors backend score_labels) — neutral-encouraging, never shaming.
 export function scoreLabel(score: number): string {

@@ -65,30 +65,32 @@ export function TopNav() {
   }
 
   return (
-    <header className="sticky top-0 z-40 border-b border-border-soft bg-background/90 backdrop-blur">
+    <header className="sticky top-0 z-40 border-b border-border-soft bg-background/90 pt-[env(safe-area-inset-top,0px)] backdrop-blur">
       <div className="mx-auto flex h-16 w-full max-w-5xl items-center justify-between px-4">
-        <Logo />
+        <Logo className="shrink-0" />
 
-        <nav className="hidden items-center gap-1 md:flex" aria-label="Primary">
-          {LINKS.map((link) => {
-            const active = pathname.startsWith(link.href);
-            return (
-              <Link
-                key={link.href}
-                href={link.href}
-                className={cn(
-                  "rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-                  active ? "text-ink" : "text-muted hover:text-ink",
-                )}
-                aria-current={active ? "page" : undefined}
-              >
-                {link.label}
-              </Link>
-            );
-          })}
+        <nav className="no-scrollbar hidden min-w-0 flex-1 overflow-x-auto md:block" aria-label="Primary">
+          <div className="mx-auto flex w-max items-center gap-0.5 px-2">
+            {LINKS.map((link) => {
+              const active = pathname.startsWith(link.href);
+              return (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  className={cn(
+                    "whitespace-nowrap rounded-lg px-2.5 py-2 text-sm font-medium transition-colors",
+                    active ? "text-ink" : "text-muted hover:text-ink",
+                  )}
+                  aria-current={active ? "page" : undefined}
+                >
+                  {link.label}
+                </Link>
+              );
+            })}
+          </div>
         </nav>
 
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           {isAdmin ? (
             <Link href="/admin" className="hidden md:block">
               <Badge variant="outline" className="cursor-pointer border-gold/40 text-gold hover:opacity-90">

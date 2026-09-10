@@ -53,14 +53,28 @@ class Settings:
         ]
     )
     STRIPE_SECRET_KEY: str = os.getenv("STRIPE_SECRET_KEY", "")
+    # Publishable key is safe to expose (it ships in clients). Only needed if we
+    # later add Stripe.js Elements — hosted Checkout doesn't use it client-side.
+    STRIPE_PUBLISHABLE_KEY: str = os.getenv("STRIPE_PUBLISHABLE_KEY", "")
     STRIPE_WEBHOOK_SECRET: str = os.getenv("STRIPE_WEBHOOK_SECRET", "")
     STRIPE_PRICE_PRO_MONTHLY: str = os.getenv("STRIPE_PRICE_PRO_MONTHLY", "")
     STRIPE_PRICE_PRO_ANNUAL: str = os.getenv("STRIPE_PRICE_PRO_ANNUAL", "")
     STRIPE_PRICE_ELITE_MONTHLY: str = os.getenv("STRIPE_PRICE_ELITE_MONTHLY", "")
     STRIPE_PRICE_ELITE_ANNUAL: str = os.getenv("STRIPE_PRICE_ELITE_ANNUAL", "")
+    # "£1 first month" (Pro monthly): Stripe coupon with `duration=once` and
+    # `amount_off=899` (GBP pence) makes the first invoice £1.00. Empty disables.
+    STRIPE_FIRST_MONTH_COUPON_ID: str = os.getenv("STRIPE_FIRST_MONTH_COUPON_ID", "")
+    # 7-day free trial on Elite. Stripe collects the card up front and charges
+    # after the trial ends.
+    STRIPE_ELITE_TRIAL_DAYS: int = int(os.getenv("STRIPE_ELITE_TRIAL_DAYS", "7"))
     # Dev/test-only: allows POST /payments/test-upgrade to flip a subscription
     # without a real charge. Ignored when ENVIRONMENT == "production".
     ALLOW_TEST_PAYMENTS: bool = os.getenv("ALLOW_TEST_PAYMENTS", "0") == "1"
+
+    # Affiliate links (product recommendations). Central place for the Amazon
+    # Associates tag so the owner can swap it in ONE place instead of editing
+    # every product link. Every outbound product link inherits this tag.
+    AMAZON_AFFILIATE_TAG: str = os.getenv("AMAZON_AFFILIATE_TAG", "lookmaxx-20")
 
     # Email / password reset
     # EMAIL_PROVIDER: "console" (logs the reset link — dev/test default) or "smtp".

@@ -10,16 +10,19 @@ All endpoints require authentication.
 Recommendations are generated from the user's most recent photo analysis category breakdown.
 """
 from fastapi import APIRouter, HTTPException, status, Depends, Query
+from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 from app.database import get_db
-from app.models import User, Photo
+from app.models import Product, User, Photo
 from app.dependencies import get_current_user
 from app.services.product_recommendation_service import (
+    _load_product_database,
     get_product_recommendations,
     get_products_by_category,
     get_categories,
 )
 from app.services.category_breakdown import normalize_breakdown
+from app.services.product_live import apply_freshness, normalize_affiliate_link
 
 router = APIRouter(prefix="/products", tags=["Products"])
 
@@ -92,6 +95,11 @@ async def get_recommendations(
             "message": "Product recommendations coming soon.",
         }
 
+    recommended = [
+        {**item, "product": apply_freshness(item.get("product") or {})}
+        for item in recommended
+    ]
+
     return {
         "success": True,
         "recommendations": recommended,
@@ -133,6 +141,7 @@ async def get_category_products(
         )
 
     products = get_products_by_category(category, tier=tier, db=db)
+    products = [apply_freshness(p) for p in products]
 
     if not products:
         return {
@@ -168,3 +177,28 @@ async def list_categories(
         "categories": cats,
         "total": len(cats),
     }
+
+
+@router.get("/out/{product_id}")
+async def product_outbound(product_id: str, db: Session = Depends(get_db)):
+    """Redirect to a product's retailer page with a normalised affiliate link.
+
+    This is the single, permanent choke point for every "view on retailer"
+    button: the affiliate tag is applied here (from AMAZON_AFFILIATE_TAG), and a
+    product with no link gracefully falls back to an Amazon search. Swap the tag
+    or fix a dead ASIN in one place and every surface updates instantly.
+    """
+    product = db.query(Product).filter(Product.id == product_id).first()
+    if product:
+        url = normalize_affiliate_link(product.affiliate_url, product.name or "")
+    else:
+        # Fall back to the JSON source so the link still works pre-seed/import.
+        match = next(
+            (p for p in _load_product_database() if p.get("id") == product_id), None
+        )
+        if not match:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Product not found"
+            )
+        url = normalize_affiliate_link(match.get("affiliate_link"), match.get("name") or "")
+    return RedirectResponse(url=url, status_code=302)

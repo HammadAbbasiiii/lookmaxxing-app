@@ -14,10 +14,11 @@ from fastapi import Request
 from starlette.responses import JSONResponse
 
 WINDOW_SECONDS = 60  # 1-minute sliding window
-# Overridable for test/staging environments (E2E runs drive far more anonymous
-# traffic than 60/min). Production defaults stay unchanged.
+# Production defaults: 60 req/min anonymous, 100 req/min per authenticated user
+# (§5.11). Both are env-overridable; E2E/staging can raise the anonymous bucket
+# since a single runner drives far more shared traffic than real users do.
 ANONYMOUS_LIMIT = int(os.getenv("RATE_LIMIT_ANONYMOUS", "60"))
-AUTHENTICATED_LIMIT = int(os.getenv("RATE_LIMIT_AUTHENTICATED", "200"))
+AUTHENTICATED_LIMIT = int(os.getenv("RATE_LIMIT_AUTHENTICATED", "100"))
 
 # In-process fallback store
 _fallback_store: dict[str, list[float]] = defaultdict(list)

@@ -8,7 +8,7 @@ import {
   getProductRecommendations,
   getProductsByCategory,
 } from "@/lib/api/endpoints";
-import { PRODUCT_TIERS, STALE } from "@/lib/constants";
+import { API_BASE, PRODUCT_TIERS, STALE } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/Badge";
 import { Skeleton } from "@/components/ui/Skeleton";
@@ -186,6 +186,14 @@ function CategoryChip({
   );
 }
 
+// Every "view on retailer" click routes through the backend redirect endpoint
+// (/api/v1/products/out/{id}), the single choke point where the affiliate tag is
+// applied and a dead/missing link falls back to an Amazon search. Fixing a link
+// in one place updates every surface instantly — no broken per-card URLs.
+function outboundUrl(id: string): string {
+  return `${API_BASE}/products/out/${encodeURIComponent(id)}`;
+}
+
 function ProductCard({ product }: { product: Product }) {
   const price =
     product.price != null
@@ -194,7 +202,7 @@ function ProductCard({ product }: { product: Product }) {
 
   return (
     <a
-      href={product.url}
+      href={outboundUrl(product.id)}
       target="_blank"
       rel="noopener noreferrer sponsored"
       onClick={() =>

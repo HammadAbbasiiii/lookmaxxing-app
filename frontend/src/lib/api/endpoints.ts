@@ -493,10 +493,14 @@ export async function getLatestPhoto(): Promise<LatestPhoto> {
   });
 }
 
-export async function createCheckout(tier: "pro" | "elite", annual: boolean): Promise<Checkout> {
+export async function createCheckout(
+  tier: "pro" | "elite",
+  annual: boolean,
+  firstMonthOffer = false,
+): Promise<Checkout> {
   const data = await apiFetch<unknown>("/payments/checkout", {
     method: "POST",
-    body: { tier, annual },
+    body: { tier, annual, first_month_offer: firstMonthOffer },
   });
   return decode(CheckoutSchema, data, { checkout_url: null });
 }

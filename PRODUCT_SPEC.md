@@ -37,7 +37,7 @@ LookMaxx answers one question in under 3 seconds: **"What's my score?"** A user 
 4. **Streaks, milestones, and before/after progress** to keep them coming back.
 5. **Affiliate product recommendations** targeted at their weakest features.
 
-**Monetization:** Free tier = 1 analysis + streak tracking. **Pro $9.99/mo** = unlimited analyses + full plan + check-ins. **Elite $19.99/mo** = decoy tier (1:1 coach Q&A + priority). Annual toggle anchors "save 58%".
+**Monetization:** Free tier = 1 analysis + streak tracking. **Pro $9.99/mo** = unlimited analyses + full plan + check-ins. **Elite $19.99/mo** = decoy tier (1:1 coach Q&A + priority). Annual −58% ($50.40/$100.80) anchors the monthly price; Pro has a one-time **$1 first month** and Elite a **7-day free trial**. Tier cards render **Elite → Pro → Free** (anchor → bargain → low barrier) with "Best value" / "Most popular" / "Start here" badges.
 
 **The promise we can actually keep (honesty is a feature):**
 > *"Upload one photo. Get your baseline score and a 90-day plan to improve it. Private. Free to start."*
@@ -564,7 +564,8 @@ Ship dark-first (it's the brand). Light theme is a Phase-2 nicety, not a blocker
 
 ### 8.13 Paywall (`/upgrade`)
 - **Purpose:** convert hooked users. 3 tiers, Pro highlighted, annual toggle anchoring. **Honesty rule:** until the backend `/payments/*` routes exist, show a "join waitlist" state — never a fake checkout.
-- **Layout:** tier cards (Free / **Pro** / Elite) → Pro highlighted with gold border + "Most popular" badge → annual/monthly toggle with "save 58%" anchor → FAQ/risk-reversal row.
+- **Layout:** tier cards ordered **Elite → Pro → Free** (Elite first as price anchor, Pro second as the "obvious choice", Free last as the low barrier). Badges: Elite "Best value" · Pro "Most popular" · Free "Start here". Pro highlighted with gold border. Monthly price shown first, then annual as a strike-through savings comparison (`~~$119.88~~ → $50.40/yr`, `~~$239.88~~ → $100.80/yr`) with a "save 58%" anchor → FAQ/risk-reversal row.
+- **Promotions (psychology, see `PSYCHOLOGY.md` §5):** a prominent **"Get started for $1"** CTA (Pro monthly, one-time — `User.has_used_first_month_offer` prevents reuse) and a **7-day free trial** on Elite (card required).
 - **Buttons:**
   - **Annual/Monthly toggle** (segmented): flips prices; annual is preselected (anchor).
   - **"Start Pro" / "Go Elite"** (primary on Pro, secondary on Elite): if payments are live → `POST /payments/create-checkout` → redirect to Stripe. If not live → "Join waitlist" (collects email in a toast state, never fakes a charge).
@@ -761,7 +762,7 @@ The `User` model already has `is_subscribed`, `subscription_tier`, `subscription
 ## 13. Data model & API contract
 
 ### 13.1 Core entities (mirrors `backend/app/models.py`)
-- **User:** `id`, `email` (unique), `hashed_password`, `full_name`, `age`, `gender`, `goals[]`, `height`, `weight`, `location`, `bio`, `onboarding_completed`, `is_subscribed`, `subscription_tier` (free/pro/elite), `subscription_start/end`, `subscription_customer_id`, `plan_start_date`, `current_day`, `target_score`, `total_checkins`, `current_streak`, `longest_streak`, `last_checkin_date`, timestamps.
+- **User:** `id`, `email` (unique), `hashed_password`, `full_name`, `age`, `gender`, `goals[]`, `height`, `weight`, `location`, `bio`, `onboarding_completed`, `is_subscribed`, `subscription_tier` (free/pro/elite), `subscription_start/end`, `subscription_customer_id`, `has_used_first_month_offer`, `plan_start_date`, `current_day`, `target_score`, `total_checkins`, `current_streak`, `longest_streak`, `last_checkin_date`, timestamps.
 - **Photo:** `id`, `user_id`, `file_url`, `file_size`, `file_type`, `score`, `symmetry/skin/jawline/eye/nose_score`, `face_shape`, `analysis_details{}`, `strengths[]`, `weaknesses[]`, `analysis_status` (pending/processing/completed/failed), `is_baseline`, `week_number`, `captured_at`.
 - **Plan:** `id`, `user_id`, `photo_id`, `total_days` (90), `current_day`, `current_phase`, `current_week`, `data{}`, `phases{}`, `daily_tasks[]`, `milestones[]`, `recommended_products[]`, `is_active`, timestamps.
 - **UserCheckin:** `id`, `user_id`, `week_number`, `photo_id`, `progress_score`, `notes`, `completed_tasks[]`, `created_at`.

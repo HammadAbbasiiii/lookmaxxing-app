@@ -2,37 +2,23 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Check, Crown, ShieldCheck } from "lucide-react";
+import { Check, Crown, Gift, ShieldCheck, Zap } from "lucide-react";
 import { toast } from "sonner";
 import { useMe } from "@/hooks/useMe";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
-import { ANNUAL_DISCOUNT_PCT, PLANS } from "@/lib/constants";
+import {
+  ANNUAL_DISCOUNT_PCT,
+  ELITE_TRIAL_DAYS,
+  FIRST_MONTH_PRICE,
+  PLAN_ORDER,
+  PLANS,
+} from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { track } from "@/lib/api/analytics";
 import { createCheckout, testUpgrade } from "@/lib/api/endpoints";
 import { ApiError } from "@/lib/api/client";
-
-const FEATURES: Record<string, string[]> = {
-  free: ["1 analysis", "Baseline score", "Streak tracking"],
-  pro: [
-    "Unlimited analyses",
-    "Full 90-day plan + check-ins",
-    "Glow-Up Forecast (Day 30/60/90)",
-    "Percentile rank vs. others",
-    "Look-alike archetype match",
-    "Daily AI coach + product recs",
-  ],
-  elite: [
-    "Everything in Pro",
-    "1:1 coach Q&A",
-    "Golden-Ratio Harmony Map",
-    "Weekly Glow-Up Blueprint",
-    "Shareable Glow-Up Card",
-    "Priority support",
-  ],
-};
 
 export default function UpgradePage() {
   const [annual, setAnnual] = useState(true);
@@ -41,10 +27,14 @@ export default function UpgradePage() {
   const { data: user } = useMe();
   const tier = user?.subscription_tier ?? "free";
 
-  function price(monthly: number): string {
-    if (monthly === 0) return "$0";
-    const effective = annual ? monthly * (1 - ANNUAL_DISCOUNT_PCT / 100) : monthly;
-    return `$${effective.toFixed(2)}`;
+  // The iOS "AppState" flag maps here: /auth/me carries the server-authoritative
+  // has_used_first_month_offer, which prevents the £1 first month being reused
+  // (loss aversion — a user who's already "invested" is more likely to stay).
+  const firstMonthEligible =
+    tier === "free" && user?.has_used_first_month_offer === false;
+
+  function gbp(amount: number): string {
+    return `£${amount.toFixed(2)}`;
   }
 
   function waitlistMessage(name: string, email?: string): string {
@@ -65,6 +55,27 @@ export default function UpgradePage() {
       }
     } catch (e) {
       toast.error(e instanceof ApiError ? e.message : "Couldn't run test upgrade.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function startFirstMonth() {
+    track("upgrade_click", { metadata: { tier: "pro", plan: "Pro", first_month_offer: true } });
+    setBusy("first-month");
+    try {
+      const res = await createCheckout("pro", false, true);
+      if (res.checkout_url) {
+        window.location.href = res.checkout_url;
+      } else {
+        toast.info(waitlistMessage("Pro", user?.email));
+      }
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 503) {
+        toast.info(waitlistMessage("Pro", user?.email));
+      } else {
+        toast.error(e instanceof ApiError ? e.message : "Couldn't start checkout. Try again.");
+      }
     } finally {
       setBusy(null);
     }
@@ -113,6 +124,34 @@ export default function UpgradePage() {
         }
       />
 
+      {/* £1 first-month offer (low barrier + loss aversion: already "invested") */}
+      {firstMonthEligible ? (
+        <div className="mb-6 rounded-card border border-gold/40 bg-gold/10 p-5">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-start gap-3">
+              <Gift className="mt-0.5 h-5 w-5 shrink-0 text-gold" aria-hidden />
+              <div>
+                <p className="font-display text-lg font-bold text-ink">
+                  Get started for £${FIRST_MONTH_PRICE}
+                </p>
+                <p className="mt-1 text-sm text-muted">
+                  Your first month is just £${FIRST_MONTH_PRICE}, then £9.99/month. Cancel anytime.
+                </p>
+              </div>
+            </div>
+            <Button
+              onClick={startFirstMonth}
+              variant="primary"
+              loading={busy === "first-month"}
+              disabled={busy !== null}
+              className="shrink-0"
+            >
+              Start for £${FIRST_MONTH_PRICE}
+            </Button>
+          </div>
+        </div>
+      ) : null}
+
       {/* Annual / monthly toggle (anchor) */}
       <div className="mb-6 flex justify-center">
         <div className="inline-flex rounded-full border border-border-soft bg-surface-2 p-1">
@@ -136,10 +175,14 @@ export default function UpgradePage() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-3">
-        {(Object.keys(PLANS) as (keyof typeof PLANS)[]).map((key) => {
+        {PLAN_ORDER.map((key) => {
           const plan = PLANS[key];
           const isPro = plan.tier === "pro";
+          const isElite = plan.tier === "elite";
+          const isFree = plan.tier === "free";
           const isCurrent = tier === plan.tier;
+          const trial = isElite && ELITE_TRIAL_DAYS > 0;
+
           return (
             <div
               key={plan.tier}
@@ -150,33 +193,73 @@ export default function UpgradePage() {
                   : "card-border",
               )}
             >
-              {isPro ? (
-                <Badge variant="gold" className="absolute -top-3 left-1/2 -translate-x-1/2">
-                  Most popular
-                </Badge>
-              ) : null}
+              <Badge
+                variant={isPro ? "gold" : isElite ? "success" : "muted"}
+                className="absolute -top-3 left-1/2 -translate-x-1/2"
+              >
+                {plan.badge}
+              </Badge>
 
               <div className="flex items-center gap-2">
                 <h2 className="font-display text-xl font-bold text-ink">{plan.name}</h2>
-                {plan.tier !== "free" ? <Crown className="h-4 w-4 text-gold" aria-hidden /> : null}
+                {!isFree ? <Crown className="h-4 w-4 text-gold" aria-hidden /> : null}
               </div>
 
               <p className="mt-2 min-h-[40px] text-sm text-muted">{plan.blurb}</p>
 
-              <p className="mt-4">
-                <span className="tabular font-display text-4xl font-bold text-ink">
-                  {price(plan.monthly)}
-                </span>
-                {plan.monthly > 0 ? (
-                  <span className="text-sm text-muted">{annual ? "/mo" : "/mo"}</span>
-                ) : null}
-              </p>
-              {annual && plan.monthly > 0 ? (
-                <p className="mt-1 text-xs text-muted">billed annually</p>
-              ) : null}
+              {plan.monthly > 0 ? (
+                <div className="mt-4">
+                  {annual ? (
+                    <>
+                      {/* Annual: the discounted per-month price is the headline,
+                          with the monthly price struck through as the anchor. */}
+                      <p className="flex items-baseline gap-1">
+                        <span className="tabular font-display text-4xl font-bold text-ink">
+                          {gbp(plan.perMonth)}
+                        </span>
+                        <span className="text-sm text-muted">/mo</span>
+                      </p>
+                      <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+                        <s className="tabular text-muted">{gbp(plan.monthly)}/mo</s>
+                        <span className="tabular font-semibold text-ink">{gbp(plan.annual)}/yr</span>
+                        <span className="font-medium text-success">Save {ANNUAL_DISCOUNT_PCT}%</span>
+                      </div>
+                      <p className="mt-1 text-xs text-muted">
+                        billed {gbp(plan.annual)}/yr
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      {/* Monthly: straight monthly price, no annual savings line. */}
+                      <p className="flex items-baseline gap-1">
+                        <span className="tabular font-display text-4xl font-bold text-ink">
+                          {gbp(plan.monthly)}
+                        </span>
+                        <span className="text-sm text-muted">/mo</span>
+                      </p>
+                      <p className="mt-1 text-xs text-muted">billed monthly</p>
+                    </>
+                  )}
+
+                  {trial ? (
+                    <p className="mt-1 flex items-center gap-1 text-xs font-medium text-gold">
+                      <Zap className="h-3.5 w-3.5" aria-hidden />
+                      {ELITE_TRIAL_DAYS}-day free trial · card required
+                    </p>
+                  ) : null}
+                </div>
+              ) : (
+                <div className="mt-4">
+                  <p className="flex items-baseline gap-1">
+                    <span className="tabular font-display text-4xl font-bold text-ink">£0</span>
+                    <span className="text-sm text-muted">/mo</span>
+                  </p>
+                  <p className="mt-1 text-xs text-muted">Free forever. No card required.</p>
+                </div>
+              )}
 
               <ul className="mt-5 flex-1 space-y-2">
-                {FEATURES[plan.tier].map((f) => (
+                {(plan.features as readonly string[]).map((f) => (
                   <li key={f} className="flex items-start gap-2 text-sm text-ink">
                     <Check className="mt-0.5 h-4 w-4 shrink-0 text-gold" aria-hidden />
                     {f}
@@ -194,9 +277,11 @@ export default function UpgradePage() {
               >
                 {isCurrent
                   ? "Current plan"
-                  : plan.tier === "free"
-                    ? "Continue free"
-                    : `Start ${plan.name}`}
+                  : isFree
+                    ? "Start free"
+                    : trial && !annual
+                      ? `Start ${ELITE_TRIAL_DAYS}-day free trial`
+                      : `Start ${plan.name}`}
               </Button>
             </div>
           );
@@ -205,9 +290,10 @@ export default function UpgradePage() {
 
       <div className="mt-8 flex flex-col items-center gap-2 rounded-card card-border p-6 text-center">
         <ShieldCheck className="h-6 w-6 text-gold" aria-hidden />
-        <p className="text-sm font-medium text-ink">Cancel anytime. No card required to start.</p>
+        <p className="text-sm font-medium text-ink">Cancel anytime.</p>
         <p className="text-xs text-muted">
           Don't lose your progress — your streak, history, and plan sync across devices.
+          Free starts with no card. Paid plans require a card to begin.
         </p>
       </div>
 
