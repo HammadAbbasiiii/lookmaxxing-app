@@ -10,8 +10,8 @@ import { cn } from "@/lib/utils";
 export function Pricing() {
   const [annual, setAnnual] = useState(true);
 
-  function usd(amount: number): string {
-    return `$${amount.toFixed(2)}`;
+  function gbp(amount: number): string {
+    return `£${amount.toFixed(2)}`;
   }
 
   return (
@@ -86,22 +86,22 @@ export function Pricing() {
                     <div className="mt-4">
                       <p className="flex items-baseline gap-1">
                         <span className="tabular font-display text-4xl font-bold text-ink">
-                          {usd(annual ? plan.perMonth : plan.monthly)}
+                          {gbp(annual ? plan.perMonth : plan.monthly)}
                         </span>
                         <span className="text-sm text-muted">/mo</span>
                       </p>
                       {annual ? (
-                        <p className="mt-1 text-xs text-muted">billed {usd(plan.annual)}/yr</p>
+                        <p className="mt-1 text-xs text-muted">billed {gbp(plan.annual)}/yr</p>
                       ) : null}
                       <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
-                        <s className="tabular text-muted">{usd(plan.annualOriginal)}</s>
-                        <span className="tabular font-semibold text-ink">{usd(plan.annual)}/yr</span>
+                        <s className="tabular text-muted">{gbp(plan.annualOriginal)}</s>
+                        <span className="tabular font-semibold text-ink">{gbp(plan.annual)}/yr</span>
                         <span className="font-medium text-success">Save {ANNUAL_DISCOUNT_PCT}%</span>
                       </div>
                     </div>
                   ) : (
                     <p className="mt-4 flex items-baseline gap-1">
-                      <span className="tabular font-display text-4xl font-bold text-ink">$0</span>
+                      <span className="tabular font-display text-4xl font-bold text-ink">£0</span>
                       <span className="text-sm text-muted">/mo</span>
                     </p>
                   )}

@@ -132,10 +132,10 @@ export default function UpgradePage() {
               <Gift className="mt-0.5 h-5 w-5 shrink-0 text-gold" aria-hidden />
               <div>
                 <p className="font-display text-lg font-bold text-ink">
-                  Get started for £${FIRST_MONTH_PRICE}
+                  Get started for £{FIRST_MONTH_PRICE}
                 </p>
                 <p className="mt-1 text-sm text-muted">
-                  Your first month is just £${FIRST_MONTH_PRICE}, then £9.99/month. Cancel anytime.
+                  Your first month is just £{FIRST_MONTH_PRICE}, then £9.99/month. Cancel anytime.
                 </p>
               </div>
             </div>
@@ -146,7 +146,7 @@ export default function UpgradePage() {
               disabled={busy !== null}
               className="shrink-0"
             >
-              Start for £${FIRST_MONTH_PRICE}
+              Start for £{FIRST_MONTH_PRICE}
             </Button>
           </div>
         </div>
