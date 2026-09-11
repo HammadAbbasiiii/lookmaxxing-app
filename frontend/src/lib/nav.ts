@@ -1,9 +1,9 @@
 export const GLOW_LINKS = [
-  { href: "/glow", label: "Glow" },
-  { href: "/glow-up", label: "Glow-Up" },
-  { href: "/glowups", label: "Glow-Ups" },
-  { href: "/arc", label: "The Arc" },
-  { href: "/peak-you", label: "Peak You" },
+  { href: "/glow", label: "Daily" },
+  { href: "/glow-up", label: "Insights" },
+  { href: "/glowups", label: "Social" },
+  { href: "/arc", label: "Journey" },
+  { href: "/peak-you", label: "Simulator" },
 ];
 
 /** Exact-or-child match so `/glow` doesn't light up on `/glow-up`/`/glowups`. */
