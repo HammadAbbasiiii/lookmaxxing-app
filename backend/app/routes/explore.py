@@ -100,7 +100,7 @@ def _identity(user: User) -> dict:
     matching the member's stored gender, plus initials for the avatar, derived
     only from the user id + gender so the same member always keeps the same name.
     """
-    g = (user.gender or "other").strip().lower()
+    g = (getattr(user, "gender", None) or "other").strip().lower()
     if g not in _PSEUDONYMS:
         g = "other"
     names = _PSEUDONYMS[g]
