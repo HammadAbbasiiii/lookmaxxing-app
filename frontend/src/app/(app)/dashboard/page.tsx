@@ -17,6 +17,7 @@ import { ScoreRing } from "@/components/ui/ScoreRing";
 import { ProgressRing } from "@/components/ui/ProgressRing";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { StreakFlame } from "@/components/dashboard/StreakFlame";
+import { MilestoneCelebration } from "@/components/dashboard/MilestoneCelebration";
 
 const PHASE_LABEL: Record<string, string> = {
   phase_1: "Foundation",
@@ -115,6 +116,8 @@ export default function DashboardPage() {
         title={name ? `Welcome back, ${name}.` : "Welcome back."}
         subtitle={hasPhoto ? "Here's where you stand today." : "Let's get your baseline."}
       />
+
+      <MilestoneCelebration day={d.plan?.current_day ?? 0} />
 
       {!hasPhoto ? (
         <div className="mx-auto max-w-md">
