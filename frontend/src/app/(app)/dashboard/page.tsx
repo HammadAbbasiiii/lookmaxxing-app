@@ -16,6 +16,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { ScoreRing } from "@/components/ui/ScoreRing";
 import { ProgressRing } from "@/components/ui/ProgressRing";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
+import { StreakFlame } from "@/components/dashboard/StreakFlame";
 
 const PHASE_LABEL: Record<string, string> = {
   phase_1: "Foundation",
@@ -133,9 +134,7 @@ export default function DashboardPage() {
           <Card className="mb-4">
             <div className="flex flex-wrap items-center justify-between gap-4">
               <div className="flex items-center gap-3">
-                <span className="flex h-11 w-11 items-center justify-center rounded-full bg-gold/15 text-gold">
-                  <Flame className="h-6 w-6" />
-                </span>
+                <StreakFlame streak={d?.progress?.current_streak ?? 0} />
                 <div>
                   <p className="font-display text-xl font-bold text-ink">
                     {(d?.progress?.current_streak ?? 0) > 0
@@ -224,7 +223,7 @@ export default function DashboardPage() {
               </div>
             </div>
             <div className="flex items-center gap-2 rounded-xl bg-surface-2 p-3">
-              <Flame className="h-5 w-5 text-gold" aria-hidden />
+              <StreakFlame streak={d?.progress?.current_streak ?? 0} />
               <span className="text-sm text-ink">
                 <strong className="tabular">{d?.progress?.current_streak ?? 0}</strong>-day streak
                 <span className="text-muted"> · longest {d?.progress?.longest_streak ?? 0}</span>
