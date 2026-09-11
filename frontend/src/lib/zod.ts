@@ -747,6 +747,11 @@ export const ArcClaimSchema = z.object({
   total_xp: z.number().catch(0),
   leveled_up: z.boolean().catch(false),
   new_title: z.string().nullable().catch(null),
+  reward: z.object({
+    rarity: z.string().catch("common"),
+    label: z.string().catch(""),
+    badge: z.boolean().catch(false),
+  }).nullable().catch(null),
 });
 export type ArcState = z.infer<typeof ArcStateSchema>;
 export type ArcClaim = z.infer<typeof ArcClaimSchema>;

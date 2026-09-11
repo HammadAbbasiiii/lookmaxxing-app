@@ -5,7 +5,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
 import { Check, Crown, Lock, Sparkles, Swords, Trophy, Zap } from "lucide-react";
 import { getArcState, claimArcQuest } from "@/lib/api/endpoints";
-import type { ArcState } from "@/lib/zod";
+import type { ArcClaim, ArcState } from "@/lib/zod";
+import { toast } from "sonner";
+import { RewardCelebration } from "@/components/arc/RewardCelebration";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -45,7 +47,7 @@ function QuestRow({
           <p className="mt-0.5 text-xs text-muted">{why}</p>
         </div>
         <div className="shrink-0 text-right">
-          <Badge variant="gold" className="mb-2">+{xp} XP</Badge>
+          <Badge variant="gold" className="mb-2">🎁 {xp}–1000 XP</Badge>
           {locked ? (
             <span className="inline-flex items-center gap-1 text-xs text-muted">
               <Lock className="h-3.5 w-3.5" /> Pro
@@ -90,6 +92,7 @@ export default function ArcPage() {
   const qc = useQueryClient();
   const state = useQuery({ queryKey: ["arc-state"], queryFn: getArcState });
   const [levelUpTitle, setLevelUpTitle] = useState<string | null>(null);
+  const [lastClaim, setLastClaim] = useState<ArcClaim | null>(null);
 
   const claim = useMutation({
     mutationFn: claimArcQuest,
@@ -97,6 +100,11 @@ export default function ArcPage() {
       if (data.leveled_up) {
         setLevelUpTitle(data.new_title);
         setTimeout(() => setLevelUpTitle(null), 2600);
+      }
+      if (data.reward?.rarity === "common") {
+        toast.success(`+${data.xp_awarded} XP`);
+      } else {
+        setLastClaim(data);
       }
       qc.invalidateQueries({ queryKey: ["arc-state"] });
       qc.invalidateQueries({ queryKey: ["arc-badges"] });
@@ -149,6 +157,7 @@ export default function ArcPage() {
       />
 
       <AnimatePresence>{levelUpTitle ? <LevelUpBanner title={levelUpTitle} /> : null}</AnimatePresence>
+      <RewardCelebration claim={lastClaim} onDone={() => setLastClaim(null)} />
 
       <Card className="relative overflow-hidden">
         <div className="flex items-center gap-5">

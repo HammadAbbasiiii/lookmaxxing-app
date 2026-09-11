@@ -2,6 +2,8 @@
 
 import datetime as dt
 
+import pytest
+
 from app.dependencies import create_access_token, get_password_hash
 from app.models import ArcState, Photo, User, UserCheckin
 from app.services import arc_service
@@ -110,7 +112,9 @@ class TestArcStateAPI:
         res = client.post(f"/api/v1/arc/quests/{qid}/claim", headers=_h(_token(u)))
         assert res.status_code == 409
 
-    def test_claim_success_awards_xp_and_levels(self, client, db_session):
+    def test_claim_success_awards_xp_and_levels(self, client, db_session, monkeypatch):
+        # Pin the variable reward to the common tier so this test stays deterministic.
+        monkeypatch.setattr(arc_service, "roll_quest_reward", lambda: arc_service.QUEST_REWARDS[0])
         u = _user(db_session, "arcclaim@example.com", tier="pro")
         _scored_photo(db_session, u)
         state = client.get("/api/v1/arc/state", headers=_h(_token(u))).json()
@@ -124,6 +128,7 @@ class TestArcStateAPI:
         assert res.status_code == 200
         body = res.json()
         assert body["xp_awarded"] == 100
+        assert body["reward"]["rarity"] == "common"
         assert body["level"] == 2
         assert body["leveled_up"] is True
         assert body["new_title"]
@@ -168,4 +173,46 @@ class TestArcStateAPI:
         first_ids = {q["id"] for q in first["today_quests"]}
         second_ids = {q["id"] for q in second["today_quests"]}
         assert not first_ids.intersection(second_ids)
+
+
+class TestQuestRewards:
+    def test_reward_chances_sum_to_one(self):
+        assert sum(r["chance"] for r in arc_service.QUEST_REWARDS) == pytest.approx(1.0)
+
+    def test_roll_returns_known_rarities(self):
+        for _ in range(500):
+            r = arc_service.roll_quest_reward()
+            assert r["rarity"] in ("common", "rare", "epic", "legendary")
+            assert r["xp"] in (100, 250, 500, 1000)
+
+    def test_legendary_reward_unlocks_exclusive_badge(self, client, db_session, monkeypatch):
+        monkeypatch.setattr(arc_service, "roll_quest_reward", lambda: arc_service.QUEST_REWARDS[3])
+        u = _user(db_session, "arcjackpot@example.com", tier="pro")
+        _scored_photo(db_session, u)
+        state = client.get("/api/v1/arc/state", headers=_h(_token(u))).json()
+        q = state["today_quests"][0]
+        checkin = UserCheckin(user_id=u.id, week_number=1, completed_tasks=[q["task"]])
+        db_session.add(checkin)
+        db_session.commit()
+        res = client.post(f"/api/v1/arc/quests/{q['id']}/claim", headers=_h(_token(u)))
+        body = res.json()
+        assert body["xp_awarded"] == 1000
+        assert body["reward"]["rarity"] == "legendary"
+        assert body["reward"]["badge"] is True
+
+        badges = client.get("/api/v1/arc/badges", headers=_h(_token(u))).json()["badges"]
+        assert any(b["badge_key"] == "quest_legendary" for b in badges)
+
+    def test_common_reward_does_not_unlock_badge(self, client, db_session, monkeypatch):
+        monkeypatch.setattr(arc_service, "roll_quest_reward", lambda: arc_service.QUEST_REWARDS[0])
+        u = _user(db_session, "arcplain@example.com", tier="pro")
+        _scored_photo(db_session, u)
+        state = client.get("/api/v1/arc/state", headers=_h(_token(u))).json()
+        q = state["today_quests"][0]
+        checkin = UserCheckin(user_id=u.id, week_number=1, completed_tasks=[q["task"]])
+        db_session.add(checkin)
+        db_session.commit()
+        client.post(f"/api/v1/arc/quests/{q['id']}/claim", headers=_h(_token(u)))
+        badges = client.get("/api/v1/arc/badges", headers=_h(_token(u))).json()["badges"]
+        assert not any(b["badge_key"] == "quest_legendary" for b in badges)
 

@@ -643,7 +643,7 @@ export async function getArcState(): Promise<ArcState> {
 export async function claimArcQuest(questId: string): Promise<ArcClaim> {
   const data = await apiFetch<unknown>(`/arc/quests/${questId}/claim`, { method: "POST" });
   return decode(ArcClaimSchema, data, {
-    xp_awarded: 0, level: 1, total_xp: 0, leveled_up: false, new_title: null,
+    xp_awarded: 0, level: 1, total_xp: 0, leveled_up: false, new_title: null, reward: null,
   });
 }
 

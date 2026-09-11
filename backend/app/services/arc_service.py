@@ -9,6 +9,7 @@ pair, so re-awarding is a no-op.
 """
 
 import math
+import random
 from datetime import date, datetime
 from typing import Any, Dict, List, Optional
 
@@ -43,7 +44,28 @@ BADGE_CATALOG = {
     "day90": {"name": "Transformed", "emoji": "🏆", "description": "You finished the full plan."},
     "streak7": {"name": "Disciplined", "emoji": "🔥", "description": "A 7-day check-in streak."},
     "streak30": {"name": "Ironclad", "emoji": "💎", "description": "A 30-day check-in streak."},
+    "quest_legendary": {"name": "Legendary Pull", "emoji": "🏆", "description": "Hit the 1% jackpot on a quest."},
 }
+
+# Variable-ratio quest rewards (the slot-machine pull that keeps quests exciting).
+# Chances sum to 1.0; the server rolls authoritatively so XP can never be forged.
+QUEST_REWARDS = [
+    {"xp": 100, "chance": 0.80, "label": "", "rarity": "common"},
+    {"xp": 250, "chance": 0.15, "label": "Rare!", "rarity": "rare"},
+    {"xp": 500, "chance": 0.04, "label": "Epic!", "rarity": "epic"},
+    {"xp": 1000, "chance": 0.01, "label": "LEGENDARY!", "rarity": "legendary", "badge": True},
+]
+
+
+def roll_quest_reward() -> Dict[str, Any]:
+    """Return one weighted quest reward (variable ratio, fixed odds)."""
+    roll = random.random()
+    cumulative = 0.0
+    for reward in QUEST_REWARDS:
+        cumulative += reward["chance"]
+        if roll <= cumulative:
+            return reward
+    return QUEST_REWARDS[0]
 
 
 def level_for_xp(total_xp: int) -> int:
@@ -306,6 +328,20 @@ def get_state(user: User, db: Session, premium: bool) -> Dict[str, Any]:
     }
 
 
+def _award_badge(user: User, db: Session, badge_key: str) -> None:
+    """Insert-or-ignore a single badge for a user."""
+    if badge_key not in BADGE_CATALOG:
+        return
+    exists = (
+        db.query(UserBadge)
+        .filter(UserBadge.user_id == user.id, UserBadge.badge_key == badge_key)
+        .first()
+    )
+    if exists is None:
+        db.add(UserBadge(user_id=user.id, badge_key=badge_key))
+        db.commit()
+
+
 def claim_quest(user: User, db: Session, quest_id: str) -> Dict[str, Any]:
     state = _get_state(user, db)
     today = datetime.utcnow().date()
@@ -343,7 +379,9 @@ def claim_quest(user: User, db: Session, quest_id: str) -> Dict[str, Any]:
         return {"error": "not_done"}
 
     events = dict(state.xp_events) if isinstance(state.xp_events, dict) else {}
-    _award(state, events, f"quest:{quest_id}", quest.get("xp", XP["quest"]))
+    reward = roll_quest_reward()
+    xp = int(reward["xp"])
+    _award(state, events, f"quest:{quest_id}", xp)
     state.xp_events = events
 
     quest["claimed"] = True
@@ -357,12 +395,21 @@ def claim_quest(user: User, db: Session, quest_id: str) -> Dict[str, Any]:
     db.commit()
     db.refresh(state)
 
+    # Legendary jackpot (1%) also unlocks an exclusive badge.
+    if reward.get("badge"):
+        _award_badge(user, db, "quest_legendary")
+
     sync_badges(user, state, db)
 
     leveled_up = new_level > old_level
     archetype_name = _archetype_name(user, db)
     return {
-        "xp_awarded": quest.get("xp", XP["quest"]),
+        "xp_awarded": xp,
+        "reward": {
+            "rarity": reward["rarity"],
+            "label": reward["label"],
+            "badge": bool(reward.get("badge")),
+        },
         "level": new_level,
         "total_xp": state.total_xp,
         "leveled_up": leveled_up,
