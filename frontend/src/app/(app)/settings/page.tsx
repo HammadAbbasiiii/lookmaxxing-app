@@ -6,7 +6,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, CreditCard } from "lucide-react";
 import { toast } from "sonner";
 import { useMe } from "@/hooks/useMe";
-import { deleteAccount, putProfile, type ProfileUpdate } from "@/lib/api/endpoints";
+import { cancelSubscription, deleteAccount, putProfile, resumeSubscription, type ProfileUpdate } from "@/lib/api/endpoints";
 import { clearToken } from "@/lib/auth";
 import { COMMITMENT_OPTIONS, GENDER_OPTIONS, GOAL_OPTIONS, SKIN_CONCERN_OPTIONS, SKIN_TYPE_OPTIONS } from "@/lib/constants";
 import { cn } from "@/lib/utils";
@@ -40,6 +40,9 @@ export default function SettingsPage() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmText, setConfirmText] = useState("");
   const [deleting, setDeleting] = useState(false);
+
+  const [cancelOpen, setCancelOpen] = useState(false);
+  const [billingBusy, setBillingBusy] = useState<null | "cancel" | "cancel-now" | "resume">(null);
 
   useEffect(() => {
     if (user && !hydrated) {
@@ -110,6 +113,44 @@ export default function SettingsPage() {
     } catch (e) {
       toast.error(e instanceof ApiError ? e.message : "Couldn't delete your account. Try again.");
       setDeleting(false);
+    }
+  }
+
+  function fmtDate(iso: string | null | undefined): string {
+    if (!iso) return "";
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return "";
+    return d.toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" });
+  }
+
+  async function doCancel(immediate: boolean) {
+    setBillingBusy(immediate ? "cancel-now" : "cancel");
+    try {
+      await cancelSubscription(immediate);
+      toast.success(
+        immediate
+          ? "Subscription cancelled — access removed."
+          : "Cancellation scheduled for the end of your billing period.",
+      );
+      setCancelOpen(false);
+      qc.invalidateQueries({ queryKey: ["me"] });
+    } catch (e) {
+      toast.error(e instanceof ApiError ? e.message : "Couldn't cancel your subscription. Try again.");
+    } finally {
+      setBillingBusy(null);
+    }
+  }
+
+  async function doResume() {
+    setBillingBusy("resume");
+    try {
+      await resumeSubscription();
+      toast.success("Subscription resumed.");
+      qc.invalidateQueries({ queryKey: ["me"] });
+    } catch (e) {
+      toast.error(e instanceof ApiError ? e.message : "Couldn't resume your subscription. Try again.");
+    } finally {
+      setBillingBusy(null);
     }
   }
 
@@ -281,21 +322,114 @@ export default function SettingsPage() {
       {/* Subscription */}
       <Card className="mb-4">
         <CardTitle>Subscription</CardTitle>
-        <div className="mt-3 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <CreditCard className="h-5 w-5 text-gold" aria-hidden />
-            <p className="text-sm text-ink">
-              Current plan:{" "}
-              <Badge variant={tier === "free" ? "muted" : "gold"}>
-                {tier === "free" ? "Free" : tier === "elite" ? "Elite" : "Pro"}
-              </Badge>
-            </p>
+        <div className="mt-3 flex flex-col gap-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <CreditCard className="h-5 w-5 text-gold" aria-hidden />
+              <p className="text-sm text-ink">
+                Current plan:{" "}
+                <Badge variant={tier === "free" ? "muted" : "gold"}>
+                  {tier === "free" ? "Free" : tier === "elite" ? "Elite" : "Pro"}
+                </Badge>
+              </p>
+            </div>
+            {tier === "free" ? (
+              <Button variant="secondary" size="sm" onClick={() => router.push("/upgrade")}>
+                Upgrade
+              </Button>
+            ) : null}
           </div>
-          <Button variant="secondary" size="sm" onClick={() => router.push("/upgrade")}>
-            {tier === "free" ? "Upgrade" : "Manage billing"}
-          </Button>
+
+          {tier !== "free" ? (
+            <div className="rounded-xl border border-border-soft bg-surface-2 p-4">
+              <p className="text-sm text-muted">
+                {user?.subscription_cancels_at_period_end
+                  ? `Cancels on ${fmtDate(user.subscription_end) || "the end of your billing period"}.`
+                  : user?.subscription_end
+                    ? `Renews on ${fmtDate(user.subscription_end)}.`
+                    : "Active subscription."}
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => router.push("/upgrade")}
+                  disabled={billingBusy !== null}
+                >
+                  Change plan
+                </Button>
+                {user?.subscription_cancels_at_period_end ? (
+                  <Button
+                    size="sm"
+                    onClick={doResume}
+                    loading={billingBusy === "resume"}
+                    disabled={billingBusy !== null}
+                  >
+                    Resume subscription
+                  </Button>
+                ) : (
+                  <Button
+                    variant="danger"
+                    size="sm"
+                    onClick={() => setCancelOpen(true)}
+                    disabled={billingBusy !== null}
+                  >
+                    Cancel subscription
+                  </Button>
+                )}
+              </div>
+            </div>
+          ) : null}
         </div>
       </Card>
+
+      {/* Cancel subscription confirm dialog */}
+      {cancelOpen ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Cancel subscription"
+          onClick={() => billingBusy === null && setCancelOpen(false)}
+        >
+          <div className="w-full max-w-sm rounded-card card-border p-6" onClick={(e) => e.stopPropagation()}>
+            <h2 className="font-display text-lg font-bold text-ink">
+              Cancel {tier === "elite" ? "Elite" : "Pro"}?
+            </h2>
+            <p className="mt-2 text-sm text-muted">
+              Keep access until the end of your billing period, or cancel immediately and lose access now.
+            </p>
+            <div className="mt-4 flex flex-col gap-2">
+              <Button
+                variant="secondary"
+                onClick={() => doCancel(false)}
+                disabled={billingBusy !== null}
+                loading={billingBusy === "cancel"}
+                fullWidth
+              >
+                Cancel at period end
+              </Button>
+              <Button
+                variant="danger"
+                onClick={() => doCancel(true)}
+                disabled={billingBusy !== null}
+                loading={billingBusy === "cancel-now"}
+                fullWidth
+              >
+                Cancel now
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={() => setCancelOpen(false)}
+                disabled={billingBusy !== null}
+                fullWidth
+              >
+                Keep my plan
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {/* Danger zone */}
       <Card className="border border-danger/20">

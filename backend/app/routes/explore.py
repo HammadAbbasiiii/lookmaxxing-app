@@ -6,7 +6,9 @@ Endpoints:
 
 Transformations are derived from real user progress: users with at least two
 scored photos whose score improved between their earliest and latest photo.
-Usernames are anonymised to a stable "Member #XXXX" label to protect privacy.
+Usernames are anonymised to a stable, deterministic pseudonym (e.g. "Brave
+Falcon") with avatar initials and a celebratory rank label, so no real identity
+is ever exposed.
 
 Articles are curated, evergreen seed content covering looksmaxxing / grooming /
 skincare topics. Replace `ARTICLES` with your own blog or CMS content when ready.
@@ -70,15 +72,39 @@ ARTICLES = [
 ]
 
 
-def _anonymize(user: User) -> str:
-    """Return a stable, privacy-safe label for a member.
+_ADJECTIVES = [
+    "Brave", "Golden", "Rising", "Sharp", "Bold", "Calm", "Swift", "Bright",
+    "Noble", "Fearless", "Loyal", "Steady", "Keen", "Fierce", "Wise", "Proud",
+]
+_NOUNS = [
+    "Falcon", "Tiger", "Wolf", "Hawk", "Lion", "Phoenix", "Panther", "Eagle",
+    "Otter", "Raven", "Fox", "Bear", "Lynx", "Cobra", "Jaguar", "Sable",
+]
+
+
+def _identity(user: User) -> dict:
+    """Return a stable, privacy-safe display identity for a member.
 
     We never show a real name or a fake first name ("Alex", "Noah", …) — both
-    confused members and weakened privacy. Instead every transformation gets an
-    unambiguous, deterministic alias like "Member #A1B2" derived from the user id.
+    confused members and weakened privacy. Instead every transformation gets a
+    deterministic pseudonym ("Brave Falcon") plus its initials for the avatar,
+    derived only from the user id.
     """
     digest = hashlib.md5(user.id.encode("utf-8")).hexdigest()
-    return f"Member #{digest[:4].upper()}"
+    adj = _ADJECTIVES[int(digest[:4], 16) % len(_ADJECTIVES)]
+    noun = _NOUNS[int(digest[4:8], 16) % len(_NOUNS)]
+    return {"username": f"{adj} {noun}", "initials": f"{adj[0]}{noun[0]}"}
+
+
+def _rank_label(delta: float) -> str:
+    """A celebratory (never shaming) label for a member's score improvement."""
+    if delta >= 6:
+        return "Glow-Up Legend"
+    if delta >= 3:
+        return "Rising Star"
+    if delta >= 1.5:
+        return "Most Improved"
+    return "On the Rise"
 
 
 @router.get("")
@@ -118,10 +144,14 @@ async def get_explore(
         if not user:
             continue
 
+        identity = _identity(user)
+        delta = after - before
         transformations.append(
             {
                 "id": f"tx_{user_id}",
-                "username": _anonymize(user),
+                "username": identity["username"],
+                "initials": identity["initials"],
+                "rank_label": _rank_label(delta),
                 "before_score": round(before, 1),
                 "after_score": round(after, 1),
                 "before_image_url": baseline.file_url,

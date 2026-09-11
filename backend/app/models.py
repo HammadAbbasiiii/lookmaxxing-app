@@ -46,6 +46,12 @@ class User(Base):
     subscription_start = Column(DateTime, nullable=True)
     subscription_end = Column(DateTime, nullable=True)
     subscription_customer_id = Column(String(255), nullable=True)
+    # The Stripe Subscription id we're currently tracking (populated from
+    # webhooks) so cancel/resume/plan-change can target the right subscription.
+    subscription_stripe_id = Column(String(255), nullable=True)
+    # True when the customer asked to cancel at the end of the current billing
+    # period — access persists until `subscription_end` (unlike immediate revoke).
+    subscription_cancels_at_period_end = Column(Boolean, default=False)
     # One-time "$1 first month" offer (Pro monthly). Flipped to True once the
     # discounted checkout is fulfilled, so the offer can't be reused.
     has_used_first_month_offer = Column(Boolean, default=False)

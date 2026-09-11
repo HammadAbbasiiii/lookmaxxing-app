@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import { Check, Crown, Gift, ShieldCheck, Zap } from "lucide-react";
 import { toast } from "sonner";
 import { useMe } from "@/hooks/useMe";
@@ -17,13 +18,14 @@ import {
 } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { track } from "@/lib/api/analytics";
-import { createCheckout, testUpgrade } from "@/lib/api/endpoints";
+import { changePlan, createCheckout, testUpgrade } from "@/lib/api/endpoints";
 import { ApiError } from "@/lib/api/client";
 
 export default function UpgradePage() {
   const [annual, setAnnual] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const router = useRouter();
+  const qc = useQueryClient();
   const { data: user } = useMe();
   const tier = user?.subscription_tier ?? "free";
 
@@ -95,6 +97,19 @@ export default function UpgradePage() {
 
     setBusy(plan.tier);
     try {
+      // Existing subscriber → swap plans in place (Stripe prorates) instead of
+      // opening a second checkout, so access never lapses mid-switch.
+      if (tier !== "free") {
+        const res = await changePlan(plan.tier as "pro" | "elite", annual);
+        if (res.success) {
+          toast.success(`Switched to ${plan.name}.`);
+          qc.invalidateQueries({ queryKey: ["me"] });
+        } else {
+          toast.error("Couldn't change your plan. Try again.");
+        }
+        return;
+      }
+
       const res = await createCheckout(plan.tier as "pro" | "elite", annual);
       if (res.checkout_url) {
         window.location.href = res.checkout_url;
@@ -181,6 +196,7 @@ export default function UpgradePage() {
           const isElite = plan.tier === "elite";
           const isFree = plan.tier === "free";
           const isCurrent = tier === plan.tier;
+          const isExistingSubscriber = tier !== "free";
           const trial = isElite && ELITE_TRIAL_DAYS > 0;
 
           return (
@@ -279,9 +295,11 @@ export default function UpgradePage() {
                   ? "Current plan"
                   : isFree
                     ? "Start free"
-                    : trial && !annual
-                      ? `Start ${ELITE_TRIAL_DAYS}-day free trial`
-                      : `Start ${plan.name}`}
+                    : isExistingSubscriber
+                      ? `Switch to ${plan.name}`
+                      : trial && !annual
+                        ? `Start ${ELITE_TRIAL_DAYS}-day free trial`
+                        : `Start ${plan.name}`}
               </Button>
             </div>
           );

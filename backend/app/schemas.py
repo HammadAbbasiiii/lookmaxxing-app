@@ -51,6 +51,8 @@ class UserResponse(BaseModel):
     is_subscribed: bool
     is_admin: bool
     has_used_first_month_offer: bool = False
+    subscription_end: Optional[datetime] = None
+    subscription_cancels_at_period_end: bool = False
     total_checkins: int
     current_streak: int
     longest_streak: int
@@ -226,6 +228,17 @@ class CheckoutIn(BaseModel):
 
 class TestUpgradeIn(BaseModel):
     tier: str = Field(..., pattern="^(pro|elite)$")
+
+
+class CancelSubscriptionIn(BaseModel):
+    # False → cancel at the end of the current billing period (access persists
+    # until `subscription_end`). True → cancel immediately and revoke now.
+    cancel_immediately: bool = False
+
+
+class ChangePlanIn(BaseModel):
+    tier: str = Field(..., pattern="^(pro|elite)$")
+    annual: bool = True
 
     description: Optional[str] = None
     rating: Optional[float] = Field(None, ge=0, le=5)

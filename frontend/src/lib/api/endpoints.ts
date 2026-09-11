@@ -2,7 +2,8 @@
 // response through a defensive Zod schema so a malformed payload never throws
 // into the UI.
 
-import { apiFetch, apiFetchUpload } from "@/lib/api/client";
+import { apiFetch, apiFetchUpload, ApiError } from "@/lib/api/client";
+import type { FetchOptions } from "@/lib/api/client";
 import {
   decode,
   AnalysisSchema,
@@ -76,6 +77,8 @@ import {
   type GlowupConsent,
   GlowupMovieSchema,
   type GlowupMovie,
+  SubscriptionChangeSchema,
+  type SubscriptionChange,
 } from "@/lib/zod";
 
 // ── Auth ────────────────────────────────────────────────────────────
@@ -509,6 +512,65 @@ export async function testUpgrade(tier: "pro" | "elite"): Promise<{ success: boo
   const data = await apiFetch<unknown>("/payments/test-upgrade", { method: "POST", body: { tier } });
   const root = data && typeof data === "object" ? (data as Record<string, unknown>) : {};
   return { success: Boolean(root.success), tier: typeof root.tier === "string" ? root.tier : tier };
+}
+
+const BILLING_UNAVAILABLE =
+  "This billing option isn't available yet. Please try again in a little while.";
+
+// The backend only returns 404 for these endpoints when it hasn't been
+// redeployed with the billing-management routes. Surface that clearly instead
+// of the generic "Not found."
+async function billingFetch<T>(path: string, options: FetchOptions = {}): Promise<T> {
+  try {
+    return await apiFetch<T>(path, options);
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) {
+      throw new ApiError(404, "http", BILLING_UNAVAILABLE);
+    }
+    throw error;
+  }
+}
+
+export async function cancelSubscription(cancelImmediately = false): Promise<SubscriptionChange> {
+  const data = await billingFetch<unknown>("/payments/cancel", {
+    method: "POST",
+    body: { cancel_immediately: cancelImmediately },
+  });
+  return decode(SubscriptionChangeSchema, data, {
+    success: false,
+    tier: "free",
+    is_subscribed: false,
+    subscription_end: null,
+    cancel_at_period_end: false,
+  });
+}
+
+export async function resumeSubscription(): Promise<SubscriptionChange> {
+  const data = await billingFetch<unknown>("/payments/resume", { method: "POST" });
+  return decode(SubscriptionChangeSchema, data, {
+    success: false,
+    tier: "free",
+    is_subscribed: false,
+    subscription_end: null,
+    cancel_at_period_end: false,
+  });
+}
+
+export async function changePlan(
+  tier: "pro" | "elite",
+  annual: boolean,
+): Promise<SubscriptionChange> {
+  const data = await billingFetch<unknown>("/payments/change-plan", {
+    method: "POST",
+    body: { tier, annual },
+  });
+  return decode(SubscriptionChangeSchema, data, {
+    success: false,
+    tier: "free",
+    is_subscribed: false,
+    subscription_end: null,
+    cancel_at_period_end: false,
+  });
 }
 
 // ── Momentum: Glow (daily reveal) ──────────────────────────────────

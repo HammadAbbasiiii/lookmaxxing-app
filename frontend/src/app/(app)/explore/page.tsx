@@ -94,9 +94,17 @@ function TransformationCard({ t }: { t: Transformation }) {
   const delta = t.after_score - t.before_score;
   return (
     <div className="card-border card-hover h-full rounded-card p-5">
-      <div className="flex items-center justify-between">
-        <p className="font-medium text-ink">{t.username}</p>
-        <Badge variant="success">+{formatScore(delta)} pts</Badge>
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gold/15 text-sm font-bold text-gold-bright ring-1 ring-gold/30">
+            {t.initials || "??"}
+          </div>
+          <div className="min-w-0">
+            <p className="truncate font-medium text-ink">{t.username}</p>
+            <p className="truncate text-xs text-gold">{t.rank_label || "On the Rise"}</p>
+          </div>
+        </div>
+        <Badge variant="success" className="shrink-0">+{formatScore(delta)} pts</Badge>
       </div>
       <div className="mt-4 flex items-center justify-center gap-4">
         <div className="text-center">

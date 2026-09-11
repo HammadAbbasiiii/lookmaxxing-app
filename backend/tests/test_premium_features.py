@@ -11,7 +11,7 @@ import pytest
 from app.dependencies import create_access_token, get_password_hash
 from app.models import Photo, User
 from app.services.category_breakdown import normalize_breakdown
-from app.routes.explore import _anonymize
+from app.routes.explore import _identity, _rank_label
 
 
 NESTED_BREAKDOWN = {
@@ -69,22 +69,28 @@ def test_normalize_breakdown_accepts_both_shapes():
     assert normalize_breakdown("nope") == {}
 
 
-def test_anonymize_uses_stable_member_alias():
+def test_identity_uses_stable_pseudonym_and_rank():
     class U:
         def __init__(self, id_, full_name):
             self.id = id_
             self.full_name = full_name
 
-    ml = _anonymize(U("user-ml-1", "ML"))
-    hammad = _anonymize(U("user-hammad", "Hammad Khan"))
-    empty = _anonymize(U("user-empty", None))
+    ml = _identity(U("user-ml-1", "ML"))
+    hammad = _identity(U("user-hammad", "Hammad Khan"))
+    empty = _identity(U("user-empty", None))
 
-    # Every member gets an unambiguous, deterministic "Member #XXXX" label —
+    # Every member gets a deterministic, privacy-safe pseudonym with initials —
     # no real first names, no confusing fake names like "Alex"/"Noah".
-    assert ml.startswith("Member #") and ml.split("#")[1]
-    assert hammad.startswith("Member #")
-    assert empty.startswith("Member #")
-    assert ml == _anonymize(U("user-ml-1", "ML"))  # deterministic per user
+    assert ml["username"] and " " in ml["username"]
+    assert len(ml["initials"]) == 2 and ml["initials"].isupper()
+    assert hammad["username"] and hammad["initials"]
+    assert empty["username"] and empty["initials"]
+    assert ml == _identity(U("user-ml-1", "ML"))  # deterministic per user
+
+    assert _rank_label(0.5) == "On the Rise"
+    assert _rank_label(2.0) == "Most Improved"
+    assert _rank_label(4.0) == "Rising Star"
+    assert _rank_label(7.0) == "Glow-Up Legend"
 
 
 def test_coach_loads_with_nested_breakdown(client, db_session, monkeypatch):

@@ -119,6 +119,7 @@ class TestStripeWebhook:
             {
                 "metadata": {"user_id": u.id, "tier": "pro", "first_month_offer": "true"},
                 "customer": "cus_123",
+                "subscription": "sub_123",
             },
             monkeypatch,
         )
@@ -128,6 +129,36 @@ class TestStripeWebhook:
         assert u.is_subscribed is True
         assert u.has_used_first_month_offer is True
         assert u.subscription_customer_id == "cus_123"
+        assert u.subscription_stripe_id == "sub_123"
+
+    def test_subscription_created_syncs_stripe_id_cancel_flag_and_term(
+        self, client, db_session, monkeypatch
+    ):
+        u = _make_user(db_session)
+        period_end_ts = int((datetime.now(timezone.utc) + timedelta(days=30)).timestamp())
+        monkeypatch.setattr(settings, "STRIPE_PRICE_PRO_MONTHLY", "price_pro_monthly")
+
+        self._post_webhook(
+            client,
+            "customer.subscription.created",
+            {
+                "id": "sub_123",
+                "customer": "cus_123",
+                "status": "active",
+                "cancel_at_period_end": True,
+                "current_period_end": period_end_ts,
+                "metadata": {"user_id": u.id},
+                "items": {"data": [{"price": {"id": "price_pro_monthly"}}]},
+            },
+            monkeypatch,
+        )
+
+        db_session.refresh(u)
+        assert u.subscription_stripe_id == "sub_123"
+        assert u.subscription_customer_id == "cus_123"
+        assert u.subscription_cancels_at_period_end is True
+        assert u.subscription_tier == "pro"
+        assert u.subscription_end is not None
 
     def test_subscription_deleted_revokes_access(self, client, db_session, monkeypatch):
         u = _make_user(db_session, tier="pro")
@@ -270,6 +301,210 @@ class TestStripeWebhook:
         )
         assert grants == 1
         assert db_session.query(StripeEvent).filter_by(event_id="evt_1").count() == 1
+
+
+class TestSubscriptionManagement:
+    def _auth(self, user):
+        from app.dependencies import create_access_token
+
+        return {"Authorization": f"Bearer {create_access_token(data={'sub': user.id})}"}
+
+    @staticmethod
+    def _sub(sub_id="sub_1", price_id="price_pro_monthly", period_end=None,
+             cancel_at_period_end=False, created=1):
+        return {
+            "id": sub_id,
+            "status": "active",
+            "cancel_at_period_end": cancel_at_period_end,
+            "created": created,
+            "current_period_end": period_end,
+            "items": {"data": [{"id": "si_1", "price": {"id": price_id}}]},
+        }
+
+    def test_cancel_at_period_end_schedules(self, client, db_session, monkeypatch):
+        import stripe
+
+        u = _make_user(db_session, tier="pro")
+        u.subscription_customer_id = "cus_1"
+        u.subscription_stripe_id = "sub_1"
+        db_session.commit()
+        monkeypatch.setattr(settings, "STRIPE_SECRET_KEY", "sk_test")
+
+        period_end_ts = int((datetime.now(timezone.utc) + timedelta(days=30)).timestamp())
+        subs = [self._sub(period_end=period_end_ts)]
+        modified = []
+
+        def _list(*a, **k):
+            return type("ListObj", (), {"data": subs})()
+
+        def _modify(sub_id, **kwargs):
+            modified.append((sub_id, kwargs))
+            return {}
+
+        monkeypatch.setattr(stripe.Subscription, "list", _list)
+        monkeypatch.setattr(stripe.Subscription, "modify", _modify)
+
+        res = client.post(
+            "/api/v1/payments/cancel",
+            json={"cancel_immediately": False},
+            headers=self._auth(u),
+        )
+
+        assert res.status_code == 200
+        body = res.json()
+        assert body["cancel_at_period_end"] is True
+        assert modified == [("sub_1", {"cancel_at_period_end": True})]
+
+        db_session.refresh(u)
+        assert u.subscription_cancels_at_period_end is True
+        assert u.subscription_tier == "pro"  # access persists until period end
+        assert u.subscription_end is not None
+
+    def test_cancel_immediately_revokes(self, client, db_session, monkeypatch):
+        import stripe
+
+        u = _make_user(db_session, tier="pro")
+        u.subscription_customer_id = "cus_1"
+        u.subscription_stripe_id = "sub_1"
+        db_session.commit()
+        monkeypatch.setattr(settings, "STRIPE_SECRET_KEY", "sk_test")
+
+        subs = [self._sub()]
+        deleted = []
+
+        def _list(*a, **k):
+            return type("ListObj", (), {"data": subs})()
+
+        def _delete(sub_id):
+            deleted.append(sub_id)
+            return {}
+
+        monkeypatch.setattr(stripe.Subscription, "list", _list)
+        monkeypatch.setattr(stripe.Subscription, "delete", _delete)
+
+        res = client.post(
+            "/api/v1/payments/cancel",
+            json={"cancel_immediately": True},
+            headers=self._auth(u),
+        )
+
+        assert res.status_code == 200
+        assert deleted == ["sub_1"]
+        db_session.refresh(u)
+        assert u.subscription_tier == "free"
+        assert u.is_subscribed is False
+
+    def test_cancel_without_stripe_subscription_revokes_locally(
+        self, client, db_session, monkeypatch
+    ):
+        u = _make_user(db_session, tier="pro")  # no customer id
+        db_session.commit()
+        monkeypatch.setattr(settings, "STRIPE_SECRET_KEY", "sk_test")
+
+        res = client.post(
+            "/api/v1/payments/cancel",
+            json={"cancel_immediately": False},
+            headers=self._auth(u),
+        )
+
+        assert res.status_code == 200
+        db_session.refresh(u)
+        assert u.subscription_tier == "free"
+
+
+    def test_resume_clears_cancel_flag(self, client, db_session, monkeypatch):
+        import stripe
+
+        u = _make_user(db_session, tier="pro")
+        u.subscription_customer_id = "cus_1"
+        u.subscription_stripe_id = "sub_1"
+        u.subscription_cancels_at_period_end = True
+        db_session.commit()
+        monkeypatch.setattr(settings, "STRIPE_SECRET_KEY", "sk_test")
+
+        subs = [self._sub(cancel_at_period_end=True)]
+        modified = []
+
+        def _list(*a, **k):
+            return type("ListObj", (), {"data": subs})()
+
+        def _modify(sub_id, **kwargs):
+            modified.append((sub_id, kwargs))
+            return {}
+
+        monkeypatch.setattr(stripe.Subscription, "list", _list)
+        monkeypatch.setattr(stripe.Subscription, "modify", _modify)
+
+        res = client.post("/api/v1/payments/resume", headers=self._auth(u))
+
+        assert res.status_code == 200
+        assert modified == [("sub_1", {"cancel_at_period_end": False})]
+        db_session.refresh(u)
+        assert u.subscription_cancels_at_period_end is False
+
+    def test_change_plan_switches_tier_and_price(self, client, db_session, monkeypatch):
+        import stripe
+
+        u = _make_user(db_session, tier="pro")
+        u.subscription_customer_id = "cus_1"
+        u.subscription_stripe_id = "sub_1"
+        db_session.commit()
+        monkeypatch.setattr(settings, "STRIPE_SECRET_KEY", "sk_test")
+        monkeypatch.setattr(settings, "STRIPE_PRICE_ELITE_MONTHLY", "price_elite_monthly")
+        monkeypatch.setattr(settings, "STRIPE_PRICE_ELITE_ANNUAL", "price_elite_annual")
+
+        period_end_ts = int((datetime.now(timezone.utc) + timedelta(days=30)).timestamp())
+        subs = [self._sub(price_id="price_pro_monthly", period_end=period_end_ts)]
+        modified = []
+
+        def _list(*a, **k):
+            return type("ListObj", (), {"data": subs})()
+
+        def _modify(sub_id, **kwargs):
+            modified.append((sub_id, kwargs))
+            return {}
+
+        monkeypatch.setattr(stripe.Subscription, "list", _list)
+        monkeypatch.setattr(stripe.Subscription, "modify", _modify)
+
+        res = client.post(
+            "/api/v1/payments/change-plan",
+            json={"tier": "elite", "annual": False},
+            headers=self._auth(u),
+        )
+
+        assert res.status_code == 200
+        assert modified == [
+            ("sub_1", {"items": [{"id": "si_1", "price": "price_elite_monthly"}]})
+        ]
+        body = res.json()
+        assert body["tier"] == "elite"
+        db_session.refresh(u)
+        assert u.subscription_tier == "elite"
+        assert u.subscription_cancels_at_period_end is False
+
+    def test_change_plan_without_active_subscription_returns_409(
+        self, client, db_session, monkeypatch
+    ):
+        import stripe
+
+        u = _make_user(db_session, tier="pro")
+        db_session.commit()
+        monkeypatch.setattr(settings, "STRIPE_SECRET_KEY", "sk_test")
+        monkeypatch.setattr(settings, "STRIPE_PRICE_ELITE_MONTHLY", "price_elite_monthly")
+
+        def _list(*a, **k):
+            return type("ListObj", (), {"data": []})()
+
+        monkeypatch.setattr(stripe.Subscription, "list", _list)
+
+        res = client.post(
+            "/api/v1/payments/change-plan",
+            json={"tier": "elite", "annual": False},
+            headers=self._auth(u),
+        )
+
+        assert res.status_code == 409
 
 
 class TestExpiryEnforcement:

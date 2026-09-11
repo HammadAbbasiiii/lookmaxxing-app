@@ -36,6 +36,8 @@ export const UserSchema = z.object({
   is_subscribed: z.boolean().catch(false),
   is_admin: z.boolean().catch(false),
   has_used_first_month_offer: z.boolean().catch(false),
+  subscription_end: z.string().nullable().catch(null),
+  subscription_cancels_at_period_end: z.boolean().catch(false),
   total_checkins: z.number().catch(0),
   current_streak: z.number().catch(0),
   longest_streak: z.number().catch(0),
@@ -63,6 +65,8 @@ export const emptyUser = (): User => ({
   is_subscribed: false,
   is_admin: false,
   has_used_first_month_offer: false,
+  subscription_end: null,
+  subscription_cancels_at_period_end: false,
   total_checkins: 0,
   current_streak: 0,
   longest_streak: 0,
@@ -367,6 +371,8 @@ export type Compare = z.infer<typeof CompareSchema>;
 export const TransformationSchema = z.object({
   id: z.string().catch(""),
   username: z.string().catch(""),
+  initials: z.string().catch(""),
+  rank_label: z.string().catch(""),
   before_score: z.number().catch(0),
   after_score: z.number().catch(0),
   // Raw face URLs are present in the API response but MUST NOT be rendered
@@ -525,6 +531,16 @@ export const CheckoutSchema = z.object({
   checkout_url: z.string().nullable().catch(null),
 });
 export type Checkout = z.infer<typeof CheckoutSchema>;
+
+// ── Subscription lifecycle (cancel / resume / change-plan) ──────────
+export const SubscriptionChangeSchema = z.object({
+  success: z.boolean().catch(false),
+  tier: z.string().catch("free"),
+  is_subscribed: z.boolean().catch(false),
+  subscription_end: z.string().nullable().catch(null),
+  cancel_at_period_end: z.boolean().catch(false),
+});
+export type SubscriptionChange = z.infer<typeof SubscriptionChangeSchema>;
 
 // ── Premium insights (Pro) ──────────────────────────────────────────
 export const ForecastMilestoneSchema = z.object({

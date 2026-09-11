@@ -19,7 +19,7 @@ from app.config import settings
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.models import AdminAction, StripeEvent, User
-from app.schemas import CheckoutIn, TestUpgradeIn
+from app.schemas import CancelSubscriptionIn, ChangePlanIn, CheckoutIn, TestUpgradeIn
 
 router = APIRouter(prefix="/payments", tags=["Payments"])
 
@@ -121,6 +121,65 @@ def _resolve_user(db: Session, obj: dict) -> User | None:
     if customer:
         return db.query(User).filter(User.subscription_customer_id == customer).first()
     return None
+
+
+def _get(obj, key, default=None):
+    """Read a field from a Stripe object whether it's a dict or an SDK object."""
+    if isinstance(obj, dict):
+        return obj.get(key, default)
+    return getattr(obj, key, default)
+
+
+def _sub_item_ids(sub) -> list:
+    """Line-item ids on a subscription (the plan-switch API targets these)."""
+    items = _get(sub, "items", None)
+    data = _get(items, "data", None) if items is not None else None
+    ids = []
+    for item in data or []:
+        item_id = _get(item, "id", None)
+        if item_id:
+            ids.append(item_id)
+    return ids
+
+
+def _sub_period_end(sub) -> datetime | None:
+    """The subscription's current period end (authoritative access expiry)."""
+    return _unix_to_datetime(_get(sub, "current_period_end", None))
+
+
+def _list_active_subscriptions(stripe, user: User) -> list:
+    """All non-terminal Stripe subscriptions for this customer (newest last).
+
+    Covers the multiple-subscription edge case: a user who switched plans through
+    the old checkout flow could have more than one live subscription, so cancel
+    iterates the whole list while plan-change targets a single, explicit sub.
+    """
+    if not user.subscription_customer_id:
+        return []
+    try:
+        data = stripe.Subscription.list(
+            customer=user.subscription_customer_id, status="all", limit=100
+        ).data
+    except Exception:
+        return []
+    out = [
+        s for s in (data or [])
+        if _get(s, "status", "") not in ("canceled", "incomplete_expired")
+    ]
+    # Stripe returns oldest-first by default; put the most recent subscription first.
+    out.sort(key=lambda s: _get(s, "created", 0) or 0, reverse=True)
+    return out
+
+
+def _status_response(user: User) -> dict:
+    """Shared shape for cancel / resume / plan-change responses."""
+    return {
+        "success": True,
+        "tier": user.subscription_tier or "free",
+        "is_subscribed": bool(user.is_subscribed),
+        "subscription_end": user.subscription_end.isoformat() if user.subscription_end else None,
+        "cancel_at_period_end": bool(user.subscription_cancels_at_period_end),
+    }
 
 
 def grant_subscription(
@@ -381,6 +440,8 @@ async def stripe_webhook(
         if user:
             if obj.get("customer") and not user.subscription_customer_id:
                 user.subscription_customer_id = obj["customer"]
+            if obj.get("subscription") and not user.subscription_stripe_id:
+                user.subscription_stripe_id = obj["subscription"]
             metadata = obj.get("metadata") or {}
             tier = _tier_from_obj(obj)
             days = 365 if metadata.get("annual") == "true" else 30
@@ -394,7 +455,15 @@ async def stripe_webhook(
         if user:
             if obj.get("customer") and not user.subscription_customer_id:
                 user.subscription_customer_id = obj["customer"]
-            grant_subscription(db, user, _tier_from_obj(obj), days=_plan_days(obj), event_id=event_id)
+            if obj.get("id"):
+                user.subscription_stripe_id = obj["id"]
+            user.subscription_cancels_at_period_end = bool(obj.get("cancel_at_period_end"))
+            grant_subscription(
+                db, user, _tier_from_obj(obj),
+                days=_plan_days(obj),
+                end_at=_unix_to_datetime(obj.get("current_period_end")),
+                event_id=event_id,
+            )
 
     # ── Renewal: invoice paid → extend the term (authoritative period end) ──
     elif event_type == "invoice.paid":
@@ -414,18 +483,28 @@ async def stripe_webhook(
     # ── Revocation: subscription gone → drop to Free ───────────────────────
     elif event_type == "customer.subscription.deleted":
         if user:
+            user.subscription_cancels_at_period_end = False
             revoke_subscription(db, user, reason="stripe_subscription_deleted", event_id=event_id)
 
     # ── Plan switch / status change ────────────────────────────────────────
     elif event_type == "customer.subscription.updated":
         if user:
+            if obj.get("id"):
+                user.subscription_stripe_id = obj["id"]
+            user.subscription_cancels_at_period_end = bool(obj.get("cancel_at_period_end"))
             status = obj.get("status")
             if status in REVOKE_STATUSES:
                 revoke_subscription(db, user, reason=f"stripe_subscription_{status}", event_id=event_id)
             elif status in ("active", "trialing"):
                 # `items` (expanded) reflects the *new* plan, so this correctly
-                # follows the upgrades/downgrades Stripe reports.
-                grant_subscription(db, user, _tier_from_obj(obj), days=_plan_days(obj), event_id=event_id)
+                # follows the upgrades/downgrades Stripe reports; the period end
+                # keeps `cancel_at_period_end` expiries accurate.
+                grant_subscription(
+                    db, user, _tier_from_obj(obj),
+                    days=_plan_days(obj),
+                    end_at=_unix_to_datetime(obj.get("current_period_end")),
+                    event_id=event_id,
+                )
             # `past_due` / `incomplete` → leave access in place; Stripe retries.
 
     # ── Payment failure → audit only; Stripe Smart Retries handle recovery ──
@@ -479,4 +558,160 @@ async def test_upgrade(
         "is_subscribed": user.is_subscribed,
         "subscription_end": user.subscription_end.isoformat() if user.subscription_end else None,
     }
+
+
+@router.post("/cancel")
+async def cancel_subscription(
+    payload: CancelSubscriptionIn,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Cancel the current subscription.
+
+    ``cancel_immediately=False`` (default) schedules cancellation for the end of
+    the current billing period — access persists until ``subscription_end``.
+    ``cancel_immediately=True`` deletes the subscription now and revokes access.
+    """
+    if not settings.STRIPE_SECRET_KEY:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={"code": "payments_unconfigured", "message": "Payments aren't configured yet."},
+        )
+    import stripe
+    stripe.api_key = settings.STRIPE_SECRET_KEY
+
+    subs = _list_active_subscriptions(stripe, user)
+    if not subs:
+        # No live Stripe subscription, but the user may still be flagged paid
+        # locally (test-upgrade or a missed webhook) — revoke to stay honest.
+        revoke_subscription(db, user, reason="stripe_subscription_missing")
+        return _status_response(user)
+
+    try:
+        period_end = None
+        for sub in subs:
+            sub_id = _get(sub, "id", None)
+            if not sub_id:
+                continue
+            period_end = _sub_period_end(sub) or period_end
+            if payload.cancel_immediately:
+                stripe.Subscription.delete(sub_id)
+            else:
+                stripe.Subscription.modify(sub_id, cancel_at_period_end=True)
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail={"code": "stripe_error", "message": "Couldn't cancel your subscription. Try again in a moment."},
+        )
+
+    if payload.cancel_immediately:
+        revoke_subscription(db, user, reason="stripe_cancel_immediate")
+    else:
+        user.subscription_cancels_at_period_end = True
+        if period_end is not None:
+            user.subscription_end = period_end
+        db.commit()
+        db.refresh(user)
+
+    return _status_response(user)
+
+
+@router.post("/resume")
+async def resume_subscription(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Undo a scheduled cancellation (``cancel_at_period_end``) and keep access."""
+    if not settings.STRIPE_SECRET_KEY:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={"code": "payments_unconfigured", "message": "Payments aren't configured yet."},
+        )
+    import stripe
+    stripe.api_key = settings.STRIPE_SECRET_KEY
+
+    try:
+        for sub in _list_active_subscriptions(stripe, user):
+            if _get(sub, "cancel_at_period_end", False):
+                stripe.Subscription.modify(_get(sub, "id"), cancel_at_period_end=False)
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail={"code": "stripe_error", "message": "Couldn't resume your subscription. Try again in a moment."},
+        )
+
+    user.subscription_cancels_at_period_end = False
+    db.commit()
+    db.refresh(user)
+    return _status_response(user)
+
+
+@router.post("/change-plan")
+async def change_plan(
+    payload: ChangePlanIn,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Swap an existing subscription between Pro ↔ Elite (and monthly ↔ annual).
+
+    Stripe prorates the difference on the same subscription, so there's never a
+    second live subscription and access never lapses mid-switch.
+    """
+    tier = payload.tier.lower()
+    price_id = _price_id(tier, bool(payload.annual))
+    if not price_id:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"code": "price_missing", "message": "This plan's price isn't configured yet."},
+        )
+    if not settings.STRIPE_SECRET_KEY:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={"code": "payments_unconfigured", "message": "Payments aren't configured yet."},
+        )
+    import stripe
+    stripe.api_key = settings.STRIPE_SECRET_KEY
+
+    subs = _list_active_subscriptions(stripe, user)
+    if not subs:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"code": "no_active_subscription", "message": "No active subscription to change — start a new plan instead."},
+        )
+
+    sub = None
+    if user.subscription_stripe_id:
+        sub = next((s for s in subs if _get(s, "id") == user.subscription_stripe_id), None)
+    if sub is None:
+        sub = subs[0]
+
+    sub_id = _get(sub, "id")
+    item_ids = _sub_item_ids(sub)
+    period_end = _sub_period_end(sub)
+    if not item_ids:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"code": "subscription_not_changeable", "message": "This subscription can't be changed here right now."},
+        )
+
+    try:
+        stripe.Subscription.modify(
+            sub_id,
+            items=[{"id": item_ids[0], "price": price_id}],
+        )
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail={"code": "stripe_error", "message": "Couldn't change your plan. Try again in a moment."},
+        )
+
+    grant_subscription(
+        db, user, tier,
+        days=365 if payload.annual else 30,
+        end_at=period_end,
+    )
+    user.subscription_cancels_at_period_end = False
+    db.commit()
+    db.refresh(user)
+    return _status_response(user)
 

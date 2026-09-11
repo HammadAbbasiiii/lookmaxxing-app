@@ -58,6 +58,23 @@ try:
 except Exception as _mig_fmo_e:
     print(f"⚠️ users.has_used_first_month_offer migration skipped: {_mig_fmo_e}")
 
+# ── Migrate: add subscription-management columns (Stripe sub id + cancel flag) ──
+try:
+    from sqlalchemy import inspect as _inspect_sub, text as _text_sub
+    _insp_sub = _inspect(engine)
+    _cols_sub = {c["name"] for c in _insp_sub.get_columns("users")}
+    _sub_additions = {
+        "subscription_stripe_id": "VARCHAR(255)",
+        "subscription_cancels_at_period_end": "BOOLEAN DEFAULT FALSE",
+    }
+    for _sub_col, _sub_type in _sub_additions.items():
+        if _sub_col not in _cols_sub:
+            with engine.begin() as _conn_sub:
+                _conn_sub.execute(_text_sub(f"ALTER TABLE users ADD COLUMN {_sub_col} {_sub_type}"))
+            print(f"✅ Migrated: added users.{_sub_col}")
+except Exception as _mig_sub_e:
+    print(f"⚠️ users subscription columns migration skipped: {_mig_sub_e}")
+
 # ── Promote admin emails to is_admin=True + grant Elite (testing convenience) ──────
 # The owner/admin account defaults to Elite so every Pro/Elite surface is testable
 # without manual tier fiddling. To temporarily test free/pro gating, flip your own
