@@ -146,6 +146,7 @@ export default function ResultsPage() {
           title="Elite harmony"
           teaser="Golden-ratio harmony map · 7-day glow-up blueprint · shareable score card."
           description="Elite measures your face against phi (1.618) and hands you a day-by-day blueprint plus a shareable card."
+          tier="elite"
         />
       ) : null}
 

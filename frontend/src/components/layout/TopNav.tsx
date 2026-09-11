@@ -70,7 +70,7 @@ export function TopNav() {
         <Logo className="shrink-0" />
 
         <nav className="no-scrollbar hidden min-w-0 flex-1 overflow-x-auto md:block" aria-label="Primary">
-          <div className="mx-auto flex w-max items-center gap-0.5 px-2">
+          <div className="flex w-max min-w-full items-center justify-center gap-0.5 px-2">
             {LINKS.map((link) => {
               const active = pathname.startsWith(link.href);
               return (

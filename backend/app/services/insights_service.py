@@ -160,7 +160,7 @@ def rank_label(percentile: Optional[float]) -> str:
         return "Top 25%"
     if percentile >= 50:
         return "Above average"
-    return "Building fast"
+    return "Rising Star"
 
 # ── Golden-ratio harmony map (Elite) ────────────────────────────────────────
 GOLDEN_METRICS = [

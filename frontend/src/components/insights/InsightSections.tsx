@@ -60,11 +60,11 @@ export function InsightsSection({ insights, loading }: { insights?: Insights; lo
           </div>
           <p className="mt-2 font-display text-2xl font-bold text-ink">{percentile.rank_label}</p>
           <p className="mt-1 text-xs text-muted">
-            {percentile.percentile != null
-              ? `You beat ${percentile.percentile}% of ${percentile.peer_count} peer${
-                  percentile.peer_count === 1 ? "" : "s"
-                }.`
-              : "Analyze more photos to see your rank."}
+            {percentile.percentile == null
+              ? "Analyze more photos to see your rank."
+              : percentile.peer_count < 10
+                ? "Not enough data yet — keep analyzing to see your rank."
+                : `You beat ${percentile.percentile}% of ${percentile.peer_count} peers.`}
           </p>
         </div>
 

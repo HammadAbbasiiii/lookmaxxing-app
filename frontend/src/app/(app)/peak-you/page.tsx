@@ -112,6 +112,7 @@ export default function PeakYouPage() {
             <PaywallLock
               className="mt-6"
               title="Your future self"
+              tier="elite"
               teaser="A daily message from the person you're becoming — keeps you on the path."
               description="Elite adds a daily check-in from your future self, so you never drift."
             />

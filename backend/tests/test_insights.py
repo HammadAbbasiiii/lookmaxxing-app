@@ -148,7 +148,7 @@ def test_rank_label_thresholds():
     assert rank_label(90.0) == "Top 10%"
     assert rank_label(75.0) == "Top 25%"
     assert rank_label(50.0) == "Above average"
-    assert rank_label(10.0) == "Building fast"
+    assert rank_label(10.0) == "Rising Star"
     assert rank_label(None) == "—"
 
 
