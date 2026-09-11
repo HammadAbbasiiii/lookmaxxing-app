@@ -2,23 +2,16 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import {
-  Compass,
-  Home,
-  ListChecks,
-  Settings as SettingsIcon,
-  Sparkles,
-  TrendingUp,
-} from "lucide-react";
+import { Compass, Home, ListChecks, MessageCircle, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { isActivePath, isGlowPath } from "@/lib/nav";
 
 const TABS = [
   { href: "/dashboard", label: "Home", icon: Home },
   { href: "/plan", label: "Plan", icon: ListChecks },
-  { href: "/glow-up", label: "Glow-Up", icon: Sparkles },
-  { href: "/progress", label: "Progress", icon: TrendingUp },
+  { href: "/coach", label: "Coach", icon: MessageCircle },
+  { href: "/glow", label: "Glow", icon: Sparkles },
   { href: "/explore", label: "Explore", icon: Compass },
-  { href: "/settings", label: "Settings", icon: SettingsIcon },
 ];
 
 /** Mobile bottom tab bar (§7.2). Active tab is gold, inactive is muted. */
@@ -30,9 +23,12 @@ export function BottomNav() {
       className="fixed inset-x-0 bottom-0 z-40 border-t border-border-soft bg-background/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden"
       aria-label="Bottom"
     >
-      <div className="mx-auto grid max-w-md grid-cols-6">
+      <div className="mx-auto grid max-w-md grid-cols-5">
         {TABS.map((tab) => {
-          const active = pathname.startsWith(tab.href);
+          const active =
+            tab.href === "/glow"
+              ? isGlowPath(pathname)
+              : isActivePath(pathname, tab.href);
           const Icon = tab.icon;
           return (
             <Link
