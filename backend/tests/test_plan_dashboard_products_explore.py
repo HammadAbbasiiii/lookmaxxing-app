@@ -103,6 +103,35 @@ class TestExplore:
     def test_explore_requires_auth(self, client):
         assert client.get("/api/v1/explore").status_code == 401
 
+    def test_pseudonym_matches_gender(self, db_session):
+        from app.routes.explore import _identity, _PSEUDONYMS
+
+        male = User(email="male@example.com", hashed_password="x", gender="male")
+        female = User(email="female@example.com", hashed_password="x", gender="female")
+        other = User(email="other@example.com", hashed_password="x", gender="other")
+        db_session.add_all([male, female, other])
+        db_session.commit()
+
+        mi = _identity(male)
+        fi = _identity(female)
+        oi = _identity(other)
+        assert mi["username"] in _PSEUDONYMS["male"]
+        assert fi["username"] in _PSEUDONYMS["female"]
+        assert oi["username"] in _PSEUDONYMS["other"]
+        # initials always match the chosen name
+        assert mi["initials"] == "".join(w[0] for w in mi["username"].split()).upper()
+
+    def test_pseudonym_stable_and_gender_null_defaults_to_other(self, db_session):
+        from app.routes.explore import _identity, _PSEUDONYMS
+
+        u = User(email="nogen@example.com", hashed_password="x", gender=None)
+        db_session.add(u)
+        db_session.commit()
+        first = _identity(u)
+        second = _identity(u)
+        assert first == second
+        assert first["username"] in _PSEUDONYMS["other"]
+
 
 class TestAnalysis:
     def test_analysis_owner_scored(self, client, auth_token, db_session, test_user):

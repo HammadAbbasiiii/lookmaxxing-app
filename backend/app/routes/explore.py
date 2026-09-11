@@ -72,28 +72,42 @@ ARTICLES = [
 ]
 
 
-_ADJECTIVES = [
-    "Brave", "Golden", "Rising", "Sharp", "Bold", "Calm", "Swift", "Bright",
-    "Noble", "Fearless", "Loyal", "Steady", "Keen", "Fierce", "Wise", "Proud",
-]
-_NOUNS = [
-    "Falcon", "Tiger", "Wolf", "Hawk", "Lion", "Phoenix", "Panther", "Eagle",
-    "Otter", "Raven", "Fox", "Bear", "Lynx", "Cobra", "Jaguar", "Sable",
-]
+# Gender-aware pseudonyms. Every member gets a stable, deterministic display
+# identity drawn from the list matching their gender, so "Brave Falcon" (a
+# masculine noun) never leaks onto a female member and vice-versa. Names are
+# vibe labels, not real identities — no full name or fake first name is exposed.
+_PSEUDONYMS = {
+    "male": [
+        "Proud Panther", "Bold Wolf", "Fierce Eagle", "Steady Tiger",
+        "Silent Panther", "Strong Bear",
+    ],
+    "female": [
+        "Radiant Rose", "Graceful Gazelle", "Serene Swan", "Elegant Ivy",
+        "Blossoming Lotus", "Majestic Lioness",
+    ],
+    "other": [
+        "Noble Phoenix", "Swift Falcon", "Calm Ocean", "Bright Comet",
+    ],
+}
 
 
 def _identity(user: User) -> dict:
-    """Return a stable, privacy-safe display identity for a member.
+    """Return a stable, privacy-safe, gender-matched display identity.
 
     We never show a real name or a fake first name ("Alex", "Noah", …) — both
     confused members and weakened privacy. Instead every transformation gets a
-    deterministic pseudonym ("Brave Falcon") plus its initials for the avatar,
-    derived only from the user id.
+    deterministic pseudonym ("Proud Panther", "Serene Swan", …) from the list
+    matching the member's stored gender, plus initials for the avatar, derived
+    only from the user id + gender so the same member always keeps the same name.
     """
+    g = (user.gender or "other").strip().lower()
+    if g not in _PSEUDONYMS:
+        g = "other"
+    names = _PSEUDONYMS[g]
     digest = hashlib.md5(user.id.encode("utf-8")).hexdigest()
-    adj = _ADJECTIVES[int(digest[:4], 16) % len(_ADJECTIVES)]
-    noun = _NOUNS[int(digest[4:8], 16) % len(_NOUNS)]
-    return {"username": f"{adj} {noun}", "initials": f"{adj[0]}{noun[0]}"}
+    name = names[int(digest[:4], 16) % len(names)]
+    initials = "".join(word[0] for word in name.split()).upper()
+    return {"username": name, "initials": initials}
 
 
 def _rank_label(delta: float) -> str:
