@@ -11,10 +11,10 @@ import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
-import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorCard } from "@/components/ui/ErrorCard";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { SafeImage } from "@/components/ui/SafeImage";
+import { CountdownReveal } from "@/components/glow/CountdownReveal";
 import { cn, formatScore } from "@/lib/utils";
 
 const RARITY_STYLE: Record<string, { ring: string; label: string }> = {
@@ -167,11 +167,7 @@ export default function GlowPage() {
       {reveal ? (
         <RevealCard reveal={reveal} animate={justOpened} />
       ) : !canOpen ? (
-        <EmptyState
-          icon={<Gift className="h-8 w-8" />}
-          title="Come back tomorrow"
-          description="You've opened today's reveal. Keep your streak alive and tomorrow's will be sharper."
-        />
+        <CountdownReveal />
       ) : null}
 
       {s?.full_reveal?.eligible ? (
