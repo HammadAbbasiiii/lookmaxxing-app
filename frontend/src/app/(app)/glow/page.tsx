@@ -166,8 +166,12 @@ export default function GlowPage() {
 
       {reveal ? (
         <RevealCard reveal={reveal} animate={justOpened} />
-      ) : !canOpen ? (
-        <CountdownReveal />
+      ) : null}
+
+      {!canOpen ? (
+        <div className="mt-5">
+          <CountdownReveal />
+        </div>
       ) : null}
 
       {s?.full_reveal?.eligible ? (
