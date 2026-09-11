@@ -156,6 +156,25 @@ export default function DashboardPage() {
             </div>
           </Card>
 
+          {d?.progress?.archetype ? (
+            <Card className="mb-4 overflow-hidden border-gold/40">
+              <div className="flex items-center gap-4">
+                <span className="flex h-12 w-12 items-center justify-center rounded-full bg-gold/15 text-2xl" aria-hidden>
+                  👑
+                </span>
+                <div>
+                  <p className="text-xs uppercase tracking-widest text-muted">Your archetype</p>
+                  <p className="font-display text-xl font-bold text-gold-bright">{d.progress.archetype}</p>
+                  {d.progress.top_strength ? (
+                    <p className="text-xs text-muted">
+                      Driven by your strongest feature: {d.progress.top_strength}
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+            </Card>
+          ) : null}
+
           <Card className="mb-4">
             <CardTitle>Your journey</CardTitle>
             <div className="mt-4 grid grid-cols-3 gap-2">

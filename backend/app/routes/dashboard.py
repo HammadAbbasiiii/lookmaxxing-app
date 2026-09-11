@@ -10,6 +10,7 @@ from app.models import User, Photo, Plan, UserCheckin
 from app.dependencies import get_current_user
 from app.services.score_labels import get_score_label
 from app.services.category_breakdown import normalize_breakdown
+from app.services.insights_service import strength_archetype, top_strength, STRENGTH_LABELS
 from app.services.progress_engine import compute_current_day
 from datetime import datetime
 
@@ -141,14 +142,19 @@ async def get_dashboard(
     initial_score_label = get_score_label(initial_score) if initial_score is not None else None
     current_score_label = get_score_label(current_score) if current_score is not None else None
 
-    # Per-category labels from latest analysis (nested or flat breakdown).
+    # Per-category labels + personalized archetype from latest analysis.
     category_labels = None
+    archetype = None
+    top_strength_label = None
     if latest_photo and isinstance(latest_photo.analysis_details, dict):
         breakdown = normalize_breakdown(latest_photo.analysis_details.get("category_breakdown"))
         if breakdown:
             category_labels = {
                 cat: get_score_label(score) for cat, score in breakdown.items()
             }
+            archetype = strength_archetype(current_user.gender, breakdown)
+            bucket = top_strength(breakdown)
+            top_strength_label = STRENGTH_LABELS.get(bucket) if bucket else None
 
     progress_info = {
         "initial_score": initial_score,
@@ -163,6 +169,8 @@ async def get_dashboard(
         "checked_in_today": checked_in_today,
         "has_baseline": baseline_photo is not None,
         "category_labels": category_labels,
+        "archetype": archetype,
+        "top_strength": top_strength_label,
     }
 
     # ── Milestones ───────────────────────────────────────────────

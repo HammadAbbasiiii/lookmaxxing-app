@@ -158,6 +158,8 @@ export const DashboardSchema = z.object({
       longest_streak: z.number().catch(0),
       total_checkins: z.number().catch(0),
       checked_in_today: z.boolean().catch(false),
+      archetype: z.string().nullable().catch(null),
+      top_strength: z.string().nullable().catch(null),
     })
     .nullable()
     .catch(null),

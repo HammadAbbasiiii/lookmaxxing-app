@@ -74,6 +74,84 @@ SHAPE_NOTE = {
 }
 
 
+# ── Top-strength archetype (gender-aware, personalized) ─────────────────────
+# Maps the member's single strongest category to a "who you are becoming"
+# archetype. Distinct from the face-shape look-alike archetype above — this one
+# is driven by the category they already score highest in.
+STRENGTH_ARCHETYPES: Dict[str, Dict[str, str]] = {
+    "male": {
+        "eyes": "The Seducer",
+        "jawline": "The Alpha",
+        "skin": "The Refined",
+        "symmetry": "The Classic",
+        "structure": "The Sculptor",
+    },
+    "female": {
+        "eyes": "The Siren",
+        "jawline": "The Queen",
+        "skin": "The Radiant",
+        "symmetry": "The Icon",
+        "structure": "The Muse",
+    },
+    "other": {
+        "eyes": "The Charmer",
+        "jawline": "The Sculptor",
+        "skin": "The Radiant",
+        "symmetry": "The Classic",
+        "structure": "The Muse",
+    },
+}
+
+# Arbitrary category keys → canonical strength bucket.
+STRENGTH_BUCKETS: Dict[str, str] = {
+    "eyes": "eyes",
+    "eye_appeal": "eyes",
+    "jawline": "jawline",
+    "jawline_definition": "jawline",
+    "skin": "skin",
+    "skin_quality": "skin",
+    "symmetry": "symmetry",
+    "structure": "structure",
+    "facial_structure": "structure",
+    "facial_harmony": "structure",
+    "masculinity_femininity": "structure",
+    "nose": "structure",
+}
+
+STRENGTH_LABELS: Dict[str, str] = {
+    "eyes": "Eyes",
+    "jawline": "Jawline",
+    "skin": "Skin",
+    "symmetry": "Symmetry",
+    "structure": "Structure",
+}
+
+
+def top_strength(categories: Optional[Dict[str, Any]]) -> Optional[str]:
+    """Return the canonical strength bucket with the highest category score."""
+    best: Optional[str] = None
+    best_score: Optional[float] = None
+    for key, score in (categories or {}).items():
+        bucket = STRENGTH_BUCKETS.get(key)
+        if bucket is None:
+            continue
+        try:
+            s = float(score)
+        except (TypeError, ValueError):
+            continue
+        if best_score is None or s > best_score:
+            best, best_score = bucket, s
+    return best
+
+
+def strength_archetype(gender: Optional[str], categories: Optional[Dict[str, Any]]) -> str:
+    """Map the member's top strength + gender to a personalized archetype name."""
+    g = gender_of(gender)
+    table = STRENGTH_ARCHETYPES.get(g, STRENGTH_ARCHETYPES["other"])
+    bucket = top_strength(categories) or "symmetry"
+    return table.get(bucket, table["symmetry"])
+
+
 def _vibe(score: float) -> str:
     if score >= 80:
         return "Top-tier presence — you turn heads."

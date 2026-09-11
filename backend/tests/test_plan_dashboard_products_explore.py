@@ -54,6 +54,25 @@ class TestDashboard:
         assert "profile" in body
         assert "next_action" in body
 
+    def test_dashboard_archetype_from_top_strength(self, client, auth_token, db_session, test_user):
+        test_user.gender = "male"
+        p = Photo(
+            user_id=test_user.id,
+            file_url="https://example.com/arch.jpg",
+            score=72.0,
+            face_shape="oval",
+            analysis_details={"category_breakdown": {
+                "eye_appeal": 90, "skin_quality": 60, "jawline_definition": 70,
+                "symmetry": 75, "facial_structure": 80,
+            }},
+        )
+        db_session.add(p)
+        db_session.commit()
+        res = client.get("/api/v1/dashboard", headers=_h(auth_token))
+        body = res.json()
+        assert body["progress"]["archetype"] == "The Seducer"
+        assert body["progress"]["top_strength"] == "Eyes"
+
     def test_dashboard_requires_auth(self, client):
         assert client.get("/api/v1/dashboard").status_code == 401
 
