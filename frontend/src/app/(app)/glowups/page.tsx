@@ -22,6 +22,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorCard } from "@/components/ui/ErrorCard";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { SafeImage } from "@/components/ui/SafeImage";
+import { MoviePlayer } from "@/components/glowups/MoviePlayer";
 import { cn } from "@/lib/utils";
 
 function FeedCard({ item, onReport }: { item: GlowupFeedItem; onReport: (id: string) => void }) {
@@ -153,14 +154,20 @@ export default function GlowupsPage() {
           <Skeleton className="mt-3 h-24 w-full" />
         ) : movie.data ? (
           <div className="mt-3">
-            <p className="text-sm text-ink">
-              Status: <span className="font-semibold capitalize">{movie.data.status}</span>
-              {movie.data.delta ? (
-                <span className="ml-1 text-gold-bright">· {movie.data.delta >= 0 ? "+" : ""}{movie.data.delta} pts</span>
-              ) : null}
-            </p>
+            {movie.data.photo_urls.length >= 2 ? (
+              <MoviePlayer
+                photoUrls={movie.data.photo_urls}
+                photoScores={movie.data.photo_scores}
+                delta={movie.data.delta}
+                status={movie.data.status}
+              />
+            ) : (
+              <p className="text-sm text-muted">
+                Upload at least two scored photos to compile your movie.
+              </p>
+            )}
             {movie.data.trailers.length > 0 ? (
-              <p className="mt-1 text-xs text-muted">
+              <p className="mt-2 text-xs text-muted">
                 {movie.data.trailers.map((t) => t.title).join(" · ")}
               </p>
             ) : null}
@@ -171,7 +178,7 @@ export default function GlowupsPage() {
               loading={generate.isPending}
               onClick={() => generate.mutate()}
             >
-              <RefreshCw className="h-3.5 w-3.5" /> {movie.data.status === "ready" ? "Re-render" : "Generate movie"}
+              <RefreshCw className="h-3.5 w-3.5" /> {movie.data.status === "ready" ? "Re-render" : "Compile movie"}
             </Button>
             {generate.data?.throttled ? (
               <p className="mt-2 text-xs text-muted">One render per day — your latest is ready.</p>

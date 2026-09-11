@@ -172,6 +172,8 @@ def get_movie(user: User, db: Session) -> Dict[str, Any]:
         "trailers": trailers,
         "full_movie_url": t.movie_url,
         "photo_urls": [p.file_url for p in photos],
+        # Aligned with photo_urls so the client can draw the score progression.
+        "photo_scores": [round(p.score or 0, 1) for p in photos],
         "delta": t.delta_score if t.delta_score is not None else _delta(photos),
     }
 

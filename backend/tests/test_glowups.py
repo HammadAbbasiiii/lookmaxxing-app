@@ -154,6 +154,7 @@ class TestMovie:
         assert res.status_code == 200
         assert res.json()["status"] == "ready"
         assert res.json()["delta"] == 20.0
+        assert res.json()["photo_scores"] == [60.0, 80.0]
 
 
 class TestReport:

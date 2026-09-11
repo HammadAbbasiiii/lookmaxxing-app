@@ -783,6 +783,7 @@ export const GlowupMovieSchema = z.object({
   })).catch([]),
   full_movie_url: z.string().nullable().catch(null),
   photo_urls: z.array(z.string()).catch([]),
+  photo_scores: z.array(z.number()).catch([]),
   delta: z.number().catch(0),
 });
 export type GlowupFeedItem = z.infer<typeof GlowupFeedItemSchema>;

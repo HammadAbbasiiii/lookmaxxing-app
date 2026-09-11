@@ -679,7 +679,7 @@ export async function getGlowupsConsent(): Promise<GlowupConsent> {
 export async function getGlowupsMovie(): Promise<GlowupMovie> {
   const data = await apiFetch<unknown>("/glowups/movie");
   return decode(GlowupMovieSchema, data, {
-    status: "pending", trailers: [], full_movie_url: null, photo_urls: [], delta: 0,
+    status: "pending", trailers: [], full_movie_url: null, photo_urls: [], photo_scores: [], delta: 0,
   });
 }
 
