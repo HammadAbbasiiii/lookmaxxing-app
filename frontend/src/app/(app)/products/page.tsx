@@ -19,6 +19,17 @@ import { SafeImage } from "@/components/ui/SafeImage";
 import { track } from "@/lib/api/analytics";
 import type { Product } from "@/lib/zod";
 
+// Category → emoji, used as an intentional placeholder when a product image is
+// missing or fails to load (seed images can 404 on the retailer CDN).
+const CATEGORY_EMOJI: Record<string, string> = {
+  skin_quality: "✨",
+  jawline_definition: "🗿",
+  eye_appeal: "👁️",
+  grooming: "💈",
+  facial_structure: "📐",
+  general: "🛍️",
+};
+
 export default function ProductsPage() {
   const [tier, setTier] = useState("mid_range");
   const [category, setCategory] = useState<string>("recommended");
@@ -210,7 +221,21 @@ function ProductCard({ product }: { product: Product }) {
       }
       className="card-border card-hover flex flex-col overflow-hidden rounded-card"
     >
-      <SafeImage src={product.image_url} alt={product.name} className="h-36 w-full bg-surface-2" />
+      <SafeImage
+        src={product.image_url}
+        alt={product.name}
+        className="h-36 w-full bg-surface-2"
+        fallback={
+          <span className="flex flex-col items-center gap-1 px-3 text-center">
+            <span className="text-3xl" aria-hidden>
+              {CATEGORY_EMOJI[product.category] ?? "🛍️"}
+            </span>
+            <span className="text-xs font-medium">
+              {product.category?.replace(/_/g, " ") || "General"}
+            </span>
+          </span>
+        }
+      />
       <div className="flex flex-1 flex-col p-4">
         <div className="mb-2 flex items-start justify-between gap-2">
           <Badge variant="muted">{product.category?.replace(/_/g, " ") || "General"}</Badge>

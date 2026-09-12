@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { ImageIcon } from "lucide-react";
 import { cn, safeUrl } from "@/lib/utils";
 
@@ -8,6 +8,8 @@ interface SafeImageProps {
   src: string | null | undefined;
   alt: string;
   className?: string;
+  /** Custom placeholder shown when the image is missing or fails to load. */
+  fallback?: ReactNode;
 }
 
 /**
@@ -15,7 +17,7 @@ interface SafeImageProps {
  * auto-format, and falls back to a placeholder on any load error — never a
  * broken layout.
  */
-export function SafeImage({ src, alt, className }: SafeImageProps) {
+export function SafeImage({ src, alt, className, fallback }: SafeImageProps) {
   const [failed, setFailed] = useState(false);
   const url = safeUrl(src);
 
@@ -26,7 +28,7 @@ export function SafeImage({ src, alt, className }: SafeImageProps) {
         aria-label={alt}
         role="img"
       >
-        <ImageIcon className="h-6 w-6" aria-hidden />
+        {fallback ?? <ImageIcon className="h-6 w-6" aria-hidden />}
       </div>
     );
   }

@@ -37,7 +37,11 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en" className={`${inter.variable} ${spaceGrotesk.variable}`}>
+    <html
+      lang="en"
+      className={`${inter.variable} ${spaceGrotesk.variable}`}
+      data-scroll-behavior="smooth"
+    >
       <body>
         <AnalyticsTracker />
         <Providers>{children}</Providers>
