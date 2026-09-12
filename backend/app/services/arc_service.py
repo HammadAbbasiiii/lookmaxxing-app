@@ -80,7 +80,12 @@ def xp_to_next_level(total_xp: int) -> int:
 
 
 def title_for(archetype_name: Optional[str], level: int) -> str:
-    return f"The {archetype_name or 'Rookie'}, Level {level}"
+    # Archetype names ship with a leading "The " (e.g. "The Leading Man"),
+    # so guard against doubling it up in the title.
+    name = archetype_name or "Rookie"
+    if name.lower().startswith("the "):
+        return f"{name}, Level {level}"
+    return f"The {name}, Level {level}"
 
 
 def milestone_title_for(user: User, plan_day: int) -> Optional[str]:

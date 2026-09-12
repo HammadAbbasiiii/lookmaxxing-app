@@ -63,6 +63,9 @@ class TestXPLevels:
     def test_title(self):
         assert title_for(None, 1) == "The Rookie, Level 1"
         assert title_for("Sculptor", 14) == "The Sculptor, Level 14"
+        # Archetype names ship with a leading "The " — never double it up.
+        assert title_for("The Leading Man", 4) == "The Leading Man, Level 4"
+        assert title_for("The Seducer", 3) == "The Seducer, Level 3"
 
 
 class TestArcStateAPI:

@@ -45,15 +45,30 @@ async def get_analysis(
             detail="This photo has not been analyzed yet"
         )
 
+    # Category scores live in `analysis_details.category_breakdown` (the legacy
+    # flat columns are frequently null). Fall back to the breakdown so the
+    # client always gets real per-feature scores (e.g. Peak You "levers").
+    details = photo.analysis_details if isinstance(photo.analysis_details, dict) else {}
+    breakdown = normalize_breakdown(details.get("category_breakdown"))
+
+    def cat(column, *keys):
+        if isinstance(column, (int, float)) and not isinstance(column, bool):
+            return float(column)
+        for key in keys:
+            value = breakdown.get(key)
+            if value is not None:
+                return float(value)
+        return None
+
     return {
         "photo_id": photo.id,
         "file_url": photo.file_url,
         "scores": {
             "overall": photo.score,
-            "symmetry": photo.symmetry_score,
-            "skin": photo.skin_score,
-            "jawline": photo.jawline_score,
-            "eyes": photo.eye_score
+            "symmetry": cat(photo.symmetry_score, "facial_harmony", "symmetry"),
+            "skin": cat(photo.skin_score, "skin_quality", "skin"),
+            "jawline": cat(photo.jawline_score, "jawline_definition", "jawline"),
+            "eyes": cat(photo.eye_score, "eye_appeal", "eyes")
         },
         "face_shape": photo.face_shape,
         "is_baseline": photo.is_baseline,

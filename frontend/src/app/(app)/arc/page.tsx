@@ -7,6 +7,7 @@ import { Check, Crown, Lock, Sparkles, Swords, Trophy, Zap } from "lucide-react"
 import { getArcState, claimArcQuest } from "@/lib/api/endpoints";
 import type { ArcClaim, ArcState } from "@/lib/zod";
 import { toast } from "sonner";
+import { ApiError } from "@/lib/api/client";
 import { RewardCelebration } from "@/components/arc/RewardCelebration";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { Button } from "@/components/ui/Button";
@@ -109,6 +110,13 @@ export default function ArcPage() {
       qc.invalidateQueries({ queryKey: ["arc-state"] });
       qc.invalidateQueries({ queryKey: ["arc-badges"] });
     },
+    onError: (e) => {
+      toast.error(
+        e instanceof ApiError
+          ? e.message
+          : "Complete the task in today's check-in before claiming.",
+      );
+    },
   });
 
   if (state.isLoading) {
@@ -169,7 +177,6 @@ export default function ArcPage() {
           </ProgressRing>
           <div className="min-w-0">
             <p className="truncate font-display text-lg font-semibold text-ink">{a.title || "The Rookie, Level 1"}</p>
-            <p className="text-sm text-muted">{a.archetype}</p>
             <p className="mt-2 inline-flex items-center gap-1 text-sm font-semibold text-gold-bright">
               <Zap className="h-4 w-4" /> {a.xp_to_next} XP to Level {a.level + 1}
             </p>

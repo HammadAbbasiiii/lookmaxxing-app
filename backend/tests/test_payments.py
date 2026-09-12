@@ -411,6 +411,69 @@ class TestSubscriptionManagement:
         db_session.refresh(u)
         assert u.subscription_tier == "free"
 
+    def test_cancel_without_stripe_key_schedules_locally(self, client, db_session, monkeypatch):
+        u = _make_user(db_session, tier="pro")
+        db_session.commit()
+        monkeypatch.setattr(settings, "STRIPE_SECRET_KEY", "")
+
+        res = client.post(
+            "/api/v1/payments/cancel",
+            json={"cancel_immediately": False},
+            headers=self._auth(u),
+        )
+
+        assert res.status_code == 200
+        body = res.json()
+        assert body["cancel_at_period_end"] is True
+        db_session.refresh(u)
+        assert u.subscription_cancels_at_period_end is True
+        assert u.subscription_tier == "pro"  # access persists until period end
+
+    def test_cancel_now_without_stripe_key_revokes(self, client, db_session, monkeypatch):
+        u = _make_user(db_session, tier="pro")
+        db_session.commit()
+        monkeypatch.setattr(settings, "STRIPE_SECRET_KEY", "")
+
+        res = client.post(
+            "/api/v1/payments/cancel",
+            json={"cancel_immediately": True},
+            headers=self._auth(u),
+        )
+
+        assert res.status_code == 200
+        db_session.refresh(u)
+        assert u.subscription_tier == "free"
+        assert u.is_subscribed is False
+
+    def test_resume_without_stripe_key_clears_flag(self, client, db_session, monkeypatch):
+        u = _make_user(db_session, tier="pro")
+        u.subscription_cancels_at_period_end = True
+        db_session.commit()
+        monkeypatch.setattr(settings, "STRIPE_SECRET_KEY", "")
+
+        res = client.post("/api/v1/payments/resume", headers=self._auth(u))
+
+        assert res.status_code == 200
+        db_session.refresh(u)
+        assert u.subscription_cancels_at_period_end is False
+
+    def test_change_plan_without_stripe_key_swaps_locally(self, client, db_session, monkeypatch):
+        u = _make_user(db_session, tier="pro")
+        db_session.commit()
+        monkeypatch.setattr(settings, "STRIPE_SECRET_KEY", "")
+
+        res = client.post(
+            "/api/v1/payments/change-plan",
+            json={"tier": "elite", "annual": False},
+            headers=self._auth(u),
+        )
+
+        assert res.status_code == 200
+        body = res.json()
+        assert body["tier"] == "elite"
+        db_session.refresh(u)
+        assert u.subscription_tier == "elite"
+        assert u.subscription_cancels_at_period_end is False
 
     def test_resume_clears_cancel_flag(self, client, db_session, monkeypatch):
         import stripe

@@ -11,6 +11,15 @@ import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { PaywallLock } from "@/components/ui/PaywallLock";
 import { Reveal } from "@/components/landing/Reveal";
 
+/** Raw category keys (e.g. "jawline_definition") should read as human labels. */
+function humanizeFocus(focus: string | undefined): string {
+  if (!focus) return "Today's tip";
+  if (/^[a-z]+(_[a-z]+)+$/.test(focus)) {
+    return focus.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  }
+  return focus;
+}
+
 export default function CoachPage() {
   const { data: user } = useMe();
   const isPro = Boolean(
@@ -59,7 +68,7 @@ export default function CoachPage() {
             <div className="flex items-center gap-2 text-gold-bright">
               <Sparkles className="h-4 w-4" aria-hidden />
               <p className="text-xs font-semibold uppercase tracking-wide">
-                {q.data?.focus ? `Today's focus · ${q.data.focus}` : "Today's tip"}
+                {q.data?.focus ? `Today's focus · ${humanizeFocus(q.data.focus)}` : "Today's tip"}
               </p>
             </div>
             <p className="mt-3 font-display text-lg font-semibold text-ink">{q.data?.message}</p>

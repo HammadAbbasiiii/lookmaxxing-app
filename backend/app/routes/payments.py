@@ -573,10 +573,17 @@ async def cancel_subscription(
     ``cancel_immediately=True`` deletes the subscription now and revokes access.
     """
     if not settings.STRIPE_SECRET_KEY:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail={"code": "payments_unconfigured", "message": "Payments aren't configured yet."},
-        )
+        # No live Stripe (local/dev, test-upgrade) — manage the local subscription
+        # record directly so the user can always cancel, even before payments
+        # are wired up. There's no Stripe subscription to modify here.
+        if payload.cancel_immediately:
+            revoke_subscription(db, user, reason="stripe_unconfigured_cancel_immediate")
+        else:
+            user.subscription_cancels_at_period_end = True
+            db.commit()
+            db.refresh(user)
+        return _status_response(user)
+
     import stripe
     stripe.api_key = settings.STRIPE_SECRET_KEY
 
@@ -623,10 +630,12 @@ async def resume_subscription(
 ):
     """Undo a scheduled cancellation (``cancel_at_period_end``) and keep access."""
     if not settings.STRIPE_SECRET_KEY:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail={"code": "payments_unconfigured", "message": "Payments aren't configured yet."},
-        )
+        # No live Stripe (local/dev) — clear the local cancellation flag directly.
+        user.subscription_cancels_at_period_end = False
+        db.commit()
+        db.refresh(user)
+        return _status_response(user)
+
     import stripe
     stripe.api_key = settings.STRIPE_SECRET_KEY
 
@@ -658,16 +667,20 @@ async def change_plan(
     second live subscription and access never lapses mid-switch.
     """
     tier = payload.tier.lower()
+    if not settings.STRIPE_SECRET_KEY:
+        # No live Stripe (local/dev) — swap the local subscription record directly
+        # (same path as test-upgrade), so plan changes work before payments are wired.
+        grant_subscription(db, user, tier, days=365 if payload.annual else 30)
+        user.subscription_cancels_at_period_end = False
+        db.commit()
+        db.refresh(user)
+        return _status_response(user)
+
     price_id = _price_id(tier, bool(payload.annual))
     if not price_id:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={"code": "price_missing", "message": "This plan's price isn't configured yet."},
-        )
-    if not settings.STRIPE_SECRET_KEY:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail={"code": "payments_unconfigured", "message": "Payments aren't configured yet."},
         )
     import stripe
     stripe.api_key = settings.STRIPE_SECRET_KEY
