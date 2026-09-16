@@ -320,19 +320,27 @@ GENDER_NOTE = {
 def build_blueprint(weakest: Optional[List[str]], gender: Optional[str]) -> Dict[str, Any]:
     g = gender_of(gender)
     focuses: List[Dict[str, str]] = []
-    for key in (weakest or [])[:3]:
+
+    # Lead with the user's weakest categories, then the core defaults.
+    priority = list(weakest or [])[:3] + [
+        "skin_quality",
+        "facial_harmony",
+        "jawline_definition",
+    ]
+    for key in priority:
         entry = FOCUS_LIBRARY.get(key)
         if entry and entry not in focuses:
             focuses.append(entry)
 
-    defaults = [
-        FOCUS_LIBRARY["skin_quality"],
-        FOCUS_LIBRARY["facial_harmony"],
-        FOCUS_LIBRARY["jawline_definition"],
-    ]
-    for default in defaults:
-        if len(focuses) < 3 and default not in focuses:
-            focuses.append(default)
+    # Top up from the rest of the library before cycling: focusing on just the
+    # three weakest categories repeated Sunday's task again on Monday, Tuesday
+    # and Wednesday. Several breakdown keys share a focus (skin/skin_quality,
+    # jawline/jawline_definition, eyes/eye_appeal), so dedupe by entry itself.
+    for entry in FOCUS_LIBRARY.values():
+        if len(focuses) >= 7:
+            break
+        if entry not in focuses:
+            focuses.append(entry)
 
     days = []
     for i in range(7):

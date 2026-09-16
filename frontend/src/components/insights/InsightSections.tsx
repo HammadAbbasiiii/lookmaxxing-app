@@ -1,30 +1,11 @@
 "use client";
 
 import { Crown, Share2, TrendingUp, Trophy } from "lucide-react";
-import { toast } from "sonner";
 import type { Harmony, Insights } from "@/lib/zod";
-import { formatScore } from "@/lib/utils";
+import { cn, formatScore } from "@/lib/utils";
+import { shareText } from "@/lib/share";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { CategoryBar } from "@/components/ui/CategoryBar";
-
-/** Native share when available; clipboard + toast otherwise. Never throws. */
-async function shareGlowUp(text: string): Promise<void> {
-  if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
-    try {
-      await navigator.share({ title: "LookMaxx", text });
-      return;
-    } catch (err) {
-      // User dismissed the sheet (AbortError) — treat as a no-op, not a failure.
-      if (err instanceof DOMException && err.name === "AbortError") return;
-    }
-  }
-  try {
-    await navigator.clipboard.writeText(text);
-    toast.success("Glow-Up card copied to clipboard");
-  } catch {
-    toast.error("Couldn't share — copy it manually");
-  }
-}
 
 export function InsightsSection({ insights, loading }: { insights?: Insights; loading: boolean }) {
   if (loading) return <Skeleton className="mt-6 h-44 w-full rounded-card" />;
@@ -61,9 +42,9 @@ export function InsightsSection({ insights, loading }: { insights?: Insights; lo
           <p className="mt-2 font-display text-2xl font-bold text-ink">{percentile.rank_label}</p>
           <p className="mt-1 text-xs text-muted">
             {percentile.percentile == null
-              ? "Analyze more photos to see your rank."
+              ? "Your rank unlocks as more people analyze their photos."
               : percentile.peer_count < 10
-                ? "Not enough data yet — keep analyzing to see your rank."
+                ? "Not enough peers yet to rank you fairly."
                 : `You beat ${percentile.percentile}% of ${percentile.peer_count} peers.`}
           </p>
         </div>
@@ -86,7 +67,20 @@ export function InsightsSection({ insights, loading }: { insights?: Insights; lo
   );
 }
 
-export function HarmonySection({ harmony, loading }: { harmony?: Harmony; loading: boolean }) {
+/**
+ * Elite harmony block. `showCard` is false on /results, where the shareable card
+ * renders beside the score ring instead — the moment of peak emotion — rather
+ * than ~80% down the page.
+ */
+export function HarmonySection({
+  harmony,
+  loading,
+  showCard = true,
+}: {
+  harmony?: Harmony;
+  loading: boolean;
+  showCard?: boolean;
+}) {
   if (loading) return <Skeleton className="mt-6 h-44 w-full rounded-card" />;
   if (!harmony) return null;
   const { golden_ratio, blueprint, glow_up_card } = harmony;
@@ -132,25 +126,43 @@ export function HarmonySection({ harmony, loading }: { harmony?: Harmony; loadin
         </ul>
       </div>
 
-      <div className="rounded-card gold-gradient p-5 text-black">
-        <p className="text-xs font-semibold uppercase tracking-wide">{glow_up_card.headline}</p>
-        <div className="mt-2 flex items-baseline gap-2">
-          <span className="font-display text-4xl font-bold">{formatScore(glow_up_card.score)}</span>
-          <span className="text-sm font-medium">{glow_up_card.label}</span>
-        </div>
-        <p className="mt-1 text-sm">
-          {glow_up_card.archetype} · {glow_up_card.top_strength} · Day {glow_up_card.day}
-        </p>
-        <p className="mt-2 text-xs opacity-80">{glow_up_card.share_text}</p>
-        <button
-          type="button"
-          onClick={() => shareGlowUp(glow_up_card.share_text)}
-          className="mt-3 inline-flex items-center gap-2 rounded-lg bg-black px-3 py-2 text-sm font-semibold text-gold transition-colors hover:bg-black/85 active:scale-[0.98]"
-        >
-          <Share2 className="h-4 w-4" aria-hidden />
-          Share card
-        </button>
+      {showCard ? <GlowUpShareCard card={glow_up_card} /> : null}
+    </div>
+  );
+}
+
+/**
+ * The Elite shareable card: headline, score, archetype/strength/day and the
+ * caption you'd post it with. Rendered beside the score ring on /results (the
+ * emotional peak) and inside the harmony block on /glow-up — one component, so
+ * the two surfaces can't drift apart.
+ */
+export function GlowUpShareCard({
+  card,
+  className,
+}: {
+  card: Harmony["glow_up_card"];
+  className?: string;
+}) {
+  return (
+    <div className={cn("rounded-card gold-gradient p-5 text-black", className)}>
+      <p className="text-xs font-semibold uppercase tracking-wide">{card.headline}</p>
+      <div className="mt-2 flex items-baseline gap-2">
+        <span className="font-display text-4xl font-bold">{formatScore(card.score)}</span>
+        <span className="text-sm font-medium">{card.label}</span>
       </div>
+      <p className="mt-1 text-sm">
+        {card.archetype} · {card.top_strength} · Day {card.day}
+      </p>
+      <p className="mt-2 text-xs opacity-80">{card.share_text}</p>
+      <button
+        type="button"
+        onClick={() => shareText(card.share_text, { copied: "Glow-Up card copied to clipboard" })}
+        className="mt-3 inline-flex items-center gap-2 rounded-lg bg-black px-3 py-2 text-sm font-semibold text-gold transition-colors hover:bg-black/85 active:scale-[0.98]"
+      >
+        <Share2 className="h-4 w-4" aria-hidden />
+        Share card
+      </button>
     </div>
   );
 }

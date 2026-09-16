@@ -14,6 +14,7 @@ from app.services.insights_service import (
     build_golden_ratio,
     rank_label,
 )
+from app.services.progress_engine import compute_current_day
 from datetime import datetime
 
 router = APIRouter(prefix="/analysis", tags=["Analysis"])
@@ -324,6 +325,31 @@ def _get_scored_photo(photo_id: str, current_user: User, db: Session) -> Photo:
     return photo
 
 
+def _current_day(current_user: User, db: Session) -> int:
+    """
+    Day of the user's active plan, derived from the calendar like the dashboard
+    does (see progress_engine.compute_current_day).
+
+    `User.current_day` is only written on check-in, so it silently goes stale —
+    a user who never checks in keeps the 0 set at signup. The share card and the
+    Glow-Up Forecast must not advertise a day the user has already passed.
+    """
+    plan = (
+        db.query(Plan)
+        .filter(Plan.user_id == current_user.id, Plan.is_active == True)
+        .order_by(Plan.created_at.desc())
+        .first()
+    )
+    if plan is not None:
+        return compute_current_day(plan)
+    return current_user.current_day or 0
+
+
+# Minimum peer sample before a percentile rank is shown. Mirrors the threshold
+# the results UI uses for its "Not enough data yet" caveat.
+MIN_PEER_SAMPLE = 10
+
+
 def _percentile(score: float, gender: str, user_id: str, db: Session) -> dict:
     """Where this user's score ranks among their peers (same gender when known)."""
     rows = (
@@ -351,8 +377,11 @@ def _percentile(score: float, gender: str, user_id: str, db: Session) -> dict:
         peer_scores = [s for uid, (s, _) in latest.items() if uid != user_id]
 
     total = len(peer_scores)
-    if total == 0:
-        return {"percentile": None, "peer_count": 0, "gender": gender, "rank_label": rank_label(None)}
+    if total < MIN_PEER_SAMPLE:
+        # Too few peers to rank honestly: with one or two peers the top scorer
+        # computes to the 100th percentile — a "Top 1%" claim we can't back up,
+        # which the UI then has to walk back in the caveat below it.
+        return {"percentile": None, "peer_count": total, "gender": gender, "rank_label": rank_label(None)}
 
     below = sum(1 for s in peer_scores if s < score)
     equal = sum(1 for s in peer_scores if s == score)
@@ -381,7 +410,7 @@ async def get_insights(
 
     return {
         "photo_id": photo.id,
-        "forecast": build_forecast(photo.score, current_user.current_day),
+        "forecast": build_forecast(photo.score, _current_day(current_user, db)),
         "percentile": _percentile(photo.score, gender, current_user.id, db),
         "archetype": build_archetype(photo.score, photo.face_shape, gender, breakdown),
     }
@@ -425,7 +454,7 @@ async def get_harmony(
             label,
             archetype["name"],
             top_strength,
-            current_user.current_day,
+            _current_day(current_user, db),
             current_user.subscription_tier,
         ),
     }

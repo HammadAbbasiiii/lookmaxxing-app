@@ -11,10 +11,13 @@ Plus deterministic service-level checks so the math stays honest:
   - blueprint always returns 7 days
 """
 
+import uuid
+from datetime import datetime, timedelta
+
 import pytest
 
 from app.dependencies import create_access_token, get_password_hash
-from app.models import Photo, User
+from app.models import Photo, Plan, User
 from app.services.insights_service import (
     build_archetype,
     build_blueprint,
@@ -164,3 +167,55 @@ def test_blueprint_always_seven_days():
     assert len(b["days"]) == 7
     assert all(d["day"] == i + 1 for i, d in enumerate(b["days"]))
     assert all(d["focus"] and d["task"] for d in b["days"])
+
+
+def test_blueprint_week_never_repeats_a_task():
+    """Cycling only the three weakest focuses repeated the same three tasks
+    across the week (days 1-3 showed up again as days 4-6, and once more on 7)."""
+    b = build_blueprint(["facial_harmony", "jawline_definition", "eye_appeal"], "male")
+    tasks = [d["task"] for d in b["days"]]
+    assert len(tasks) == 7
+    assert len(set(tasks)) == 7
+
+
+def test_rank_withheld_below_minimum_peer_sample(client, db_session):
+    """With a handful of peers the top scorer always computes to the 100th
+    percentile, i.e. "Top 1%" — a claim we can't back up, so withhold it."""
+    pro = _make_user(db_session, "ranked@example.com", "pro")
+    peer = _make_user(db_session, "peer@example.com", "free")
+    _add_photo(db_session, peer, score=50.0)
+    photo = _add_photo(db_session, pro, score=70.0)
+
+    res = client.get(f"/api/v1/analysis/{photo.id}/insights", headers=_headers(pro))
+    assert res.status_code == 200
+
+    percentile = res.json()["percentile"]
+    assert percentile["peer_count"] == 1
+    assert percentile["percentile"] is None
+    assert percentile["rank_label"] == "—"
+
+
+def test_glow_up_card_day_follows_the_plan_calendar(client, db_session):
+    """`User.current_day` only moves on check-in, so the shareable card must read
+    the day from the active plan — otherwise it advertises "Day 0/90" for a user
+    who is weeks in."""
+    elite = _make_user(db_session, "elite-card@example.com", "elite")
+    photo = _add_photo(db_session, elite, score=80.0)
+
+    db_session.add(
+        Plan(
+            id=str(uuid.uuid4()),
+            user_id=elite.id,
+            created_at=datetime.utcnow() - timedelta(days=12),
+            current_day=0,
+            is_active=True,
+        )
+    )
+    db_session.commit()
+
+    res = client.get(f"/api/v1/analysis/{photo.id}/harmony", headers=_headers(elite))
+    assert res.status_code == 200
+
+    card = res.json()["glow_up_card"]
+    assert card["day"] == 13
+    assert "Day 13/90" in card["share_text"]

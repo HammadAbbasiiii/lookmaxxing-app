@@ -159,6 +159,29 @@ export default function DashboardPage() {
             </div>
           </Card>
 
+          {/* Today's task leads the day. The streak above is only meaningful if
+              the action that protects it sits right next to it — this card used
+              to live five cards further down. */}
+          <Card className="mb-4 border-gold/40">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs uppercase tracking-widest text-muted">Today&apos;s task</p>
+                <p className="mt-1 font-display text-lg font-semibold text-ink">
+                  {nextActionText(d?.next_action?.task) || "Complete today's daily tasks"}
+                </p>
+              </div>
+              <Badge variant="gold">{d?.next_action?.time || "Today"}</Badge>
+            </div>
+            {d?.next_action?.description ? (
+              <p className="mt-2 text-sm text-muted">{d.next_action.description}</p>
+            ) : null}
+            <Link href="/plan" className="mt-4 inline-block">
+              <Button variant="secondary" size="sm">
+                Open today&apos;s plan <ArrowUpRight className="h-4 w-4" />
+              </Button>
+            </Link>
+          </Card>
+
           {d?.progress?.archetype ? (
             <Card className="mb-4 overflow-hidden border-gold/40">
               <div className="flex items-center gap-4">
@@ -263,24 +286,6 @@ export default function DashboardPage() {
                 />
               </div>
             </div>
-          </Card>
-
-          <Card>
-            <CardTitle>Next up</CardTitle>
-            <div className="mt-3">
-              <Badge variant="gold">{d?.next_action?.time || "Today"}</Badge>
-              <p className="mt-2 font-display text-lg font-semibold text-ink">
-                {nextActionText(d?.next_action?.task) || "Complete today's daily tasks"}
-              </p>
-              {d?.next_action?.description ? (
-                <p className="mt-1 text-sm text-muted">{d.next_action.description}</p>
-              ) : null}
-            </div>
-            <Link href="/plan" className="mt-4 inline-block">
-              <Button variant="secondary" size="sm">
-                View plan <ArrowUpRight className="h-4 w-4" />
-              </Button>
-            </Link>
           </Card>
 
           <Card>
