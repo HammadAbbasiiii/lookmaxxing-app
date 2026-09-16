@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { Lock, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { tierLabel, type PaidTier } from "@/lib/tiers";
 
 interface PaywallLockProps {
   title: string;
@@ -10,7 +11,7 @@ interface PaywallLockProps {
   description?: string;
   className?: string;
   /** Tier that unlocks this feature: "pro" (default) or "elite". */
-  tier?: "pro" | "elite";
+  tier?: PaidTier;
   /**
    * Optional specifics to list inside the card. Lets a screen show one
    * consolidated ask instead of stacking several near-identical lock cards.
@@ -31,13 +32,13 @@ export function PaywallLock({
   tier = "pro",
   items,
 }: PaywallLockProps) {
-  const tierLabel = tier === "elite" ? "Elite" : "Pro";
+  const tierLabelText = tierLabel(tier);
   return (
     <div className={cn("relative overflow-hidden rounded-card card-border p-5", className)}>
       <div className="flex items-center justify-between gap-3">
         <h3 className="font-display text-base font-semibold text-ink">{title}</h3>
         <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-gold/30 bg-gold/10 px-2 py-0.5 text-[11px] font-semibold text-gold-bright">
-          <Lock className="h-3 w-3" aria-hidden /> {tierLabel}
+          <Lock className="h-3 w-3" aria-hidden /> {tierLabelText}
         </span>
       </div>
 
@@ -68,7 +69,7 @@ export function PaywallLock({
 
       <Link href="/upgrade" className="mt-4 inline-block">
         <span className="gold-gradient inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold text-black">
-          <Sparkles className="h-3.5 w-3.5" aria-hidden /> Upgrade to {tierLabel}
+          <Sparkles className="h-3.5 w-3.5" aria-hidden /> Upgrade to {tierLabelText}
         </span>
       </Link>
     </div>

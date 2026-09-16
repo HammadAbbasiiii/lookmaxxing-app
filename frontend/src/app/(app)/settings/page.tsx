@@ -11,6 +11,7 @@ import { clearToken } from "@/lib/auth";
 import { COMMITMENT_OPTIONS, GENDER_OPTIONS, GOAL_OPTIONS, PLANS, SKIN_CONCERN_OPTIONS, SKIN_TYPE_OPTIONS } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { ApiError } from "@/lib/api/client";
+import { normalizeTier, tierLabel } from "@/lib/tiers";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Card, CardTitle } from "@/components/ui/Card";
@@ -329,7 +330,7 @@ export default function SettingsPage() {
               <p className="text-sm text-ink">
                 Current plan:{" "}
                 <Badge variant={tier === "free" ? "muted" : "gold"}>
-                  {tier === "free" ? "Free" : tier === "elite" ? "Elite" : "Pro"}
+                  {tierLabel(normalizeTier(tier))}
                 </Badge>
               </p>
             </div>
@@ -394,7 +395,7 @@ export default function SettingsPage() {
         >
           <div className="w-full max-w-sm rounded-card card-border p-6" onClick={(e) => e.stopPropagation()}>
             <h2 className="font-display text-lg font-bold text-ink">
-              Cancel {tier === "elite" ? "Elite" : "Pro"}?
+              Cancel {tierLabel(normalizeTier(tier))}?
             </h2>
 
             {/* Loss aversion (§5): surface exactly what they'll lose, not just

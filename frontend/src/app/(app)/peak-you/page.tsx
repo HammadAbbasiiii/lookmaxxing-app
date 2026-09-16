@@ -14,14 +14,15 @@ import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { ApiError } from "@/lib/api/client";
 import { STALE } from "@/lib/constants";
+import { isPaidTier, isEliteTier } from "@/lib/tiers";
 import { Reveal } from "@/components/landing/Reveal";
 
 /** "Peak You" — meet the version of you that's already on the other side of 90 days. */
 export default function PeakYouPage() {
   const { data: me } = useMe();
   const tier = me?.subscription_tier ?? "free";
-  const isPro = tier === "pro" || tier === "elite";
-  const isElite = tier === "elite";
+  const isPro = isPaidTier(tier);
+  const isElite = isEliteTier(tier);
 
   const latest = useQuery({
     queryKey: ["latest-photo"],

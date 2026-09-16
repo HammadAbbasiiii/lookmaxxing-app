@@ -125,7 +125,7 @@ export function Hero() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-xs text-muted">Your score</p>
-                  <p className="text-sm font-semibold text-ink">Elite symmetry</p>
+                  <p className="text-sm font-semibold text-ink">Exceptional symmetry</p>
                 </div>
                 <span className="rounded-full bg-gold/15 px-2.5 py-1 text-xs font-semibold text-gold-bright">
                   +13 potential

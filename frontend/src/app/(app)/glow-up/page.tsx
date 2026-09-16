@@ -13,14 +13,15 @@ import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { ApiError } from "@/lib/api/client";
 import { STALE } from "@/lib/constants";
+import { isPaidTier, isEliteTier } from "@/lib/tiers";
 import { Reveal } from "@/components/landing/Reveal";
 
 /** Dedicated premium surface: latest analysis's Pro insights + Elite harmony. */
 export default function GlowUpPage() {
   const { data: me } = useMe();
   const tier = me?.subscription_tier ?? "free";
-  const isPro = tier === "pro" || tier === "elite";
-  const isElite = tier === "elite";
+  const isPro = isPaidTier(tier);
+  const isElite = isEliteTier(tier);
 
   const latest = useQuery({
     queryKey: ["latest-photo"],

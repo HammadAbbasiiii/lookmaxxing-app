@@ -14,9 +14,11 @@ import { useMe } from "@/hooks/useMe";
 import { logout } from "@/lib/api/endpoints";
 import { clearToken } from "@/lib/auth";
 import { cn } from "@/lib/utils";
-import { PRIMARY_TABS, isTabActive } from "@/lib/nav";
+import { PRIMARY_TABS, isTabActive, navTier } from "@/lib/nav";
+import { normalizeTier, tierLabel } from "@/lib/tiers";
 import { Logo } from "./Logo";
 import { Badge } from "@/components/ui/Badge";
+import { LockChip } from "@/components/ui/LockChip";
 import { AvatarDrawer } from "./AvatarDrawer";
 import { NotificationBell } from "./NotificationBell";
 
@@ -75,17 +77,20 @@ export function TopNav() {
             <div className="flex min-w-max items-center gap-0.5 px-2">
               {PRIMARY_TABS.map((link) => {
                 const active = isTabActive(pathname, link.href);
+                const tier = navTier(link.href);
                 return (
                   <Link
                     key={link.href}
                     href={link.href}
                     className={cn(
-                      "shrink-0 whitespace-nowrap rounded-lg px-2.5 py-2 text-sm font-medium transition-colors",
+                      "inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg px-2.5 py-2 text-sm font-medium transition-colors",
                       active ? "text-ink" : "text-muted hover:text-ink",
                     )}
                     aria-current={active ? "page" : undefined}
                   >
                     {link.label}
+                    {/* Coach is Pro-only: flag it before the tap, not after. */}
+                    {tier ? <LockChip tier={tier} iconOnly bare /> : null}
                   </Link>
                 );
               })}
@@ -109,7 +114,7 @@ export function TopNav() {
               </Link>
             ) : (
               <Badge variant="gold" className="hidden whitespace-nowrap md:flex">
-                {tier === "elite" ? "Elite" : "Pro"}
+                {tierLabel(normalizeTier(tier))}
               </Badge>
             )}
 

@@ -143,7 +143,9 @@ export const PLANS = {
 
 // Score labels (mirrors backend score_labels) — neutral-encouraging, never shaming.
 export function scoreLabel(score: number): string {
-  if (score >= 80) return "Elite symmetry";
+  // Deliberately avoids the word "Elite": that is a paid plan name, and a free
+  // report reading "Elite symmetry" looks like a tier the user already has.
+  if (score >= 80) return "Exceptional symmetry";
   if (score >= 60) return "Strong features";
   if (score >= 40) return "Solid foundation";
   return "Room to grow";

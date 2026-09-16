@@ -37,7 +37,7 @@ LookMaxx answers one question in under 3 seconds: **"What's my score?"** A user 
 4. **Streaks, milestones, and before/after progress** to keep them coming back.
 5. **Affiliate product recommendations** targeted at their weakest features.
 
-**Monetization:** Free tier = 1 analysis + streak tracking. **Pro $9.99/mo** = unlimited analyses + full plan + check-ins. **Elite $19.99/mo** = decoy tier (1:1 coach Q&A + priority). Annual −58% ($50.40/$100.80) anchors the monthly price; Pro has a one-time **$1 first month** and Elite a **7-day free trial**. Tier cards render **Elite → Pro → Free** (anchor → bargain → low barrier) with "Best value" / "Most popular" / "Start here" badges.
+**Monetization:** Free tier = 1 analysis + streak tracking. **Pro $9.99/mo** = unlimited analyses + full report + plan + daily coach. **Elite $19.99/mo** = everything in Pro + the golden-ratio harmony map, weekly blueprint, shareable card, Day-90 full reveal and your transformation movie. Annual −58% ($50.40/$100.80) anchors the monthly price; Pro has a one-time **$1 first month** and Elite a **7-day free trial**. Tier cards render **Elite → Pro → Free** (anchor → bargain → low barrier) with "Best value" / "Most popular" / "Start here" badges. **The enforced matrix is §12.1–12.2 — anything a surface labels "Pro"/"Elite" must appear there.**
 
 **The promise we can actually keep (honesty is a feature):**
 > *"Upload one photo. Get your baseline score and a 90-day plan to improve it. Private. Free to start."*
@@ -510,7 +510,7 @@ Ship dark-first (it's the brand). Light theme is a Phase-2 nicety, not a blocker
 - **Inputs:** none.
 - **States:** loading (skeleton ring + bars) · loaded · **plan still enriching** (DeepSeek runs in the background — show a subtle "Personalizing your plan…" chip, never block the score).
 - **Errors:** 404 → *"Photo not found."* (back to dashboard) · analysis missing → *"This photo hasn't been analyzed yet."* (retry) · network → retry card.
-- **Copy:** score labels are neutral-encouraging: e.g. 30–59 "Solid foundation", 60–79 "Strong features", 80–95 "Elite symmetry" (see `score_labels`). Improvement framing: "You're at 71 — your potential is ~84." Never "You're average."
+- **Copy:** score labels are neutral-encouraging: e.g. 30–59 "Solid foundation", 60–79 "Strong features", 80–95 "Exceptional symmetry" (see `score_labels`; the band deliberately avoids the word "Elite", which is a paid plan name). Improvement framing: "You're at 71 — your potential is ~84." Never "You're average."
 - **Animation:** score count-up 1.2 s; ring fills; category bars stagger in (60 ms apart); potential score reveals with a subtle gold shimmer.
 - **API:** `GET /analysis/{photo_id}` for the score + `GET /analysis/{photo_id}/plan` (plan may be a background-enriched result; poll once if missing).
 
@@ -745,18 +745,35 @@ Ship dark-first (it's the brand). Light theme is a Phase-2 nicety, not a blocker
 ### 12.1 Tiers (pricing + anchoring)
 | Tier | Price | Includes | Psychology role |
 |---|---|---|---|
-| **Free** | $0 | 1 analysis, streak tracking, baseline score | Hook — prove value |
-| **Pro** | $9.99/mo (annual = anchor "save 58%") | Unlimited analyses, full 90-day plan, check-ins, recommendations | The target |
-| **Elite** | $19.99/mo | Pro + 1:1 "coach" Q&A + priority | Decoy — makes Pro look like the smart buy |
+| **Free** | $0 | 1 analysis, baseline score, streak tracking, daily Glow reveal, community feed, product directory, progress history | Hook — prove value |
+| **Pro** | $9.99/mo (annual = anchor "save 58%") | Unlimited analyses, full written report, 90-day plan + check-ins, daily AI coach, forecast / rank / archetype, Arc quests | The target |
+| **Elite** | $19.99/mo | Everything in Pro + golden-ratio harmony map, weekly blueprint, shareable card, Day-90 full reveal, transformation movie | Upsell — makes Pro the smart buy and Elite the flex |
 
-### 12.2 What is gated (server-authoritative — see §5.3)
-| Capability | Free | Pro/Elite | Enforced by |
-|---|---|---|---|
-| 1st analysis | ✅ | ✅ | backend (count analyses) |
-| 2nd+ analysis | ❌ | ✅ | **`require_pro` on `POST /photos/analyze/{id}`** |
-| Full 90-day plan | ❌ (teaser only) | ✅ | `require_pro` on `GET /analysis/{id}/plan` |
-| Daily check-ins | ❌ | ✅ | `require_pro` on `POST /plan/checkin` |
-| Product recommendations | ✅ (limited) | ✅ (full) | optional tier filter |
+Source of truth: `backend/app/services/entitlements_service.py` (`FEATURES`) — the
+same list `/entitlements` serves, which drives every lock chip in the client.
+Menus print their destination's minimum tier from `frontend/src/lib/nav.ts`
+(`GATED_DESTINATIONS`) and label chips from `frontend/src/lib/tiers.ts`.
+
+### 12.2 What is gated (server-authoritative — verified against HEAD)
+| Capability | Free | Pro | Elite | Enforced by |
+|---|---|---|---|---|
+| 1st analysis | ✅ | ✅ | ✅ | `FREE_ANALYSIS_LIMIT=1` |
+| 2nd+ analysis | ❌ | ✅ | ✅ | `enforce_analysis_limit` / `enforce_photo_limit` |
+| Full written report | ❌ | ✅ | ✅ | `require_pro` → `GET /analysis/{id}/report` |
+| Daily AI coach | ❌ | ✅ | ✅ | `require_pro` → `GET /coach` |
+| Forecast + rank + archetype | ❌ | ✅ | ✅ | `require_pro` → `GET /analysis/{id}/insights` |
+| Arc quest claiming | ❌ | ✅ | ✅ | `require_pro` → `POST /arc/quests/{id}/claim` |
+| Harmony map + blueprint + share card | ❌ | ❌ | ✅ | `require_elite` → `GET /analysis/{id}/harmony` |
+| Day-90 full reveal | ❌ | ❌ | ✅ | `require_elite` → `GET /glow/full-reveal` |
+| Transformation movie | ❌ | ❌ | ✅ | `require_elite` → `GET /glowups/movie` |
+| 90-day plan + check-ins | ✅ | ✅ | ✅ | **not enforced** (auth-only) — listed as a Pro perk, see DEF-012 |
+| Progress tracking / before-after | ✅ | ✅ | ✅ | **not enforced** (auth-only) — see DEF-012 |
+| Product recommendations | ✅ | ✅ | ✅ | **not enforced** (public) — see DEF-012 |
+| Arc XP / level / badges | ✅ | ✅ | ✅ | **not enforced** (auth-only) — quests are the Pro part — see DEF-012 |
+
+**Rule for new work:** a surface may only print "Pro" / "Elite" next to something
+that a row above enforces. If the gate does not exist yet, the feature is free —
+label it as free (or add the gate first), never the other way round.
 
 ### 12.3 The missing piece (must build — this is the real monetization work)
 The `User` model already has `is_subscribed`, `subscription_tier`, `subscription_start/end`, `subscription_customer_id`. What's missing:

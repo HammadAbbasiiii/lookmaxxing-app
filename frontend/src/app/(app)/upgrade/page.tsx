@@ -20,6 +20,7 @@ import { cn } from "@/lib/utils";
 import { track } from "@/lib/api/analytics";
 import { changePlan, createCheckout } from "@/lib/api/endpoints";
 import { ApiError } from "@/lib/api/client";
+import { normalizeTier, tierLabel } from "@/lib/tiers";
 
 export default function UpgradePage() {
   const [annual, setAnnual] = useState(true);
@@ -115,7 +116,7 @@ export default function UpgradePage() {
         title="Upgrade"
         subtitle={
           tier !== "free"
-            ? "You're already on " + (tier === "elite" ? "Elite" : "Pro") + "."
+            ? "You're already on " + tierLabel(normalizeTier(tier)) + "."
             : "Keep your streak & history synced. Cancel anytime."
         }
       />

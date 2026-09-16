@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
 import { Check, Crown, Lock, Sparkles, Swords, Trophy, Zap } from "lucide-react";
@@ -13,6 +14,7 @@ import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
+import { LockChip } from "@/components/ui/LockChip";
 import { ErrorCard } from "@/components/ui/ErrorCard";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { ProgressRing } from "@/components/ui/ProgressRing";
@@ -190,7 +192,17 @@ export default function ArcPage() {
           <h2 className="flex items-center gap-2 text-sm font-semibold text-ink">
             <Swords className="h-4 w-4 text-gold" /> Today&apos;s quests
           </h2>
-          {!a.premium ? <Badge variant="outline"><Lock className="h-3 w-3" /> Pro</Badge> : null}
+          {/* Quests are Pro-gated server-side (POST /arc/quests/{id}/claim), so
+              the lock comes with the way to buy it instead of a dead end. */}
+          {!a.premium ? (
+            <Link
+              href="/upgrade"
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-gold-bright transition-opacity hover:opacity-90"
+            >
+              <LockChip tier="pro" />
+              Upgrade to Pro
+            </Link>
+          ) : null}
         </div>
 
         {a.today_quests.length === 0 ? (

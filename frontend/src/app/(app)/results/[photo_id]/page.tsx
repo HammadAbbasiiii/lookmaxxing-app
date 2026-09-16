@@ -19,6 +19,7 @@ import { CategoryBar } from "@/components/ui/CategoryBar";
 import { SafeImage } from "@/components/ui/SafeImage";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { ApiError } from "@/lib/api/client";
+import { isPaidTier, isEliteTier, normalizeTier } from "@/lib/tiers";
 
 const CATEGORIES = [
   { key: "symmetry", label: "Symmetry" },
@@ -33,9 +34,9 @@ export default function ResultsPage() {
   const photoId = Array.isArray(params.photo_id) ? params.photo_id[0] : params.photo_id;
   const { data: me } = useMe();
   const tier = me?.subscription_tier ?? "free";
-  const isFree = tier === "free";
-  const isPro = tier === "pro" || tier === "elite";
-  const isElite = tier === "elite";
+  const isFree = normalizeTier(tier) === "free";
+  const isPro = isPaidTier(tier);
+  const isElite = isEliteTier(tier);
 
   const analysis = useQuery({
     queryKey: ["analysis", photoId],

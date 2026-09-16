@@ -6,10 +6,13 @@ import { ArrowUpRight, Camera, Check, Flame, ListChecks, Lock, Rocket, ShoppingB
 import { getDashboard } from "@/lib/api/endpoints";
 import { useEntitlements } from "@/hooks/useEntitlements";
 import { STALE, scoreLabel } from "@/lib/constants";
+import type { EntitlementFeature } from "@/lib/zod";
+import type { PaidTier } from "@/lib/tiers";
 import { cn, firstName, formatScore } from "@/lib/utils";
 import { Card, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
+import { LockChip } from "@/components/ui/LockChip";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { ErrorCard } from "@/components/ui/ErrorCard";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -345,9 +348,11 @@ export default function DashboardPage() {
 
 function ProPerks() {
   const ent = useEntitlements();
-  const perks = ent.data?.features?.filter((f) => f.locked).slice(0, 3) ?? [];
+  const locked = ent.data?.features?.filter((f) => f.locked) ?? [];
+  const proPerks = locked.filter((f) => f.tier !== "elite").slice(0, 2);
+  const elitePerks = locked.filter((f) => f.tier === "elite").slice(0, 2);
 
-  if (!ent.data || perks.length === 0) return null;
+  if (proPerks.length === 0 && elitePerks.length === 0) return null;
 
   return (
     <div className="mt-6 rounded-card card-border p-5">
@@ -356,10 +361,38 @@ function ProPerks() {
           <Sparkles className="h-4 w-4 text-gold" aria-hidden /> Unlock the full picture
         </h2>
         <Link href="/upgrade">
-          <Badge variant="gold" className="cursor-pointer hover:opacity-90">Upgrade</Badge>
+          <Badge variant="gold" className="cursor-pointer hover:opacity-90">
+            See Pro &amp; Elite
+          </Badge>
         </Link>
       </div>
-      <ul className="mt-3 space-y-2">
+
+      {/* Pro and Elite perks are listed in separate, labelled groups: a locked
+          perk that never says which plan unlocks it is the whole trap we're
+          avoiding (DEF-011). */}
+      <LockedPerkGroup tier="pro" heading="Pro unlocks" perks={proPerks} />
+      <LockedPerkGroup tier="elite" heading="Elite only" perks={elitePerks} />
+    </div>
+  );
+}
+
+function LockedPerkGroup({
+  tier,
+  heading,
+  perks,
+}: {
+  tier: PaidTier;
+  heading: string;
+  perks: EntitlementFeature[];
+}) {
+  if (perks.length === 0) return null;
+  return (
+    <div className="mt-4">
+      <div className="flex items-center gap-2">
+        <LockChip tier={tier} />
+        <span className="text-xs font-semibold uppercase tracking-wide text-muted">{heading}</span>
+      </div>
+      <ul className="mt-2 space-y-2">
         {perks.map((p) => (
           <li key={p.key} className="flex items-start gap-2 text-sm text-muted">
             <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0 text-gold" aria-hidden />

@@ -37,6 +37,9 @@ Status legend: ✅ implemented · ⬜ planned this pass.
 | AUTHZ-05 | IDOR: user A cannot read user B photo/report | A | 404 | ✅ | test_security.py, test_plan_dashboard_products_explore.py |
 | AUTHZ-06 | Arc quest claim is Pro-gated | A | 403 for free | ✅ | test_arc.py |
 | AUTHZ-07 | Admin UI redirects non-admin | E | redirect/guard | ⬜ | e2e/unauthorized.spec.ts |
+| AUTHZ-08 | Gated destinations labelled Pro/Elite in every menu (nav hints) | E,UI,RG | hint before the tap; free tabs unlabelled | ✅ | e2e/tier-clarity.spec.ts |
+| AUTHZ-09 | Every lock carries a buy path naming the right plan | E,UI,RG | "Upgrade to Pro"/"Upgrade to Elite" matches the gate | ✅ | e2e/tier-clarity.spec.ts |
+| AUTHZ-10 | Dashboard separates Pro vs Elite perks | E,UI | "Pro unlocks" + "Elite only" groups | ✅ | e2e/tier-clarity.spec.ts |
 
 ## 3. Core app flows (HIGH)
 

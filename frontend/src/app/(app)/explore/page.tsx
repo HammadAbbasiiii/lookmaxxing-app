@@ -7,6 +7,7 @@ import { getExplore } from "@/lib/api/endpoints";
 import { STALE } from "@/lib/constants";
 import { formatScore } from "@/lib/utils";
 import { Badge } from "@/components/ui/Badge";
+import { LockChip } from "@/components/ui/LockChip";
 import { Card, CardTitle } from "@/components/ui/Card";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { ErrorCard } from "@/components/ui/ErrorCard";
@@ -46,10 +47,15 @@ export default function ExplorePage() {
         className="mb-6 flex items-center justify-between gap-3 rounded-card card-border p-5 transition-colors hover:border-gold/40"
       >
         <div>
-          <h2 className="font-display text-base font-semibold text-ink">Glow-Ups</h2>
+          <div className="flex items-center gap-2">
+            <h2 className="font-display text-base font-semibold text-ink">Glow-Ups</h2>
+            {/* The feed is free; only the transformation movie is Elite. Saying so
+                on the door beats a surprise paywall one tap deeper. */}
+            <LockChip tier="elite" />
+          </div>
           <p className="mt-1 text-sm text-muted">
-            Real transformations from members who opted in — plus your own movie once
-            you&apos;ve uploaded two photos.
+            Browsing members&apos; transformations is free. Elite compiles your own photos into a
+            before/after movie.
           </p>
         </div>
         <ArrowUpRight className="h-5 w-5 shrink-0 text-gold" aria-hidden />

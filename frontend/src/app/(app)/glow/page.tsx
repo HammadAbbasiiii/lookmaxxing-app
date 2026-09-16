@@ -16,6 +16,7 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { SafeImage } from "@/components/ui/SafeImage";
 import { CountdownReveal } from "@/components/glow/CountdownReveal";
 import { cn, formatScore } from "@/lib/utils";
+import { isEliteTier } from "@/lib/tiers";
 
 const RARITY_STYLE: Record<string, { ring: string; label: string }> = {
   common: { ring: "border-border-soft", label: "Common" },
@@ -178,7 +179,7 @@ export default function GlowPage() {
         <div className="mt-5 rounded-card card-border border-gold/40 p-5">
           <h3 className="font-display text-base font-semibold text-ink">Day 90 full reveal</h3>
           <p className="mt-1 text-sm text-muted">
-            {tier === "elite"
+            {isEliteTier(tier)
               ? "Your side-by-side before/after is ready at Day 90."
               : "Elite unlocks your full, zero-blur before/after at Day 90."}
           </p>

@@ -140,3 +140,57 @@ change.
   tripped the backend's anonymous rate limit (60/min per IP, DEF-003 family) —
   expected behaviour, not a defect. The `:3000` server was serving a stale
   production build, so the fix only appears there after a rebuild.
+
+## Pro vs Elite matrix audit (2026-09-16)
+
+**Scope:** every menu and every page, as free / Pro / Elite, asking two questions:
+*which* plan unlocks this, and can the user get there without guessing?
+
+**Method:** a HEAD backend was booted on `127.0.0.1:8001` against a throwaway
+SQLite DB (`/tmp/lm-audit-head.db`) — the long-running local `:8000` was a stale
+build whose `/entitlements` still listed a phantom Elite perk, so it was not used
+for evidence. Three users were created (free, then `subscription_tier` flipped to
+`pro`/`elite` in that throwaway DB) and every gated endpoint was probed with each
+token; the UI was then walked page-by-page at 1280×900 and 375×812.
+
+### Endpoint gates (what is *really* enforced)
+
+| Endpoint | Free | Pro | Elite |
+|---|---|---|---|
+| `GET /coach` | 403 | 200 | 200 |
+| `GET /analysis/{id}/report`, `/insights` | 403 | 200 | 200 |
+| `POST /arc/quests/{id}/claim` | 403 | 200 | 200 |
+| `GET /glow/full-reveal` | 403 | **403** | 200 |
+| `GET /glowups/movie` | 403 | **403** | 200 |
+| `GET /plan`, `GET /progress/*`, `GET /arc/state`, `GET /arc/badges`, `GET /products/*` | 200 | 200 | 200 |
+
+The last row is the DEF-012 finding: four features sold as Pro perks are free
+today, so tier labelling (not gating) was corrected this pass.
+
+### Page-by-page result after the fix (free member)
+
+| Surface | What a free member now sees |
+|---|---|
+| Primary nav (desktop + mobile) | `Coach` carries a padlock, accessible name "Coach Pro"; Home/Plan/Glow/Explore carry nothing |
+| Glow sub-nav | `Insights` and `Simulator` carry a "Pro" chip; `Daily` and `Journey` do not |
+| Dashboard | "Pro unlocks" and "Elite only" groups, each row chipped, CTA "See Pro & Elite" |
+| /coach, /glow-up, /peak-you, /upload | `PaywallLock` naming the exact plan ("Upgrade to Pro" / "Upgrade to Elite") |
+| /arc | "Upgrade to Pro" beside the quest lock (previously a dead end) |
+| /glowups | "Upgrade to Elite" in the movie card (previously a dead end) |
+| /explore | Glow-Ups card carries an Elite chip and says the browse feed is free |
+| /glow, /plan, /products, /progress, /settings, /upgrade | No false tier claims (see DEF-012 for the copy that was removed) |
+
+### Evidence
+
+| Check | Result |
+|---|---|
+| `e2e/tier-clarity.spec.ts` (new, 5 tests) | **5/5 passed** |
+| `e2e/account-drawer.spec.ts` (regression after the nav edit) | **5/5 passed** |
+| `tsc --noEmit` | clean |
+| `next build` (isolated checkout) | clean |
+| Pro tier sees Elite CTAs, Elite tier sees none | verified per page (dashboard/glow-ups/glow-up/arc/peak-you) |
+| 375px tab bar with the Coach padlock | 5 tabs, equal width, no horizontal overflow |
+
+**Not re-run:** the full Chromium/Firefox/WebKit suites (the local `:3000` server
+is a stale production build and its `:8000` API a stale checkout; both need a
+restart before a whole-suite pass). New totals would be 53 Chromium tests.

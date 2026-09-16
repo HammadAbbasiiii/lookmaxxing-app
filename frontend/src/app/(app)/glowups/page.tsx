@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { Clapperboard, Eye, EyeOff, Flag, Lock, RefreshCw, Sparkles, Users } from "lucide-react";
@@ -24,6 +25,7 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { SafeImage } from "@/components/ui/SafeImage";
 import { MoviePlayer } from "@/components/glowups/MoviePlayer";
 import { cn } from "@/lib/utils";
+import { isEliteTier } from "@/lib/tiers";
 
 function FeedCard({ item, onReport }: { item: GlowupFeedItem; onReport: (id: string) => void }) {
   const [revealed, setRevealed] = useState(false);
@@ -87,8 +89,7 @@ function FeedCard({ item, onReport }: { item: GlowupFeedItem; onReport: (id: str
 export default function GlowupsPage() {
   const qc = useQueryClient();
   const { data: me } = useMe();
-  const tier = me?.subscription_tier ?? "free";
-  const isElite = tier === "elite";
+  const isElite = isEliteTier(me?.subscription_tier);
   const isAdult = me?.age != null && me.age >= 18;
 
   const feed = useQuery({
@@ -147,9 +148,20 @@ export default function GlowupsPage() {
         </div>
 
         {!isElite ? (
-          <p className="mt-2 text-sm text-muted">
-            Elite compiles your photos into a before/after transformation movie with teaser trailers.
-          </p>
+          <>
+            <p className="mt-2 text-sm text-muted">
+              Elite compiles your photos into a before/after transformation movie with teaser
+              trailers.
+            </p>
+            {/* The movie is the one Elite-only thing on this page (GET
+                /glowups/movie → require_elite) — pair the lock with the buy path. */}
+            <Link
+              href="/upgrade"
+              className="gold-gradient mt-3 inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold text-black"
+            >
+              <Sparkles className="h-3.5 w-3.5" aria-hidden /> Upgrade to Elite
+            </Link>
+          </>
         ) : movie.isLoading ? (
           <Skeleton className="mt-3 h-24 w-full" />
         ) : movie.data ? (

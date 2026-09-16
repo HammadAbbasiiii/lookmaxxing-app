@@ -40,7 +40,9 @@ export default function PlanPage() {
     },
     onError: (e) => {
       if (e instanceof ApiError && e.status === 403) {
-        toast.error("Upgrade to Pro to unlock daily check-ins.");
+        // Deliberately does not name a tier: check-ins are not Pro-gated
+        // server-side today (see DEF-012), so promising one would be a lie.
+        toast.error(e.message || "Daily check-ins aren't available right now.");
         router.push("/upgrade");
       } else if (e instanceof ApiError && e.status === 409) {
         toast.error("You've already checked in today. Come back tomorrow.");

@@ -5,6 +5,7 @@ import { Sparkles } from "lucide-react";
 import { getCoach } from "@/lib/api/endpoints";
 import { useMe } from "@/hooks/useMe";
 import { ApiError } from "@/lib/api/client";
+import { isPaidTier } from "@/lib/tiers";
 import { Card } from "@/components/ui/Card";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
@@ -22,9 +23,7 @@ function humanizeFocus(focus: string | undefined): string {
 
 export default function CoachPage() {
   const { data: user } = useMe();
-  const isPro = Boolean(
-    user && (user.subscription_tier === "pro" || user.subscription_tier === "elite"),
-  );
+  const isPro = isPaidTier(user?.subscription_tier);
 
   const q = useQuery({
     queryKey: ["coach"],
