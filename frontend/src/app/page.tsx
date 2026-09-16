@@ -4,7 +4,7 @@ import { StatsBar } from "@/components/landing/StatsBar";
 import { Features } from "@/components/landing/Features";
 import { HowItWorks } from "@/components/landing/HowItWorks";
 import { ReportBreakdown } from "@/components/landing/ReportBreakdown";
-import { Testimonials } from "@/components/landing/Testimonials";
+import { ScoreTransparency } from "@/components/landing/ScoreTransparency";
 import { Pricing } from "@/components/landing/Pricing";
 import { FAQ } from "@/components/landing/FAQ";
 import { CTA } from "@/components/landing/CTA";
@@ -20,7 +20,7 @@ export default function LandingPage() {
         <Features />
         <HowItWorks />
         <ReportBreakdown />
-        <Testimonials />
+        <ScoreTransparency />
         <Pricing />
         <FAQ />
         <CTA />

@@ -59,13 +59,6 @@ FEATURES: List[Dict[str, Any]] = [
         "tier": "pro",
     },
     {
-        "key": "priority_coach",
-        "name": "1:1 coach Q&A",
-        "description": "Ask a real coach a question and get a personal answer within 24h.",
-        "teaser": "Stuck on a routine? Get a human answer.",
-        "tier": "elite",
-    },
-    {
         "key": "glow_up_forecast",
         "name": "Glow-Up Forecast",
         "description": "Your projected score at Day 30, 60 and 90 — and the tier you're tracking toward.",

@@ -4,7 +4,11 @@ from app.database import get_db
 from app.models import User, Photo, Plan
 from app.schemas import PhotoUploadResponse, PhotoStatusResponse, APIResponse
 from app.dependencies import get_current_user
-from app.services.upload_service import upload_to_cloudinary, delete_from_cloudinary
+from app.services.upload_service import (
+    upload_to_cloudinary,
+    delete_from_cloudinary,
+    public_id_from_url,
+)
 from app.services.validation_service import can_decode_image
 from app.services.face_service import (
     detect_face_landmarks,
@@ -204,15 +208,32 @@ async def delete_photo(
             detail="Photo not found"
         )
     
-    # Delete from Cloudinary
+    # Remove the provider copy *first*, then the row. If the provider delete
+    # fails we abort and say so: a deleted row whose image is still live at
+    # Cloudinary is precisely what the UI promises never happens ("deleted
+    # anytime — including from our provider"). The previous version swallowed
+    # the failure and deleted the row anyway.
+    public_id = public_id_from_url(photo.file_url)
+    if not public_id:
+        logger.error(
+            "Photo %s: could not derive a Cloudinary public_id from %s — refusing to "
+            "delete the row, as that would orphan the image at the provider.",
+            photo_id,
+            photo.file_url,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Couldn't remove this photo from our image provider, so nothing was deleted. Please try again.",
+        )
+
     try:
-        # Extract public_id from URL (Cloudinary stores it)
-        public_id = photo.file_url.split("/")[-1].split(".")[0]
-        # Need to add folder prefix
-        full_public_id = f"lookmaxx/photos/user_{public_id}"
-        delete_from_cloudinary(full_public_id)
-    except Exception:
-        pass  # Continue even if Cloudinary delete fails
+        delete_from_cloudinary(public_id)
+    except Exception as exc:
+        logger.exception("Photo %s: Cloudinary delete failed for %s", photo_id, public_id)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Couldn't reach our image provider, so nothing was deleted. Please try again.",
+        ) from exc
     
     db.delete(photo)
     db.commit()

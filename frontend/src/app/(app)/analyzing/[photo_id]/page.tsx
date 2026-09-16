@@ -17,12 +17,25 @@ const COPY = [
   "Almost there…",
 ];
 
+/**
+ * Pipeline stages the server actually reports. We map them to ring positions so
+ * the UI only ever advances on a real state change — the previous implementation
+ * interpolated from wall-clock time and hard-capped at 95%, which was simply a
+ * fabricated progress bar. The elapsed timer below is the honest signal.
+ */
+const STAGE_PROGRESS: Record<string, number> = {
+  pending: 25,
+  processing: 65,
+  completed: 100,
+};
+
 export default function AnalyzingPage() {
   const params = useParams<{ photo_id: string }>();
   const router = useRouter();
   const photoId = Array.isArray(params.photo_id) ? params.photo_id[0] : params.photo_id;
 
   const [progress, setProgress] = useState(0);
+  const [elapsedSec, setElapsedSec] = useState(0);
   const [copyIndex, setCopyIndex] = useState(0);
   const [failed, setFailed] = useState(false);
   const [timedOut, setTimedOut] = useState(false);
@@ -33,6 +46,13 @@ export default function AnalyzingPage() {
     const id = setInterval(() => setCopyIndex((i) => (i + 1) % COPY.length), 2500);
     return () => clearInterval(id);
   }, []);
+
+  // Honest timer: the only thing we can truthfully show while we don't know how
+  // far along the server is.
+  useEffect(() => {
+    const id = setInterval(() => setElapsedSec((s) => s + 1), 1000);
+    return () => clearInterval(id);
+  }, [pollKey]);
 
   // Poll analysis status (§4.4) — guarded so we never setState after unmount.
   useEffect(() => {
@@ -48,11 +68,11 @@ export default function AnalyzingPage() {
         if (interval) clearInterval(interval);
         return;
       }
-      setProgress(Math.min(95, Math.round((elapsed / POLL_MAX_MS) * 100)));
-
       try {
         const s = await getPhotoStatus(photoId);
         if (cancelled) return;
+        // Advance the ring only on a stage the server actually confirms.
+        setProgress(STAGE_PROGRESS[s.analysis_status] ?? 20);
         if (s.analysis_status === "completed" || s.score != null) {
           router.replace(`/results/${photoId}`);
           return;
@@ -122,7 +142,7 @@ export default function AnalyzingPage() {
 
       <div className="mt-8">
         <ProgressRing value={progress} size={96} stroke={8}>
-          <span className="tabular text-sm font-semibold text-ink">{progress}%</span>
+          <span className="tabular text-sm font-semibold text-ink">{elapsedSec}s</span>
         </ProgressRing>
       </div>
 
@@ -130,7 +150,7 @@ export default function AnalyzingPage() {
         {COPY[copyIndex]}
       </p>
       <p className="mt-1 text-center text-sm text-muted">
-        This usually takes under 30 seconds. You can leave — your result will be waiting.
+        Usually under a minute. You can leave — your result will be waiting.
       </p>
 
       <Button variant="ghost" className="mt-8" onClick={() => router.push("/dashboard")}>

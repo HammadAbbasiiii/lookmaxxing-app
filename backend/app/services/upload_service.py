@@ -19,6 +19,9 @@ UPLOAD_MAX_PX = 1200    # max dimension before upload (was 2000)
 UPLOAD_QUALITY = 70     # JPEG quality (was 85)
 UPLOAD_WEBP_QUALITY = 75  # WebP quality (25-35% smaller than JPEG at same quality)
 
+# Folder every upload is filed under — see upload_to_cloudinary().
+CLOUDINARY_FOLDER = "lookmaxx/photos"
+
 
 def compress_for_upload(image_bytes: bytes) -> bytes:
     """
@@ -89,7 +92,7 @@ def upload_to_cloudinary(file_content: bytes, filename: str) -> str:
     # Upload to Cloudinary with auto-optimization
     result = cloudinary.uploader.upload(
         compressed,
-        folder="lookmaxx/photos",
+        folder=CLOUDINARY_FOLDER,
         public_id=f"user_{uuid.uuid4().hex[:8]}",
         resource_type="image",
         quality="auto",          # Cloudinary auto-optimizes quality
@@ -99,8 +102,46 @@ def upload_to_cloudinary(file_content: bytes, filename: str) -> str:
 
     return result.get("secure_url")
 
-def delete_from_cloudinary(public_id: str):
+def delete_from_cloudinary(public_id: str) -> dict:
+    """Delete image from Cloudinary, raising if the provider didn't confirm.
+
+    ``destroy()`` reports failure in its *return value* (``{"result": "not
+    found"}``) rather than by raising, so a bare call can look like a success
+    while deleting nothing. We inspect the result explicitly.
     """
-    Delete image from Cloudinary.
+    result = cloudinary.uploader.destroy(public_id, invalidate=True)
+    outcome = (result or {}).get("result")
+    if outcome == "ok":
+        logger.info(f"🗑 Deleted from Cloudinary: {public_id}")
+        return result
+    if outcome == "not found":
+        # Already gone (e.g. a retried delete) — the desired end state holds.
+        logger.warning(f"Cloudinary asset already absent: {public_id}")
+        return result
+    raise RuntimeError(f"Cloudinary delete failed for {public_id}: {result}")
+
+
+def public_id_from_url(url: str | None) -> str | None:
+    """Recover the Cloudinary ``public_id`` from a stored delivery URL.
+
+    ``destroy()`` needs the exact public_id we uploaded with —
+    ``lookmaxx/photos/user_ab12cd34`` — not the bare filename. The previous
+    implementation split the URL on ``/`` and re-prefixed the result, yielding
+    ``lookmaxx/photos/user_user_ab12cd34``: a public_id that never matched, so
+    every delete silently no-oped and the image stayed live at the provider.
+
+    Returns ``None`` when the URL isn't one of ours, so callers can fail loudly
+    instead of reporting an image as deleted when it isn't.
     """
-    cloudinary.uploader.destroy(public_id)
+    if not url:
+        return None
+    path = url.split("?", 1)[0].split("#", 1)[0]
+    marker = f"{CLOUDINARY_FOLDER}/"
+    idx = path.find(marker)
+    if idx == -1:
+        return None
+    public_id = path[idx:]
+    head, _, tail = public_id.rpartition(".")
+    if head and "/" not in tail:  # strip a trailing file extension
+        public_id = head
+    return public_id or None

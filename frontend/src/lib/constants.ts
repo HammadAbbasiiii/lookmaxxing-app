@@ -129,14 +129,14 @@ export const PLANS = {
     annual: 100.8,
     annualOriginal: 239.88,
     perMonth: 8.4,
-    blurb: "Everything in Pro + personal coaching, priority support & exclusive content.",
+    blurb: "Everything in Pro + the Golden-Ratio Harmony Map, your transformation movie & a shareable card.",
     features: [
       "Everything in Pro",
-      "Personal coaching (1:1 Q&A)",
-      "Priority support",
-      "Exclusive content",
       "Golden-Ratio Harmony Map",
+      "Weekly Glow-Up Blueprint",
       "Shareable Glow-Up Card",
+      "Transformation movie (before → after)",
+      "Day-90 full reveal, zero blur",
     ],
   },
 } as const;

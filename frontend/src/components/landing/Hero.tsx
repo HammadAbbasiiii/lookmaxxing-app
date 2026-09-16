@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowRight, Lock, ShieldCheck, Sparkles, Star } from "lucide-react";
+import { ArrowRight, Lock, ShieldCheck, Sparkles } from "lucide-react";
 import { motion, useReducedMotion } from "framer-motion";
 import { ScoreRing } from "@/components/ui/ScoreRing";
 import { scoreLabel } from "@/lib/constants";
@@ -107,11 +107,9 @@ export function Hero() {
             className="mt-6 flex items-center justify-center gap-2 text-sm text-muted md:justify-start"
           >
             <span className="flex" aria-hidden>
-              {Array.from({ length: 5 }).map((_, i) => (
-                <Star key={i} className="h-4 w-4 fill-gold text-gold" />
-              ))}
+              <Lock className="h-4 w-4 text-gold" />
             </span>
-            <span>Loved by the looksmaxxing community</span>
+            <span>One free analysis. No card required to see your score.</span>
           </motion.div>
         </div>
 
@@ -163,6 +161,10 @@ export function Hero() {
           <div className="absolute -right-4 bottom-16 hidden animate-float rounded-xl border border-border-soft bg-surface px-3 py-2 text-xs font-medium text-ink shadow-lg sm:block">
             ✨ Skin 74
           </div>
+
+          <p className="mt-5 text-center text-xs text-muted">
+            Example report — your own features and scores will differ.
+          </p>
         </motion.div>
       </div>
     </section>

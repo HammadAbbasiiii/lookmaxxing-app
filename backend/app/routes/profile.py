@@ -3,14 +3,18 @@ Profile Routes — User profile management.
 Covers: GET/PUT profile, onboarding completion, account deletion (GDPR).
 """
 
+import logging
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, status, Depends
 from sqlalchemy.orm import Session
 from app.database import get_db
-from app.models import User
+from app.models import User, Photo
 from app.schemas import UserResponse, ProfileUpdate, OnboardingUpdate
 from app.dependencies import get_current_user
+from app.services.upload_service import delete_from_cloudinary, public_id_from_url
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/profile", tags=["Profile"])
 
@@ -118,10 +122,63 @@ async def delete_account(
 ):
     """
     Permanently delete the user account and all associated data.
-    This is GDPR-compliant — cascades to photos, plans, checkins.
+
+    GDPR-compliant. The DB cascades to photos, plans and checkins, but a cascade
+    only removes *rows* — it cannot touch Cloudinary. Without the provider pass
+    below, every face photo the user ever uploaded would stay live on a public
+    URL after their account was gone, while the UI promises the opposite.
     """
+    user_id = current_user.id  # capture before the row is deleted
+
+    photo_urls = [
+        url
+        for (url,) in db.query(Photo.file_url).filter(Photo.user_id == user_id).all()
+    ]
+
+    unreachable = 0
+    for url in photo_urls:
+        public_id = public_id_from_url(url)
+        if not public_id:
+            unreachable += 1
+            logger.error(
+                "Account deletion (user %s): could not derive a Cloudinary public_id "
+                "from %s — image requires manual removal.",
+                user_id,
+                url,
+            )
+            continue
+        try:
+            delete_from_cloudinary(public_id)
+        except Exception:
+            unreachable += 1
+            logger.exception(
+                "Account deletion (user %s): provider delete failed for %s — image "
+                "requires manual removal.",
+                user_id,
+                public_id,
+            )
+
     db.delete(current_user)
     db.commit()
+
+    if unreachable:
+        # The erasure request still wins, but we must not claim the photos are
+        # gone when the provider never confirmed it.
+        logger.error(
+            "Account deletion (user %s): %s of %s image(s) were not confirmed removed "
+            "from the image provider and require manual cleanup.",
+            user_id,
+            unreachable,
+            len(photo_urls),
+        )
+        return {
+            "success": True,
+            "message": (
+                "Your account and data have been deleted. We couldn't confirm removal "
+                f"of {unreachable} image(s) from our image provider — this has been "
+                "logged for manual removal."
+            ),
+        }
 
     return {
         "success": True,

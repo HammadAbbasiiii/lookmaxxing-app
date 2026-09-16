@@ -62,7 +62,7 @@ function FeedCard({ item, onReport }: { item: GlowupFeedItem; onReport: (id: str
           <p className="font-display text-base font-semibold text-ink">
             {item.first_name}{item.age ? `, ${item.age}` : ""}
           </p>
-          {item.seed ? <Badge variant="outline">early tester</Badge> : <Badge variant="muted">member</Badge>}
+          {item.seed ? <Badge variant="outline">example</Badge> : <Badge variant="muted">member</Badge>}
         </div>
         <p className="mt-0.5 text-sm font-medium text-gold-bright">
           Day {item.day} · {item.delta >= 0 ? "+" : ""}{item.delta} pts
