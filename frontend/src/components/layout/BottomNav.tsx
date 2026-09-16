@@ -4,15 +4,16 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Compass, Home, ListChecks, MessageCircle, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { isActivePath, isGlowPath } from "@/lib/nav";
+import { PRIMARY_TABS, isTabActive } from "@/lib/nav";
 
-const TABS = [
-  { href: "/dashboard", label: "Home", icon: Home },
-  { href: "/plan", label: "Plan", icon: ListChecks },
-  { href: "/coach", label: "Coach", icon: MessageCircle },
-  { href: "/glow", label: "Glow", icon: Sparkles },
-  { href: "/explore", label: "Explore", icon: Compass },
-];
+/** Icons for the shared tab list — hrefs and labels live in lib/nav.ts (§7.2). */
+const TAB_ICONS = {
+  "/dashboard": Home,
+  "/plan": ListChecks,
+  "/coach": MessageCircle,
+  "/glow": Sparkles,
+  "/explore": Compass,
+} as const;
 
 /** Mobile bottom tab bar (§7.2). Active tab is gold, inactive is muted. */
 export function BottomNav() {
@@ -24,12 +25,9 @@ export function BottomNav() {
       aria-label="Bottom"
     >
       <div className="mx-auto grid max-w-md grid-cols-5">
-        {TABS.map((tab) => {
-          const active =
-            tab.href === "/glow"
-              ? isGlowPath(pathname)
-              : isActivePath(pathname, tab.href);
-          const Icon = tab.icon;
+        {PRIMARY_TABS.map((tab) => {
+          const active = isTabActive(pathname, tab.href);
+          const Icon = TAB_ICONS[tab.href];
           return (
             <Link
               key={tab.href}

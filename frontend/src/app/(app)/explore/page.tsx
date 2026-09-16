@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowUpRight, TrendingUp } from "lucide-react";
 import { getExplore } from "@/lib/api/endpoints";
@@ -36,6 +37,23 @@ export default function ExplorePage() {
         title="Explore"
         subtitle="Real members. Real progress."
       />
+
+      {/* The community feed lives here rather than in the primary nav: Explore is
+          the one home for browsing what other members are doing, so the feed no
+          longer needs its own tab (one surface, one home). */}
+      <Link
+        href="/glowups"
+        className="mb-6 flex items-center justify-between gap-3 rounded-card card-border p-5 transition-colors hover:border-gold/40"
+      >
+        <div>
+          <h2 className="font-display text-base font-semibold text-ink">Glow-Ups</h2>
+          <p className="mt-1 text-sm text-muted">
+            Real transformations from members who opted in — plus your own movie once
+            you&apos;ve uploaded two photos.
+          </p>
+        </div>
+        <ArrowUpRight className="h-5 w-5 shrink-0 text-gold" aria-hidden />
+      </Link>
 
       {/* Transformations — anonymized, no raw face URLs rendered (§5.11) */}
       <h2 className="font-display text-lg font-semibold text-ink">Transformations</h2>

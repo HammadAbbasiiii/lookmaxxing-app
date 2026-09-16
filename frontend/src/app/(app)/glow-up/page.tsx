@@ -80,21 +80,20 @@ export default function GlowUpPage() {
         />
       ) : (
         <>
+          {/* One ask instead of two stacked walls: a free user gets a single card
+              that names both tiers' specifics, so the pitch is read once rather
+              than twice in a row before any value is shown. */}
           {!isPro ? (
-            <>
-              <PaywallLock
-                title="Glow-Up insights"
-                teaser="Glow-Up Forecast · Percentile rank · Look-alike archetype — all based on your face."
-                description="Pro unlocks your projected Day-30/60/90 score, where you rank, and the archetype you project."
-              />
-              <PaywallLock
-                className="mt-6"
-                title="Elite harmony"
-                teaser="Golden-ratio harmony map · 7-day glow-up blueprint · shareable score card."
-                description="Elite measures your face against phi (1.618) and hands you a day-by-day blueprint plus a shareable card."
-                tier="elite"
-              />
-            </>
+            <PaywallLock
+              title="Unlock your Glow-Up insights"
+              teaser="Glow-Up Forecast · Percentile rank · Look-alike archetype — all based on your face."
+              description="Pro adds the projected Day-30/60/90 score, where you rank, and the archetype you project. Elite adds the golden-ratio harmony map and your 7-day blueprint."
+              items={[
+                "Your projected score at Day 30, 60 and 90",
+                "Where you rank, and the archetype you project",
+                "Elite also: golden-ratio harmony map + 7-day blueprint",
+              ]}
+            />
           ) : null}
 
           {isPro ? (

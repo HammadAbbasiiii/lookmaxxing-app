@@ -9,11 +9,20 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Logo } from "@/components/layout/Logo";
 import { Spinner } from "@/components/ui/Skeleton";
-import { COMMITMENT_OPTIONS, GENDER_OPTIONS, GOAL_OPTIONS, SKIN_CONCERN_OPTIONS, SKIN_TYPE_OPTIONS } from "@/lib/constants";
+import { GENDER_OPTIONS, GOAL_OPTIONS, SKIN_CONCERN_OPTIONS, SKIN_TYPE_OPTIONS } from "@/lib/constants";
 import { completeOnboarding, putProfile, type ProfileUpdate } from "@/lib/api/endpoints";
 import { cn } from "@/lib/utils";
 
-const STEPS = ["Tell us about you", "Pick one goal", "Your skin type", "Skin concerns", "Consistency beats intensity"];
+/**
+ * Three micro-steps (§3.4), down from five. Identity, goal and skin are
+ * everything the analysis and the plan actually read; skin type and concerns
+ * share one screen because they are the same question, and the old final
+ * "consistency" step is gone because nothing reads `commitment` server-side
+ * (it stays editable in Settings). Fewer screens is fewer places to drop out
+ * before the first analysis.
+ */
+const STEPS = ["Tell us about you", "Pick one goal", "Your skin"];
+const LAST_STEP = STEPS.length - 1;
 
 export default function OnboardingPage() {
   const ready = useRequireAuth();
@@ -24,7 +33,6 @@ export default function OnboardingPage() {
   const [ageError, setAgeError] = useState("");
   const [gender, setGender] = useState("");
   const [goal, setGoal] = useState("");
-  const [commitment, setCommitment] = useState("");
   const [skinType, setSkinType] = useState("");
   const [skinConcerns, setSkinConcerns] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
@@ -36,9 +44,7 @@ export default function OnboardingPage() {
     }
     if (step === 1) return Boolean(goal);
     if (step === 2) return Boolean(skinType);
-    if (step === 3) return true; // concerns optional
-    if (step === 4) return Boolean(commitment);
-    return true;
+    return true; // concerns are optional
   }
 
   function next() {
@@ -58,12 +64,12 @@ export default function OnboardingPage() {
       }
       setAgeError("");
     }
-    if (step < 4) setStep((s) => s + 1);
+    if (step < LAST_STEP) setStep((s) => s + 1);
     else finish();
   }
 
   function skip() {
-    if (step < 4) setStep((s) => s + 1);
+    if (step < LAST_STEP) setStep((s) => s + 1);
     else finish();
   }
 
@@ -76,7 +82,6 @@ export default function OnboardingPage() {
       goals: goal ? [goal] : undefined,
       skin_type: skinType || undefined,
       skin_concerns: skinConcerns.length ? skinConcerns : undefined,
-      commitment: commitment || undefined,
     };
     // Skip the profile call entirely when every answer was skipped, so we never
     // fire a 400 "No fields provided" (the wizard is allowed to be empty).
@@ -202,76 +207,64 @@ export default function OnboardingPage() {
             </div>
           ) : null}
           {step === 2 ? (
-            <div className="grid grid-cols-2 gap-2" role="radiogroup">
-              {SKIN_TYPE_OPTIONS.map((opt) => (
-                <button
-                  key={opt.value}
-                  type="button"
-                  role="radio"
-                  aria-checked={skinType === opt.value}
-                  onClick={() => setSkinType(opt.value)}
-                  className={cn(
-                    "rounded-xl border px-4 py-3 text-sm font-medium transition-all",
-                    skinType === opt.value
-                      ? "border-gold bg-gold/15 text-ink"
-                      : "border-border-soft bg-surface-2 text-muted hover:text-ink",
-                  )}
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
-          ) : null}
-          {step === 3 ? (
-            <div className="flex flex-wrap gap-2" role="group">
-              {SKIN_CONCERN_OPTIONS.map((opt) => {
-                const active = skinConcerns.includes(opt.value);
-                return (
-                  <button
-                    key={opt.value}
-                    type="button"
-                    role="checkbox"
-                    aria-checked={active}
-                    onClick={() =>
-                      setSkinConcerns((prev) =>
-                        prev.includes(opt.value)
-                          ? prev.filter((x) => x !== opt.value)
-                          : [...prev, opt.value],
-                      )
-                    }
-                    className={cn(
-                      "rounded-full border px-3 py-2 text-sm font-medium transition-all",
-                      active
-                        ? "border-gold bg-gold/15 text-ink"
-                        : "border-border-soft bg-surface-2 text-muted hover:text-ink",
-                    )}
-                  >
-                    <span className="mr-1">{opt.emoji}</span>
-                    {opt.label}
-                  </button>
-                );
-              })}
-            </div>
-          ) : null}
-          {step === 4 ? (
-            <div className="space-y-2" role="radiogroup">
-              {COMMITMENT_OPTIONS.map((opt) => (
-                <button
-                  key={opt.value}
-                  type="button"
-                  role="radio"
-                  aria-checked={commitment === opt.value}
-                  onClick={() => setCommitment(opt.value)}
-                  className={cn(
-                    "w-full rounded-xl border px-4 py-3 text-sm font-medium transition-all",
-                    commitment === opt.value
-                      ? "border-gold bg-gold/15 text-ink"
-                      : "border-border-soft bg-surface-2 text-muted hover:text-ink",
-                  )}
-                >
-                  {opt.label}
-                </button>
-              ))}
+            <div className="space-y-5">
+              <div>
+                <p className="mb-2 text-sm font-medium text-muted">Skin type</p>
+                <div className="grid grid-cols-2 gap-2" role="radiogroup">
+                  {SKIN_TYPE_OPTIONS.map((opt) => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      role="radio"
+                      aria-checked={skinType === opt.value}
+                      onClick={() => setSkinType(opt.value)}
+                      className={cn(
+                        "rounded-xl border px-4 py-3 text-sm font-medium transition-all",
+                        skinType === opt.value
+                          ? "border-gold bg-gold/15 text-ink"
+                          : "border-border-soft bg-surface-2 text-muted hover:text-ink",
+                      )}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <p className="mb-2 text-sm font-medium text-muted">
+                  Skin concerns <span className="font-normal">(optional — pick any)</span>
+                </p>
+                <div className="flex flex-wrap gap-2" role="group">
+                  {SKIN_CONCERN_OPTIONS.map((opt) => {
+                    const active = skinConcerns.includes(opt.value);
+                    return (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        role="checkbox"
+                        aria-checked={active}
+                        onClick={() =>
+                          setSkinConcerns((prev) =>
+                            prev.includes(opt.value)
+                              ? prev.filter((x) => x !== opt.value)
+                              : [...prev, opt.value],
+                          )
+                        }
+                        className={cn(
+                          "rounded-full border px-3 py-2 text-sm font-medium transition-all",
+                          active
+                            ? "border-gold bg-gold/15 text-ink"
+                            : "border-border-soft bg-surface-2 text-muted hover:text-ink",
+                        )}
+                      >
+                        <span className="mr-1">{opt.emoji}</span>
+                        {opt.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
           ) : null}
         </motion.div>
@@ -286,7 +279,7 @@ export default function OnboardingPage() {
             Skip
           </Button>
           <Button onClick={next} disabled={!canNext()} loading={saving} className="min-w-[96px]">
-            {step === 4 ? "Finish" : "Next"}
+            {step === LAST_STEP ? "Finish" : "Next"}
           </Button>
         </div>
       </div>

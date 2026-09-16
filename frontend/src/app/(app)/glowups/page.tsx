@@ -135,7 +135,7 @@ export default function GlowupsPage() {
         title="Glow-Ups"
         subtitle="Real members, real progress — and your own movie."
         back
-        backHref="/dashboard"
+        backHref="/explore"
       />
 
       <Card className="mb-6">

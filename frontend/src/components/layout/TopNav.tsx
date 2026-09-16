@@ -14,19 +14,11 @@ import { useMe } from "@/hooks/useMe";
 import { logout } from "@/lib/api/endpoints";
 import { clearToken } from "@/lib/auth";
 import { cn } from "@/lib/utils";
-import { isActivePath, isGlowPath } from "@/lib/nav";
+import { PRIMARY_TABS, isTabActive } from "@/lib/nav";
 import { Logo } from "./Logo";
 import { Badge } from "@/components/ui/Badge";
 import { AvatarDrawer } from "./AvatarDrawer";
 import { NotificationBell } from "./NotificationBell";
-
-const PRIMARY_LINKS = [
-  { href: "/dashboard", label: "Dashboard" },
-  { href: "/plan", label: "Plan" },
-  { href: "/coach", label: "Coach" },
-  { href: "/glow", label: "Glow" },
-  { href: "/explore", label: "Explore" },
-];
 
 export function TopNav() {
   const pathname = usePathname();
@@ -76,11 +68,8 @@ export function TopNav() {
 
         <nav className="no-scrollbar hidden min-w-0 flex-1 overflow-x-auto md:block" aria-label="Primary">
           <div className="flex min-w-max items-center gap-0.5 px-2">
-            {PRIMARY_LINKS.map((link) => {
-              const active =
-                link.href === "/glow"
-                  ? isGlowPath(pathname)
-                  : isActivePath(pathname, link.href);
+            {PRIMARY_TABS.map((link) => {
+              const active = isTabActive(pathname, link.href);
               return (
                 <Link
                   key={link.href}
