@@ -78,6 +78,7 @@ Status legend: ✅ implemented · ⬜ planned this pass.
 | AX-01 | axe scan: login/signup/dashboard | AX | 0 critical violations | ⬜ | e2e/accessibility.spec.ts |
 | AX-02 | Keyboard: password toggle, form submit | E | operable | ⬜ | e2e/accessibility.spec.ts |
 | R-01 | Viewport matrix (8 sizes) no horizontal overflow | R | no h-overflow | ⬜ | e2e/responsive.spec.ts |
+| R-02 | Mobile account drawer opens unclipped; every row tappable | R,E,RG | full-height overlay, rows receive taps | ✅ | e2e/account-drawer.spec.ts |
 | X-01 | Critical suite on Chromium/Firefox/WebKit | X | pass | ⬜ | playwright.config.ts projects |
 | V-01 | Screenshot baselines (login/signup/dashboard) | V | stable | ⬜ | e2e/visual.spec.ts |
 | P-01 | Page load + API latency baseline | P | reasonable thresholds | ⬜ | documented (no k6 installed) |

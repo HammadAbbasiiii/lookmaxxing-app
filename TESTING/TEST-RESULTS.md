@@ -103,3 +103,40 @@ update. Forward with `stripe listen --forward-to
 http://127.0.0.1:8000/api/v1/payments/webhook` (and use its `whsec_…`), or
 reconcile an affected user with `scripts/stripe_sync.py <email|customer_id>`.
 
+## Mobile account drawer regression pass (2026-09-16)
+
+**Report:** on a phone viewport, tapping the avatar (top-right) opened only the
+drawer's header (name / email / ✕) — Profile, Settings, Upgrade and Log out were
+missing. Desktop was unaffected.
+
+**Root cause (DEF-010):** `AvatarDrawer` was rendered *inside* the sticky
+`<header>`. `backdrop-blur` on that header is a `backdrop-filter`, which makes the
+element the containing block for `position: fixed` descendants, so the drawer's
+`fixed inset-0` overlay resolved against the 64px header box; `overflow-hidden`
+then clipped every row, and the header's `z-40` stacking context trapped the
+overlay beneath the bottom tab bar. Measured on the pre-fix build at 390×844:
+overlay height **64px** (viewport 844px), rows laid out at y≈72–200, and
+`elementFromPoint` at each row centre returned page content, i.e. nothing was
+tappable. The desktop path was never affected because the drawer is `md:hidden`.
+
+**Fix:** `TopNav` returns a fragment containing `<header>` and `<AvatarDrawer>`
+as **siblings** (with a comment explaining why it must stay outside), plus
+safe-area bottom padding and a scrollable menu. No API, data or desktop-nav
+change.
+
+**Verification:** `e2e/account-drawer.spec.ts` (5 tests, new).
+
+| Run | Target | Result |
+|---|---|---|
+| Green | fixed source, isolated dev build (390×844) | **5/5 passed** |
+| Red | pre-fix production build still served on `localhost:3000` | **4/5 failed** (clipping + both tap tests + z-order) |
+
+- `tsc --noEmit`: clean after the change.
+- `next build` (isolated checkout, so the running local server is untouched): clean.
+- The pre-existing full-suite totals above (43 Chromium / 18 cross-browser)
+  predate this spec; a full Chromium run is now 48 tests. The rest of the suite
+  was **not** re-run in this pass.
+- Environment note while verifying: repeated signup/login calls from the runner
+  tripped the backend's anonymous rate limit (60/min per IP, DEF-003 family) —
+  expected behaviour, not a defect. The `:3000` server was serving a stale
+  production build, so the fix only appears there after a rebuild.

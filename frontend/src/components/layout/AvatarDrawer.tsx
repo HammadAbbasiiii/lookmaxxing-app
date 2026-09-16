@@ -69,7 +69,9 @@ export function AvatarDrawer({ open, onClose }: AvatarDrawerProps) {
       />
       <aside
         className={cn(
-          "absolute right-0 top-0 flex h-full w-72 max-w-[85vw] flex-col border-l border-border-soft bg-background p-4 transition-transform duration-200",
+          // pb keeps the Log out row clear of the iOS home indicator, which the
+          // bottom tab bar (now covered) used to account for.
+          "absolute right-0 top-0 flex h-full w-72 max-w-[85vw] flex-col border-l border-border-soft bg-background p-4 pb-[calc(env(safe-area-inset-bottom,0px)+1rem)] transition-transform duration-200",
           open ? "translate-x-0" : "translate-x-full",
         )}
         role="dialog"
@@ -91,7 +93,7 @@ export function AvatarDrawer({ open, onClose }: AvatarDrawerProps) {
           </button>
         </div>
 
-        <nav className="mt-4 flex flex-col gap-1">
+        <nav className="mt-4 flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto">
           <DrawerItem icon={<UserIcon className="h-4 w-4" />} label="Profile" onClick={() => go("/settings")} />
           <DrawerItem icon={<SettingsIcon className="h-4 w-4" />} label="Settings" onClick={() => go("/settings")} />
           <DrawerItem
