@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 from app.dependencies import create_access_token
 from app.models import Photo, Plan, User
 from app.services.progress_engine import update_streak
+from app.services.upload_service import CLOUDINARY_FOLDER
 
 
 def _h(token):
@@ -26,6 +27,22 @@ def _plan(db_session, user):
     db_session.add(plan)
     db_session.commit()
     return plan
+
+
+def _add_photo(db_session, user, url=None):
+    """Attach a photo row to `user`, in the URL layout Cloudinary gives us back."""
+    photo = Photo(
+        id=str(uuid.uuid4()),
+        user_id=user.id,
+        file_url=url
+        or (
+            "https://res.cloudinary.com/lookmaxx/image/upload/v1/"
+            f"{CLOUDINARY_FOLDER}/user_ab12cd34.jpg"
+        ),
+    )
+    db_session.add(photo)
+    db_session.commit()
+    return photo
 
 
 class TestProfile:
@@ -101,6 +118,69 @@ class TestProfile:
 
         # Token is now orphaned — /me must 401.
         assert client.get("/api/v1/auth/me", headers=_h(auth_token)).status_code == 401
+
+    def test_delete_account_aborts_when_provider_delete_fails(
+        self, client, auth_token, test_user, db_session, monkeypatch
+    ):
+        """GDPR: nothing is erased until the provider confirms the image is gone."""
+        import app.routes.profile as profile_routes
+
+        _add_photo(db_session, test_user)
+
+        def _provider_down(public_id):  # noqa: ARG001 — mirrors the real signature
+            raise RuntimeError("provider unavailable")
+
+        monkeypatch.setattr(profile_routes, "delete_from_cloudinary", _provider_down)
+
+        res = client.delete("/api/v1/profile/delete", headers=_h(auth_token))
+
+        assert res.status_code == 502
+        assert res.json()["detail"]["code"] == "image_deletion_failed"
+
+        # The account must survive the failure: if the rows were already gone,
+        # the retry would have no public_id left and the photo would stay live
+        # at the provider forever.
+        assert client.get("/api/v1/auth/me", headers=_h(auth_token)).status_code == 200
+
+        # A retry that reaches the provider completes the erasure.
+        monkeypatch.setattr(
+            profile_routes, "delete_from_cloudinary", lambda public_id: {"result": "ok"}
+        )
+        assert client.delete("/api/v1/profile/delete", headers=_h(auth_token)).status_code == 200
+        assert client.get("/api/v1/auth/me", headers=_h(auth_token)).status_code == 401
+
+    def test_delete_account_aborts_on_unrecognized_url(
+        self, client, auth_token, test_user, db_session, monkeypatch
+    ):
+        """A stored URL we can't map to a public_id must not be silently skipped."""
+        import app.routes.profile as profile_routes
+
+        called = []
+        monkeypatch.setattr(
+            profile_routes, "delete_from_cloudinary", lambda public_id: called.append(public_id)
+        )
+        _add_photo(db_session, test_user, url="https://example.com/selfie.jpg")
+
+        res = client.delete("/api/v1/profile/delete", headers=_h(auth_token))
+
+        assert res.status_code == 502
+        assert called == []
+        assert client.get("/api/v1/auth/me", headers=_h(auth_token)).status_code == 200
+
+    def test_delete_account_passes_full_public_id(
+        self, client, auth_token, test_user, db_session, monkeypatch
+    ):
+        """Guards the `user_user_…` bug: the provider needs our exact public_id."""
+        import app.routes.profile as profile_routes
+
+        seen = []
+        monkeypatch.setattr(
+            profile_routes, "delete_from_cloudinary", lambda public_id: seen.append(public_id)
+        )
+        _add_photo(db_session, test_user)
+
+        assert client.delete("/api/v1/profile/delete", headers=_h(auth_token)).status_code == 200
+        assert seen == [f"{CLOUDINARY_FOLDER}/user_ab12cd34"]
 
 
 class TestStreakEngine:

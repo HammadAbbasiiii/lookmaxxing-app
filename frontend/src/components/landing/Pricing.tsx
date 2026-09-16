@@ -23,7 +23,7 @@ export function Pricing() {
             Start free. Upgrade when you&apos;re ready.
           </h2>
           <p className="mt-3 text-muted">
-            Your baseline score is always free. Paid tiers unlock the full plan and coaching.
+            Your baseline score is always free. Paid tiers unlock the full 90-day plan and daily check-ins.
           </p>
         </Reveal>
 

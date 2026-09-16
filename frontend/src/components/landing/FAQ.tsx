@@ -16,7 +16,7 @@ const FAQS = [
   },
   {
     q: "Do I need to pay to see my score?",
-    a: "No. Your baseline score is free. Paid tiers add unlimited analyses, the full plan, daily check-ins, and coaching.",
+    a: "No. Your baseline score is free. Paid tiers add unlimited analyses, the full 90-day plan and daily check-ins.",
   },
   {
     q: "What does the 90-day plan include?",

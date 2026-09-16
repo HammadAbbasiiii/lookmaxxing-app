@@ -123,10 +123,15 @@ async def delete_account(
     """
     Permanently delete the user account and all associated data.
 
-    GDPR-compliant. The DB cascades to photos, plans and checkins, but a cascade
-    only removes *rows* — it cannot touch Cloudinary. Without the provider pass
-    below, every face photo the user ever uploaded would stay live on a public
-    URL after their account was gone, while the UI promises the opposite.
+    GDPR-compliant, and fail *closed*. The DB cascades to photos, plans and
+    checkins, but a cascade only removes rows — it cannot touch Cloudinary.
+    Deleting the rows first would leave every face photo the user ever uploaded
+    live on a public URL with nothing left to retry from, so the provider pass
+    runs first and the whole request is aborted if any image is unconfirmed.
+
+    Retrying is safe: `delete_from_cloudinary` treats "not found" as success, so
+    an image already removed before a later failure reads as gone instead of
+    blocking the retry forever.
     """
     user_id = current_user.id  # capture before the row is deleted
 
@@ -135,14 +140,14 @@ async def delete_account(
         for (url,) in db.query(Photo.file_url).filter(Photo.user_id == user_id).all()
     ]
 
-    unreachable = 0
+    unconfirmed: list[str] = []
     for url in photo_urls:
         public_id = public_id_from_url(url)
         if not public_id:
-            unreachable += 1
+            unconfirmed.append(url)
             logger.error(
                 "Account deletion (user %s): could not derive a Cloudinary public_id "
-                "from %s — image requires manual removal.",
+                "from %s — aborting so the image isn't orphaned.",
                 user_id,
                 url,
             )
@@ -150,35 +155,35 @@ async def delete_account(
         try:
             delete_from_cloudinary(public_id)
         except Exception:
-            unreachable += 1
+            unconfirmed.append(public_id)
             logger.exception(
-                "Account deletion (user %s): provider delete failed for %s — image "
-                "requires manual removal.",
+                "Account deletion (user %s): provider delete failed for %s — aborting.",
                 user_id,
                 public_id,
             )
 
-    db.delete(current_user)
-    db.commit()
-
-    if unreachable:
-        # The erasure request still wins, but we must not claim the photos are
-        # gone when the provider never confirmed it.
+    if unconfirmed:
         logger.error(
-            "Account deletion (user %s): %s of %s image(s) were not confirmed removed "
-            "from the image provider and require manual cleanup.",
+            "Account deletion (user %s) aborted: %s of %s image(s) were not confirmed "
+            "removed from the image provider. No rows were deleted; the request can be "
+            "retried.",
             user_id,
-            unreachable,
+            len(unconfirmed),
             len(photo_urls),
         )
-        return {
-            "success": True,
-            "message": (
-                "Your account and data have been deleted. We couldn't confirm removal "
-                f"of {unreachable} image(s) from our image provider — this has been "
-                "logged for manual removal."
-            ),
-        }
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail={
+                "code": "image_deletion_failed",
+                "message": (
+                    "We couldn't delete all of your photos from our image provider, so "
+                    "nothing was deleted — your account is unchanged. Please try again."
+                ),
+            },
+        )
+
+    db.delete(current_user)
+    db.commit()
 
     return {
         "success": True,
