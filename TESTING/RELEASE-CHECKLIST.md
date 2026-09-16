@@ -25,11 +25,60 @@
 ## Deploy gates (production)
 - [x] `SECRET_KEY` code-hardened: `config.py` now raises in production for the default key OR any key < 32 chars. Local `.env` already holds a 64-char key. → **Still required: set that strong key in the Render env var (not the local `.env`).**
 - [x] `CORS_ORIGINS` code-tightened: production no longer falls back to localhost origins — only `FRONTEND_URL` + explicit `CORS_ORIGINS`. → **Still required: set `FRONTEND_URL` to the real frontend origin in Render.**
-- [ ] Stripe keys + webhook secret + price IDs configured (payments currently honest-fail 503) — requires your Stripe account.
-- [ ] Cloudinary credentials configured — requires your Cloudinary account.
-- [ ] SMTP (`EMAIL_PROVIDER=smtp`) configured for real reset-link delivery — requires your SMTP provider.
-- [ ] Redis configured (rate limiting currently in-memory fallback) — requires your Redis instance.
+- [x] Redis is live in production: `GET /api/v1/health` returns `"redis":"connected"`, so `REDIS_URL` is set and rate limiting is not silently falling back to in-memory.
+- [ ] **`DATABASE_URL` — confirm it is a `postgresql://…` URL in the Render dashboard.** `config.py` falls back to `sqlite:///./lookmaxx.db` when the var is empty, and a Render web service has an **ephemeral filesystem**: with the fallback, every deploy silently wipes users, plans and check-ins. `CONTEXT.md` says it is set and `MEMORY.md` says it is missing — one is stale, so verify by eye before launch.
+- [ ] Stripe **live** keys + live webhook secret + the 4 live price IDs (while unset, `/payments/checkout` returns an honest `503 payments_unconfigured`).
+- [ ] Cloudinary credentials configured — required for uploads; without them no analysis can run.
+- [ ] SMTP (`EMAIL_PROVIDER=smtp` + `SMTP_*`) for real reset-link delivery. The default `console` only *logs* the link, so "forgot password" is broken for real users until this is set.
+- [ ] `NEXT_PUBLIC_API_URL` set on the frontend host (it already defaults to the Render origin in `constants.ts`, so a missing var still works — belt and braces).
 - [x] postcss advisories cleared (DEF-004): non-breaking npm `overrides` → `npm audit` 0 vulns (no Next 16 upgrade needed).
+
+## Go-live runbook (launch day — do these in order)
+Order matters: backend env → frontend deploy → CORS → payments → smoke test. The CORS step **must** precede any real user hitting the Vercel URL, or every API call from the browser is blocked.
+
+### 1. Stripe → live mode (~15 min)
+1. Stripe dashboard → turn **Test mode off**.
+2. **Products** → create 4 recurring **GBP** prices matching what the UI displays (`frontend/src/lib/constants.ts`): Pro £9.99/month, Pro £50.40/year, Elite £19.99/month, Elite £100.80/year. Live IDs differ from test IDs — a test `price_…` with a live key fails at checkout.
+3. Optional: create the "£1 first month" coupon and set `STRIPE_FIRST_MONTH_COUPON_ID`; `STRIPE_ELITE_TRIAL_DAYS` defaults to 7.
+4. **Webhooks** → Add endpoint → `https://lookmaxx-api.onrender.com/api/v1/payments/webhook`, subscribing to exactly the 6 events the handler implements: `checkout.session.completed`, `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`, `invoice.paid`, `invoice.payment_failed`. Copy the endpoint's signing secret (`whsec_…`).
+5. Render → `lookmaxx-api` → **Environment** → set `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_PRO_MONTHLY`, `STRIPE_PRICE_PRO_ANNUAL`, `STRIPE_PRICE_ELITE_MONTHLY`, `STRIPE_PRICE_ELITE_ANNUAL` → Save (Render redeploys).
+   `STRIPE_PUBLISHABLE_KEY` is **not** needed: Checkout is hosted by Stripe and there is no Stripe.js in the client.
+6. Verify live mode (the config check runs *after* auth, so an unauthenticated call is 401 — use a real token):
+   ```bash
+   TOKEN=…   # deployed app → DevTools → Application → localStorage
+   curl -s -X POST https://lookmaxx-api.onrender.com/api/v1/payments/checkout \
+     -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+     -d '{"tier":"pro","annual":false}' | grep -o 'cs_[a-z]*_'
+   ```
+   `cs_live_` → live. `cs_test_` → still test keys. `503 payments_unconfigured` → env vars not picked up.
+   Creating a session charges nothing — just don't complete it.
+
+### 2. Frontend → Vercel (~20 min)
+1. Vercel → **Add New → Project** → import `HammadAbbasiiii/lookmaxxing-app`.
+2. **Root Directory: `frontend`** — the repo has `backend/` and `frontend/` side by side, so Vercel must not build the repo root. Preset: Next.js (`npm run build` / `npm install`).
+3. Env var (Production + Preview): `NEXT_PUBLIC_API_URL=https://lookmaxx-api.onrender.com/api/v1`.
+4. Deploy, then note the production origin (e.g. `https://lookmaxx.vercel.app`).
+
+### 3. Close the CORS loop (~3 min) — REQUIRED
+Render → Environment → set both to the Vercel origin (**exact origin, no trailing slash**):
+- `FRONTEND_URL=https://<your-domain>` (also used for reset links and Stripe success/cancel URLs)
+- `CORS_ORIGINS=https://<your-domain>` (comma-separate extras; there is no wildcard support, and Vercel *preview* URLs change per deploy)
+
+Save → wait for the redeploy → then open the site. Symptom of skipping this: the page loads but every API call fails and login appears to do nothing.
+
+### 4. Production smoke test (~15 min, on the deployed URL)
+- [ ] Site loads with no console errors and no CORS errors.
+- [ ] Sign up with a real email → onboarding reports **"Step 1 of 3"** → upload a photo → a score appears (proves Cloudinary + ML/DeepSeek on prod).
+- [ ] Free user: bottom nav shows 5 tabs (Home · Plan · Coach · Glow · Explore); `/glow-up` shows exactly **one** paywall card; Explore's Glow-Ups card opens `/glowups` and its back link returns to Explore.
+- [ ] A second upload as a free user shows the "You've used your free analysis" gate (paywall after value, never before).
+- [ ] Buy Pro with a real card (live mode has no test cards — use a real card and refund it in Stripe immediately), confirm the redirect lands on `/dashboard?upgraded=1` and the tier flips to Pro.
+- [ ] Stripe → Webhooks → the endpoint shows `200`s for the 6 events, no 4xx/5xx.
+- [ ] Cancel from Settings → billing → stays Pro until period end, then drops to free (`customer.subscription.updated` / `deleted` paths).
+- [ ] "Forgot password" → the email actually arrives (requires `EMAIL_PROVIDER=smtp`).
+- [ ] Sign out in one tab, act in another → redirected to `/login?next=…`.
+- [ ] Mobile viewport: no horizontal scroll; tab targets ≥44 px.
+- [ ] Render → **Events/Deploys**: the live commit SHA equals `git rev-parse --short HEAD` and the deploy is "live".
+
 
 ## Final decision
 See TEST-RESULTS.md "Release status".
