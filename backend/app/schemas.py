@@ -236,6 +236,49 @@ class ChangePlanIn(BaseModel):
     tier: str = Field(..., pattern="^(pro|elite)$")
     annual: bool = True
 
+
+class OfferOut(BaseModel):
+    """Server-authoritative state of the £1 first-month offer (DEF-015).
+
+    The upgrade page must never print a price the checkout can't honour, so
+    eligibility and both amounts come from one place — and, when Stripe is
+    reachable, from Stripe itself (`source: "stripe"`, `verified: true`).
+    """
+    eligible: bool
+    # eligible | used | already_subscribed | not_configured
+    reason: str
+    tier: str = "pro"
+    interval: str = "month"
+    currency: str = "GBP"
+    first_month_amount: Optional[float] = None
+    first_month_amount_minor: Optional[int] = None
+    regular_amount: Optional[float] = None
+    regular_amount_minor: Optional[int] = None
+    source: str = "config"  # stripe | config
+    verified: bool = False
+
+
+class CheckoutSessionOut(BaseModel):
+    """What the customer was *actually* charged, read back from Stripe.
+
+    The success page prints these numbers verbatim — never a hardcoded price —
+    so "you were charged £1.00" can never contradict the invoice (DEF-015).
+    """
+    status: str
+    paid: bool
+    tier: str
+    interval: Optional[str] = None
+    currency: str = "GBP"
+    amount_charged: Optional[float] = None
+    amount_charged_minor: Optional[int] = None
+    amount_discount: Optional[float] = None
+    amount_discount_minor: Optional[int] = None
+    first_month_offer: bool = False
+    next_payment_amount: Optional[float] = None
+    next_payment_amount_minor: Optional[int] = None
+    next_payment_date: Optional[datetime] = None
+    email: Optional[str] = None
+
     description: Optional[str] = None
     rating: Optional[float] = Field(None, ge=0, le=5)
     review_count: Optional[int] = Field(None, ge=0)

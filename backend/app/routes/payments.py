@@ -7,6 +7,7 @@ code so the client can show a waitlist instead of a broken checkout.
 """
 
 from datetime import datetime, timedelta, timezone
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
@@ -15,7 +16,15 @@ from app.config import settings
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.models import AdminAction, StripeEvent, User
-from app.schemas import CancelSubscriptionIn, ChangePlanIn, CheckoutIn
+from app.schemas import (
+    CancelSubscriptionIn,
+    ChangePlanIn,
+    CheckoutIn,
+    CheckoutSessionOut,
+    OfferOut,
+)
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/payments", tags=["Payments"])
 
@@ -364,7 +373,10 @@ async def create_checkout(
             line_items=[{"price": price_id, "quantity": 1}],
             subscription_data=subscription_data,
             discounts=discounts,
-            success_url=f"{settings.FRONTEND_URL}/dashboard?upgraded=1",
+            success_url=(
+                f"{settings.FRONTEND_URL}/upgrade/success"
+                "?session_id={CHECKOUT_SESSION_ID}"
+            ),
             cancel_url=f"{settings.FRONTEND_URL}/upgrade",
             client_reference_id=user.id,
             metadata={
@@ -382,6 +394,171 @@ async def create_checkout(
         )
 
     return {"checkout_url": session.url}
+
+
+# ── Offer state + checkout receipt ──────────────────────────────────────────
+# DEF-015: the UI used to hardcode "£1 first month" and, after paying, showed
+# nothing at all — it landed on /dashboard?upgraded=1, which no frontend code
+# ever handled. These two endpoints are the single source of truth for what the
+# customer will be charged and what they actually were charged.
+
+# Fallbacks used only when Stripe can't be reached: the launch configuration
+# documented in config.py (Pro £9.99/month, £8.99 off for the first month).
+_FALLBACK_PRO_MONTHLY_MINOR = 999
+_FALLBACK_FIRST_MONTH_DISCOUNT_MINOR = 899
+
+
+def _minor_to_major(minor: int | None) -> float | None:
+    return None if minor is None else round(minor / 100, 2)
+
+
+@router.get("/offer", response_model=OfferOut)
+async def get_offer(user: User = Depends(get_current_user)):
+    """Is this user eligible for the £1 first month, and at what prices?
+
+    Always answers 200 — an unreachable Stripe is reported as
+    `source: "config", verified: false` rather than an error, so the upgrade page
+    can render *something* truthful instead of guessing at a price.
+    """
+    tier = (user.subscription_tier or "free").lower()
+    coupon_id = settings.STRIPE_FIRST_MONTH_COUPON_ID
+
+    regular_minor = _FALLBACK_PRO_MONTHLY_MINOR
+    discount_minor = _FALLBACK_FIRST_MONTH_DISCOUNT_MINOR
+    currency = "gbp"
+    source = "config"
+    verified = False
+
+    if settings.STRIPE_SECRET_KEY:
+        try:
+            import stripe
+
+            stripe.api_key = settings.STRIPE_SECRET_KEY
+            price = stripe.Price.retrieve(_price_id("pro", False))
+            regular_minor = int(_get(price, "unit_amount", 0) or 0) or regular_minor
+            currency = str(_get(price, "currency", currency) or currency)
+            if coupon_id:
+                coupon = stripe.Coupon.retrieve(coupon_id)
+                amount_off = _get(coupon, "amount_off", None)
+                # A percentage coupon can't be shown as "£1 first month" — fall
+                # back to the configured amount rather than inventing a price.
+                if amount_off:
+                    discount_minor = int(amount_off)
+                    currency = str(_get(coupon, "currency", currency) or currency)
+                source = "stripe"
+                verified = True
+        except Exception as exc:
+            logger.warning(f"Offer lookup fell back to config: {exc}")
+
+    if tier != "free":
+        reason, eligible = "already_subscribed", False
+    elif coupon_id and user.has_used_first_month_offer:
+        reason, eligible = "used", False
+    elif not coupon_id:
+        reason, eligible = "not_configured", False
+    else:
+        reason, eligible = "eligible", True
+
+    first_month_minor = max(regular_minor - discount_minor, 0)
+    return {
+        "eligible": eligible,
+        "reason": reason,
+        "tier": "pro",
+        "interval": "month",
+        "currency": currency.upper(),
+        "first_month_amount": _minor_to_major(first_month_minor),
+        "first_month_amount_minor": first_month_minor,
+        "regular_amount": _minor_to_major(regular_minor),
+        "regular_amount_minor": regular_minor,
+        "source": source,
+        "verified": verified,
+    }
+
+
+@router.get("/checkout/{session_id}", response_model=CheckoutSessionOut)
+async def get_checkout_session(
+    session_id: str,
+    user: User = Depends(get_current_user),
+):
+    """What the customer was actually charged for a checkout session.
+
+    Ownership-checked against `client_reference_id`/metadata, and read live from
+    Stripe — no amount is inferred from the app's own price constants.
+    """
+    if not settings.STRIPE_SECRET_KEY:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "code": "payments_unconfigured",
+                "message": "Payments aren't configured yet.",
+            },
+        )
+
+    not_found = HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail={"code": "session_not_found", "message": "We couldn't find that checkout."},
+    )
+
+    try:
+        import stripe
+
+        stripe.api_key = settings.STRIPE_SECRET_KEY
+        session = stripe.checkout.Session.retrieve(session_id, expand=["subscription"])
+    except Exception as exc:
+        logger.warning(f"Could not read checkout session {session_id}: {exc}")
+        raise not_found
+
+    metadata = _get(session, "metadata", None) or {}
+    owner = _get(metadata, "user_id", None) or _get(session, "client_reference_id", None)
+    if owner != user.id:
+        raise not_found
+
+    currency = str(_get(session, "currency", "gbp") or "gbp")
+    amount_total = _get(session, "amount_total", None)
+    total_details = _get(session, "total_details", None)
+    amount_discount = _get(total_details, "amount_discount", None) if total_details else None
+    # `_get` (attribute access) everywhere: a real StripeObject is not a dict, so
+    # `metadata.get(...)` raises "…is a dict method, but a StripeObject is not a
+    # dict" in production (caught by the live test-mode run, not by unit tests
+    # that stub plain dicts).
+    first_month = str(_get(metadata, "first_month_offer", "false")) == "true"
+
+    # Next payment: the subscription's own recurring price + its period end.
+    sub = _get(session, "subscription", None)
+    next_amount = None
+    interval = None
+    next_date = None
+    if sub is not None and not isinstance(sub, str):
+        items = _get(sub, "items", None)
+        data = _get(items, "data", None) if items is not None else None
+        if data:
+            price = _get(data[0], "price", None)
+            if price is not None:
+                next_amount = _get(price, "unit_amount", None)
+                recurring = _get(price, "recurring", None)
+                if recurring is not None:
+                    interval = _get(recurring, "interval", None)
+        next_date = _sub_period_end(sub)
+
+    details = _get(session, "customer_details", None)
+    email = _get(details, "email", None) if details is not None else None
+
+    return {
+        "status": str(_get(session, "status", "open")),
+        "paid": str(_get(session, "payment_status", "")) in ("paid", "no_payment_required"),
+        "tier": str(_get(metadata, "tier", None) or "pro"),
+        "interval": interval,
+        "currency": currency.upper(),
+        "amount_charged": _minor_to_major(amount_total),
+        "amount_charged_minor": amount_total,
+        "amount_discount": _minor_to_major(amount_discount),
+        "amount_discount_minor": amount_discount,
+        "first_month_offer": first_month,
+        "next_payment_amount": _minor_to_major(next_amount),
+        "next_payment_amount_minor": next_amount,
+        "next_payment_date": next_date,
+        "email": email,
+    }
 
 
 # Event types we act on. Anything else is acknowledged (200) so Stripe stops

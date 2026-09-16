@@ -3,9 +3,18 @@ import numpy as np
 import math
 import os
 import logging
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 logger = logging.getLogger(__name__)
+
+# ── Scoring sanity thresholds ─────────────────────────────────
+# A real face's mirror-pair distance is a small fraction of the image width
+# (empirically < 0.1); the old mock ellipse measured ~0.4. Anything above this
+# is not a face, so symmetry is reported as "not measured" (None) rather than 0.
+MAX_MIRROR_DISTANCE = 0.25
+# 100 - 0.25 * 250 = 37.5, so this is belt-and-braces: no real measurement may
+# be reported below a plausible floor.
+MIN_MEASURABLE_SCORE = 0.0
 
 # ── Resolve MediaPipe model path ──────────────────────────────
 _MODEL_FILENAME = "face_landmarker.task"
@@ -31,6 +40,7 @@ for candidate in _MODEL_CANDIDATES:
 # ── MediaPipe Setup ───────────────────────────────────────────
 MEDIAPIPE_AVAILABLE = False
 _options = None
+_mp_import_error = None
 
 try:
     import mediapipe as mp
@@ -51,43 +61,80 @@ try:
         MEDIAPIPE_AVAILABLE = True
         print(f"✅ MediaPipe FaceLandmarker ready — model: {MODEL_ASSET_PATH}")
     else:
-        print("⚠️ MediaPipe model file not found. Using mock landmarks.")
+        _mp_import_error = "model file not found"
+        print("⚠️ MediaPipe model file not found. Face landmarks cannot be measured.")
         print(f"   Searched paths: {_MODEL_CANDIDATES}")
         print("   Download: https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/latest/face_landmarker.task")
 
 except Exception as e:
+    _mp_import_error = f"mediapipe import failed: {e}"
     print(f"⚠️ MediaPipe initialization error: {e}")
     MEDIAPIPE_AVAILABLE = False
 
 
-def _generate_mock_landmarks() -> list:
+def _unavailable_landmarks_result(reason: str) -> Dict[str, Any]:
+    """Result for "MediaPipe can't run right now" — explicitly NOT a success.
+
+    This used to return `success: True` plus 468 *fabricated* ellipse landmarks
+    (DEF-014). Callers that checked only `success` — `/photos/analyze/{photo_id}`
+    did exactly that — then scored the fake geometry as if it were a real face,
+    which is how production stored `symmetry_score = 0`: the pseudo-landmarks
+    are not mirror-symmetric, so every mirror pair measured ~0.4 of the image
+    width and `100 - 0.4 * 250` clamped to 0, while jawline/eyes happened to land
+    in plausible-looking ranges (43 / 37). Fail closed instead: no landmarks, no
+    scores. Callers that *do* want a heuristic breakdown must ask for it
+    explicitly (see `background_analysis`), never by scoring synthetic geometry.
     """
-    Generate mock facial landmarks for testing when MediaPipe model not available.
-    Returns 468 landmarks (simplified - symmetrical face simulation).
-    """
-    landmarks = []
-    for i in range(468):
-        angle = (i / 468.0) * 2 * math.pi
-        x = 0.5 + 0.3 * math.cos(angle) * (1.0 - abs(i - 234) / 468.0)
-        y = 0.5 + 0.4 * math.sin(angle)
-        z = math.cos(angle) * 0.01
-
-        landmarks.append({
-            "x": float(x),
-            "y": float(y),
-            "z": float(z),
-            "index": i
-        })
-    return landmarks
-
-
-def _generate_mock_landmarks_result() -> Dict[str, Any]:
-    """Wrap mock landmarks in the standard result dict."""
     return {
-        "success": True,
-        "landmarks": _generate_mock_landmarks(),
-        "face_count": 1,
-        "mock": True
+        "success": False,
+        "landmarks": [],
+        "face_count": 0,
+        "mock": True,
+        "reason": "mediapipe_unavailable",
+        "error": reason,
+    }
+
+
+def landmark_measurement(result: Dict[str, Any]) -> str:
+    """Classify a `detect_face_landmarks` result: "measured" | "unavailable".
+
+    Single source of truth for every scorer, so a synthetic/degraded result can
+    never be mistaken for a measurement again.
+    """
+    if not result or not result.get("success") or result.get("mock"):
+        return "unavailable"
+    if len(result.get("landmarks") or []) < 100:
+        return "unavailable"
+    return "measured"
+
+
+def unavailable_reason(result: Dict[str, Any]) -> str:
+    """Human-readable reason a landmark result is unusable (for logs + UI)."""
+    if result and result.get("error"):
+        return str(result["error"])
+    return "MediaPipe face-landmark model unavailable on this worker"
+
+
+def mediapipe_status() -> Dict[str, Any]:
+    """MediaPipe availability for /health — cheap, no heavy imports.
+
+    Reported from the import-time state of this module (the FaceLandmarker graph
+    is still created lazily on first analysis), so a health ping stays ~ms.
+    """
+    model_exists = bool(MODEL_ASSET_PATH) and os.path.exists(MODEL_ASSET_PATH or "")
+    reason = None
+    if not _mp_import_error:
+        if not model_exists:
+            reason = "model file missing"
+        elif not MEDIAPIPE_AVAILABLE:
+            reason = "mediapipe import failed"
+    else:
+        reason = _mp_import_error
+    return {
+        "available": MEDIAPIPE_AVAILABLE and model_exists,
+        "model_path": MODEL_ASSET_PATH,
+        "model_path_exists": model_exists,
+        "reason": reason,
     }
 
 
@@ -105,15 +152,19 @@ def detect_face_landmarks(image_bytes: bytes) -> Dict[str, Any]:
     global _landmarker
 
     if not MEDIAPIPE_AVAILABLE or _options is None:
-        print("📷 Using mock landmarks (no MediaPipe model loaded)")
-        return _generate_mock_landmarks_result()
+        print("📷 No face landmarks: MediaPipe model unavailable (not fabricating scores)")
+        return _unavailable_landmarks_result(
+            _mp_import_error or "MediaPipe face-landmark model unavailable"
+        )
 
     # On a 512 MB Render worker, creating the MediaPipe graph can OOM-kill
-    # the process. Degrade to mock landmarks instead of crashing.
+    # the process. Report "unavailable" instead of crashing.
     from app.services.memory_guard import can_load_mediapipe
     if not can_load_mediapipe():
-        print("📷 Using mock landmarks (insufficient free memory for MediaPipe)")
-        return _generate_mock_landmarks_result()
+        print("📷 No face landmarks: insufficient free memory for MediaPipe")
+        return _unavailable_landmarks_result(
+            "Not enough free memory on this worker to load the face-landmark model"
+        )
 
     # Real MediaPipe detection with downloaded model
     try:
@@ -152,13 +203,20 @@ def detect_face_landmarks(image_bytes: bytes) -> Dict[str, Any]:
         return {"success": False, "error": f"MediaPipe error: {str(e)}"}
 
 
-def calculate_symmetry(landmarks: list) -> float:
+def calculate_symmetry(landmarks: list) -> Optional[float]:
     """
-    Calculate facial symmetry score (0-100).
-    Compares mirrored landmarks across the vertical midline.
+    Calculate facial symmetry score (0-100), or None when it cannot be measured.
+
+    Compares mirrored landmarks across the vertical midline. A real face always
+    has *some* symmetry: the mirror distance between MediaPipe's symmetric pairs
+    is a fraction of the inter-ocular distance, so the score lands in the 70-100
+    band. A value of 0 means the input geometry was not a face at all (this is
+    how the old mock ellipse scored — see `_unavailable_landmarks_result`), so we
+    return None for "not measured" rather than persisting a 0 that reads as
+    "your face is 0% symmetric" (DEF-014).
     """
     if not landmarks or len(landmarks) < 20:
-        return 70.0
+        return None
 
     symmetry_pairs = [
         (33, 263),    # Eye corners
@@ -182,10 +240,22 @@ def calculate_symmetry(landmarks: list) -> float:
             distances.append(distance)
 
     if not distances:
-        return 70.0
+        return None
 
     avg_distance = sum(distances) / len(distances)
-    score = max(0, min(100, 100 - (avg_distance * 250)))
+    # Sanity gate: an average mirror distance above MAX_MIRROR_DISTANCE means the
+    # "landmarks" are not a human face (real faces measure well under 0.1), so
+    # refuse to report a score instead of clamping a garbage input to 0.
+    if avg_distance > MAX_MIRROR_DISTANCE:
+        logger.warning(
+            "Symmetry not measured: implausible landmark geometry "
+            f"(avg mirror distance {avg_distance:.3f} > {MAX_MIRROR_DISTANCE})"
+        )
+        return None
+
+    score = max(0.0, min(100.0, 100 - (avg_distance * 250)))
+    if score <= MIN_MEASURABLE_SCORE:
+        return None
     return round(score, 1)
 
 

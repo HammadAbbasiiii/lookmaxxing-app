@@ -141,6 +141,93 @@ change.
   expected behaviour, not a defect. The `:3000` server was serving a stale
   production build, so the fix only appears there after a rebuild.
 
+## Symmetry + first-month price pass (2026-09-16, DEF-014 / DEF-015)
+
+Two production-reported bugs: **"Symmetry 0"** on a real face, and **£1 charged
+while the UI said £9.99**.
+
+### DEF-014 — Symmetry 0 (root cause, then fix)
+
+Reproduced on the pre-fix code in one command:
+
+```
+detect_face_landmarks(jpeg) → success=True mock=True n=468
+calculate_symmetry(mock)   → 0        ← exactly the production value
+calculate_jawline_score    → 42.9     ← production showed 43
+calculate_eye_score        → 37.4     ← production showed 37
+```
+
+So the row was produced by **synthetic ellipse landmarks**, not by a broken
+symmetry formula: `/photos/analyze/{id}` (the endpoint the web upload flow calls)
+checked only `success`, and `detect_face_landmarks` returned `success: true` +
+468 fabricated landmarks whenever MediaPipe was unavailable. The ellipse's mirror
+pairs are not mirrored, so `100 − dist × 250` clamped to exactly 0, while
+jawline/eyes landed in plausible ranges — which is why only symmetry looked broken.
+
+| Check | Result |
+|---|---|
+| Unavailable detection now returns `success: false`, `landmarks: []`, a reason | ✅ (never synthetic geometry) |
+| Old mock ellipse → `calculate_symmetry` | ✅ `None` (documents that it used to be exactly 0) |
+| Missing / degenerate landmarks → `None`, not 0 or the old 70.0 default | ✅ |
+| Realistic landmark set → 70–100 | ✅ |
+| `POST /photos/analyze/{id}` with a non-measured result | ✅ 422, `analysis_status="failed"`, **no** scores written, **no** plan row |
+| `POST /photos/analyze/{id}` with real landmarks | ✅ 200, symmetry > 0, `analysis_details.landmark_measurement="measured"` |
+| `GET /analysis/{id}` with a stored `symmetry_score = 0` | ✅ returns `symmetry: null` + `measurement.not_measured: ["symmetry"]` |
+| `GET /analysis/{id}` when landmarks were unavailable | ✅ does **not** borrow heuristic category estimates |
+| Legacy repair on boot (`symmetry_score <= 1`, others `<= 0` → NULL) | ✅ ran against the dev DB: "Repaired 4 impossible legacy score(s)" |
+| `GET /health` | ✅ now reports `mediapipe: {available, model_path, model_path_exists, reason}` |
+| Results UI for an unmeasured row | ✅ "—" + tooltip + a one-line explainer (Playwright, stubbed payload) |
+
+### DEF-015 — £1 first month invisible (root cause, then fix)
+
+The backend was already correct (production OpenAPI confirms `CheckoutIn.first_month_offer`
+and `has_used_first_month_offer` in `UserResponse`; Stripe test account confirms
+coupon `FIRST_MONTH_1`, `amount_off 899 gbp`, `duration once`, Pro monthly `999 gbp`).
+The break was presentation: a detached £1 banner above a Pro card headlining
+£9.99/mo, hardcoded copy, and **no confirmation page at all**
+(`success_url` → `/dashboard?upgraded=1`, which no frontend code handled — 0 hits).
+
+| Check | Result |
+|---|---|
+| `GET /payments/offer`, eligible free user (live Stripe test mode) | ✅ `eligible: true, first_month_amount: 1.0, regular_amount: 9.99, source: "stripe", verified: true` |
+| Same endpoint, offer already used / already subscribed / no coupon id | ✅ `reason: used` / `already_subscribed` / `not_configured`, `eligible: false` |
+| Stripe unreachable | ✅ 200 with `source: "config"`, `verified: false` (never a 5xx on the pricing page) |
+| `POST /payments/checkout` with `first_month_offer: true` (live test mode) | ✅ session created; Stripe reports `amount_total=100`, `total_details.amount_discount=899`, `discounts[0].coupon=FIRST_MONTH_1` |
+| `GET /payments/checkout/{session_id}` (live test mode) | ✅ 200 → `amount_charged: 1.0, amount_discount: 8.99, first_month_offer: true` — exactly what the success page prints |
+| Same endpoint, another user's session / unknown session | ✅ 404 both (ownership checked against `client_reference_id` + metadata) |
+| Upgrade page, eligible (`/payments/offer` stubbed) | ✅ Pro card headlines £1.00, struck-through £9.99, "Then £9.99/month from month 2", CTA "Start for £1.00" |
+| Upgrade page, annual view (the default) | ✅ still surfaces "Prefer £1.00 for your first month? Switch to monthly" (the first version of the fix hid this — caught by the test) |
+| Upgrade page, offer used / not configured | ✅ no £1 claim anywhere; list price + "Your £1 first month has already been used." |
+| `/upgrade/success` for a £1 charge | ✅ "You were charged £1.00 for your first month.", discount −£8.99, next payment £9.99/mo on 16 October 2026 |
+| `/upgrade/success` for a full-price charge | ✅ "You were charged £9.99", no offer claim, no discount row |
+
+**Bug found by the live run (not by unit tests):** `metadata.get(...)` on a real
+`StripeObject` raises *"'get' is a dict method, but a StripeObject is not a dict"*
+→ the new receipt endpoint returned **500** until fixed. The unit stubs now use
+attribute-only objects (no `.get`) so this cannot regress.
+
+### Totals
+
+| Suite | Result |
+|---|---|
+| Backend `pytest` | **325 passed** (295 before; +30 new: 15 symmetry/background + 15 payments/offer/receipt) |
+| `e2e/score-clarity.spec.ts` (new) | **9 passed** |
+| `e2e/tier-clarity.spec.ts` | **5 passed** (the `/glow-up` + `/peak-you` rows are analysis-dependent; their locked state is now asserted deterministically in `score-clarity.spec.ts`, and the loop documents why) |
+| Full Chromium suite | **62 passed, 0 failed** (was 61 with 1 failure before this pass — the failure was `/glow-up`'s analysis-dependent row, now handled) |
+| `tsc --noEmit` | clean |
+
+Also hardened while in here: `ai_service` copied scores with
+`score_data.get("symmetry_score", 70)`, which returns `None` (not 70) when the key
+exists with a `None` value — so `if skin >= 75:` raised `TypeError` on any
+unmeasured photo and silently dropped the template analysis. `_copy_score()`
+coalesces for wording only; the scored columns stay NULL.
+
+**Post-payment fields** (`paid: true`, next-payment date) are covered by the
+payments unit tests with attribute-only Stripe stubs: this Stripe account/API
+version does not expose `POST /v1/checkout/sessions/{id}/confirm`, so a test-mode
+checkout cannot be completed programmatically. Everything up to and including the
+amount Stripe will charge was verified against the live test API.
+
 ## Pro vs Elite matrix audit (2026-09-16)
 
 **Scope:** every menu and every page, as free / Pro / Elite, asking two questions:

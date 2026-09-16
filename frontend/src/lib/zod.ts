@@ -113,6 +113,15 @@ export const AnalysisSchema = z.object({
   face_shape: z.string().nullable().catch(null),
   is_baseline: z.boolean().catch(false),
   analyzed_at: z.string().nullable().catch(null),
+  // DEF-014: whether the rows above are measurements or "not measured".
+  measurement: z
+    .object({
+      landmarks: z.string().catch("unknown"),
+      measured: z.boolean().catch(false),
+      reason: z.string().nullable().catch(null),
+      not_measured: z.array(z.string()).catch([]),
+    })
+    .catch({ landmarks: "unknown", measured: false, reason: null, not_measured: [] }),
 });
 export type Analysis = z.infer<typeof AnalysisSchema>;
 
@@ -533,6 +542,44 @@ export const CheckoutSchema = z.object({
   checkout_url: z.string().nullable().catch(null),
 });
 export type Checkout = z.infer<typeof CheckoutSchema>;
+
+// ── £1 first-month offer + checkout receipt (DEF-015) ────────────────
+// Server-authoritative: the upgrade page prints the amount the backend says the
+// coupon will produce, never a hardcoded one.
+export const OfferSchema = z.object({
+  eligible: z.boolean().catch(false),
+  // eligible | used | already_subscribed | not_configured
+  reason: z.string().catch("not_configured"),
+  tier: z.string().catch("pro"),
+  interval: z.string().catch("month"),
+  currency: z.string().catch("GBP"),
+  first_month_amount: z.number().nullable().catch(null),
+  first_month_amount_minor: z.number().nullable().catch(null),
+  regular_amount: z.number().nullable().catch(null),
+  regular_amount_minor: z.number().nullable().catch(null),
+  source: z.string().catch("config"),
+  verified: z.boolean().catch(false),
+});
+export type Offer = z.infer<typeof OfferSchema>;
+
+/** What Stripe says was actually charged — the success page prints this. */
+export const CheckoutSessionSchema = z.object({
+  status: z.string().catch("open"),
+  paid: z.boolean().catch(false),
+  tier: z.string().catch("pro"),
+  interval: z.string().nullable().catch(null),
+  currency: z.string().catch("GBP"),
+  amount_charged: z.number().nullable().catch(null),
+  amount_charged_minor: z.number().nullable().catch(null),
+  amount_discount: z.number().nullable().catch(null),
+  amount_discount_minor: z.number().nullable().catch(null),
+  first_month_offer: z.boolean().catch(false),
+  next_payment_amount: z.number().nullable().catch(null),
+  next_payment_amount_minor: z.number().nullable().catch(null),
+  next_payment_date: z.string().nullable().catch(null),
+  email: z.string().nullable().catch(null),
+});
+export type CheckoutSession = z.infer<typeof CheckoutSessionSchema>;
 
 // ── Subscription lifecycle (cancel / resume / change-plan) ──────────
 export const SubscriptionChangeSchema = z.object({

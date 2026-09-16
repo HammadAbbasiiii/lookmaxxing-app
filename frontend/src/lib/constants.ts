@@ -85,7 +85,10 @@ export const PLAN_ORDER = ["elite", "pro", "free"] as const;
 export const ANNUAL_DISCOUNT_PCT = 58;
 
 // "£1 first month" offer — Pro monthly only, one-time. The backend flags
-// User.has_used_first_month_offer to prevent repeat use.
+// User.has_used_first_month_offer to prevent repeat use, and `GET /payments/offer`
+// is the single source of truth for the price shown in the UI (it reads the live
+// Stripe price + coupon). This constant is only the documented launch default,
+// used in copy that isn't price-bearing (e.g. marketing docs/tests).
 export const FIRST_MONTH_PRICE = 1;
 
 // 7-day free trial on Elite (Stripe collects the card up front).

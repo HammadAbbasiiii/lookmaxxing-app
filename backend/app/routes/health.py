@@ -35,6 +35,22 @@ def _get_memory_usage() -> dict | None:
         return None
 
 
+def _get_mediapipe_status() -> dict | None:
+    """Whether the face-landmark pipeline can actually measure a face (DEF-014).
+
+    Reported from module import state, so this stays cheap — no graph is built.
+    A silent "unavailable" used to be indistinguishable from a healthy worker,
+    which is how a symmetry score of 0 reached production unnoticed.
+    """
+    try:
+        from app.services.face_service import mediapipe_status
+
+        return mediapipe_status()
+    except Exception as exc:  # never let diagnostics break the health check
+        logger.warning(f"MediaPipe status unavailable: {exc}")
+        return None
+
+
 @router.get("/health")
 async def health_check():
     """Health check — used by Render to verify service liveness.
@@ -49,6 +65,7 @@ async def health_check():
         "service": "lookmaxx-api",
         "redis": _get_redis_status(),
         "memory": _get_memory_usage(),
+        "mediapipe": _get_mediapipe_status(),
     }
 
 

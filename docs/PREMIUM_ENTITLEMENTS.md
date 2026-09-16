@@ -101,7 +101,9 @@ hand-write a plan name again.
 | GET | `/analysis/{photo_id}/harmony` | Elite | golden-ratio harmony map + weekly blueprint + share card |
 | GET | `/glow/full-reveal` | Elite | Day-90 zero-blur reveal |
 | GET | `/glowups/movie`, POST `/glowups/movie/generate` | Elite | transformation movie |
-| POST | `/payments/checkout` | ✅ | Stripe Checkout session → `{checkout_url}` |
+| POST | `/payments/checkout` | ✅ | Stripe Checkout session → `{checkout_url}`; `first_month_offer: true` applies the £1 coupon for eligible Pro-monthly buyers |
+| GET | `/payments/offer` | ✅ | server-authoritative offer state → `{eligible, reason, first_month_amount, regular_amount, source, verified}` (reads the live Stripe price/coupon; **the upgrade page must render these numbers, not its own constants**) |
+| GET | `/payments/checkout/{session_id}` | ✅ | receipt for a checkout session → actual `amount_charged`, `amount_discount`, `next_payment_amount`, `next_payment_date` (the `/upgrade/success` page). Ownership-checked; 404 for someone else's session |
 | POST | `/payments/webhook` | ❌ (signed) | Stripe webhook → grants subscription + audit row |
 
 Removed: `POST /payments/test-upgrade` no longer exists (404); dev tier changes go
@@ -148,7 +150,7 @@ height 100–250, weight 30–300).
 
 - `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`
 - `STRIPE_PRICE_PRO_MONTHLY/ANNUAL`, `STRIPE_PRICE_ELITE_MONTHLY/ANNUAL`
-- `STRIPE_FIRST_MONTH_COUPON_ID` (Stripe coupon, `duration=once`, `amount_off=899` USD) — powers the $1 first month
+- `STRIPE_FIRST_MONTH_COUPON_ID` (Stripe coupon, `duration=once`, `amount_off=899` **GBP pence** → first invoice £1.00 on the £9.99 Pro monthly price) — powers the £1 first month. Verified live on the test account: `FIRST_MONTH_1`, `amount_off: 899`, `currency: gbp`, `times_redeemed: 14`; the frontend price comes from `GET /payments/offer` so copy can't drift from Stripe.
 - `STRIPE_ELITE_TRIAL_DAYS=7` — Elite free trial length
 - `ALLOW_TEST_PAYMENTS=1`, `ENVIRONMENT=production`
 - `FREE_ANALYSIS_LIMIT=1`, `FRONTEND_URL=http://localhost:3000`

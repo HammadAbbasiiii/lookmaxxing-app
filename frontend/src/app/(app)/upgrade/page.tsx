@@ -2,23 +2,17 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, Crown, Gift, ShieldCheck, Zap } from "lucide-react";
 import { toast } from "sonner";
 import { useMe } from "@/hooks/useMe";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
-import {
-  ANNUAL_DISCOUNT_PCT,
-  ELITE_TRIAL_DAYS,
-  FIRST_MONTH_PRICE,
-  PLAN_ORDER,
-  PLANS,
-} from "@/lib/constants";
+import { ANNUAL_DISCOUNT_PCT, ELITE_TRIAL_DAYS, PLAN_ORDER, PLANS } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { track } from "@/lib/api/analytics";
-import { changePlan, createCheckout } from "@/lib/api/endpoints";
+import { changePlan, createCheckout, getOffer } from "@/lib/api/endpoints";
 import { ApiError } from "@/lib/api/client";
 import { normalizeTier, tierLabel } from "@/lib/tiers";
 
@@ -30,11 +24,21 @@ export default function UpgradePage() {
   const { data: user } = useMe();
   const tier = user?.subscription_tier ?? "free";
 
-  // The iOS "AppState" flag maps here: /auth/me carries the server-authoritative
-  // has_used_first_month_offer, which prevents the £1 first month being reused
-  // (loss aversion — a user who's already "invested" is more likely to stay).
-  const firstMonthEligible =
-    tier === "free" && user?.has_used_first_month_offer === false;
+  // DEF-015: the £1 first month is server-authoritative. `/payments/offer` reads
+  // the live Stripe price + coupon, so the page can never advertise a discount
+  // the checkout wouldn't honour (that mismatch — £1 charged, £9.99 shown — is
+  // the trust bug this replaced). If the call fails we simply show list pricing.
+  const offer = useQuery({
+    queryKey: ["offer"],
+    queryFn: getOffer,
+    enabled: tier === "free",
+    staleTime: 60_000,
+  });
+  const offerData = offer.data;
+  const offerEligible = offerData?.eligible === true;
+  const offerUsed = offerData?.reason === "used";
+  const firstMonthAmount = offerData?.first_month_amount ?? null;
+  const regularAmount = offerData?.regular_amount ?? PLANS.pro.monthly;
 
   function gbp(amount: number): string {
     return `£${amount.toFixed(2)}`;
@@ -44,34 +48,23 @@ export default function UpgradePage() {
     return `You're on the ${name} waitlist — we'll email ${email || "you"} when it launches.`;
   }
 
-  async function startFirstMonth() {
-    track("upgrade_click", { metadata: { tier: "pro", plan: "Pro", first_month_offer: true } });
-    setBusy("first-month");
-    try {
-      const res = await createCheckout("pro", false, true);
-      if (res.checkout_url) {
-        window.location.href = res.checkout_url;
-      } else {
-        toast.info(waitlistMessage("Pro", user?.email));
-      }
-    } catch (e) {
-      if (e instanceof ApiError && e.status === 503) {
-        toast.info(waitlistMessage("Pro", user?.email));
-      } else {
-        toast.error(e instanceof ApiError ? e.message : "Couldn't start checkout. Try again.");
-      }
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  async function handleSelect(planKey: keyof typeof PLANS) {
+  async function handleSelect(
+    planKey: keyof typeof PLANS,
+    opts: { firstMonthOffer?: boolean } = {},
+  ) {
     const plan = PLANS[planKey];
     if (plan.tier === "free") {
       router.push("/dashboard");
       return;
     }
-    track("upgrade_click", { metadata: { tier: plan.tier, plan: plan.name } });
+    const firstMonthOffer = Boolean(opts.firstMonthOffer);
+    track("upgrade_click", {
+      metadata: {
+        tier: plan.tier,
+        plan: plan.name,
+        ...(firstMonthOffer ? { first_month_offer: true } : {}),
+      },
+    });
     if (tier === plan.tier) {
       toast.info(`You're already on ${plan.name}.`);
       return;
@@ -92,7 +85,7 @@ export default function UpgradePage() {
         return;
       }
 
-      const res = await createCheckout(plan.tier as "pro" | "elite", annual);
+      const res = await createCheckout(plan.tier as "pro" | "elite", annual, firstMonthOffer);
       if (res.checkout_url) {
         window.location.href = res.checkout_url;
       } else {
@@ -121,33 +114,9 @@ export default function UpgradePage() {
         }
       />
 
-      {/* £1 first-month offer (low barrier + loss aversion: already "invested") */}
-      {firstMonthEligible ? (
-        <div className="mb-6 rounded-card border border-gold/40 bg-gold/10 p-5">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-start gap-3">
-              <Gift className="mt-0.5 h-5 w-5 shrink-0 text-gold" aria-hidden />
-              <div>
-                <p className="font-display text-lg font-bold text-ink">
-                  Get started for £{FIRST_MONTH_PRICE}
-                </p>
-                <p className="mt-1 text-sm text-muted">
-                  Your first month is just £{FIRST_MONTH_PRICE}, then £9.99/month. Cancel anytime.
-                </p>
-              </div>
-            </div>
-            <Button
-              onClick={startFirstMonth}
-              variant="primary"
-              loading={busy === "first-month"}
-              disabled={busy !== null}
-              className="shrink-0"
-            >
-              Start for £{FIRST_MONTH_PRICE}
-            </Button>
-          </div>
-        </div>
-      ) : null}
+      {/* DEF-015: the £1 offer lives *inside* the Pro card (below), not in a
+          banner above it. A banner next to a card headlining £9.99/mo is exactly
+          how "the UI showed £9.99 while Stripe charged £1" happened. */}
 
       {/* Annual / monthly toggle (anchor) */}
       <div className="mb-6 flex justify-center">
@@ -180,6 +149,11 @@ export default function UpgradePage() {
           const isCurrent = tier === plan.tier;
           const isExistingSubscriber = tier !== "free";
           const trial = isElite && ELITE_TRIAL_DAYS > 0;
+          // The £1 first month applies to Pro monthly only (the coupon is
+          // `duration=once`), and only while the server says this account is
+          // eligible — the headline price on the card is then £1, never £9.99.
+          const proFirstMonthOffer =
+            isPro && offerEligible && !annual && firstMonthAmount != null;
 
           return (
             <div
@@ -228,16 +202,55 @@ export default function UpgradePage() {
                     </>
                   ) : (
                     <>
-                      {/* Monthly: straight monthly price, no annual savings line. */}
-                      <p className="flex items-baseline gap-1">
-                        <span className="tabular font-display text-4xl font-bold text-ink">
-                          {gbp(plan.monthly)}
-                        </span>
-                        <span className="text-sm text-muted">/mo</span>
-                      </p>
-                      <p className="mt-1 text-xs text-muted">billed monthly</p>
+                      {/* Monthly. With the £1 first-month offer live, that is the
+                          headline and the regular price becomes the struck-through
+                          anchor — so the number on the card is the number charged. */}
+                      {proFirstMonthOffer ? (
+                        <>
+                          <p className="flex items-baseline gap-2">
+                            <span className="tabular font-display text-4xl font-bold text-ink">
+                              {gbp(firstMonthAmount)}
+                            </span>
+                            <span className="text-sm text-muted">first month</span>
+                            <s className="tabular text-sm text-muted">{gbp(regularAmount)}</s>
+                          </p>
+                          <p className="mt-1 flex items-center gap-1 text-xs font-medium text-gold">
+                            <Gift className="h-3.5 w-3.5" aria-hidden />
+                            Then {gbp(regularAmount)}/month from month 2 · cancel anytime
+                          </p>
+                        </>
+                      ) : (
+                        <>
+                          <p className="flex items-baseline gap-1">
+                            <span className="tabular font-display text-4xl font-bold text-ink">
+                              {gbp(plan.monthly)}
+                            </span>
+                            <span className="text-sm text-muted">/mo</span>
+                          </p>
+                          <p className="mt-1 text-xs text-muted">billed monthly</p>
+                        </>
+                      )}
                     </>
                   )}
+
+                  {/* Both notes sit outside the annual/monthly split: the offer
+                      must be visible in the default (annual) view too, otherwise
+                      an eligible user never learns the £1 month exists. */}
+                  {isPro && offerEligible && annual && firstMonthAmount != null ? (
+                    <button
+                      type="button"
+                      onClick={() => setAnnual(false)}
+                      className="mt-1 flex items-center gap-1 text-left text-xs font-medium text-gold underline underline-offset-2"
+                    >
+                      <Gift className="h-3.5 w-3.5" aria-hidden />
+                      Prefer {gbp(firstMonthAmount)} for your first month? Switch to monthly
+                    </button>
+                  ) : null}
+                  {isPro && offerUsed ? (
+                    <p className="mt-1 text-xs text-muted">
+                      Your £1 first month has already been used.
+                    </p>
+                  ) : null}
 
                   {trial ? (
                     <p className="mt-1 flex items-center gap-1 text-xs font-medium text-gold">
@@ -266,7 +279,9 @@ export default function UpgradePage() {
               </ul>
 
               <Button
-                onClick={() => handleSelect(key)}
+                onClick={() =>
+                  handleSelect(key, { firstMonthOffer: proFirstMonthOffer })
+                }
                 variant={isPro ? "primary" : "secondary"}
                 fullWidth
                 className="mt-6"
@@ -277,11 +292,13 @@ export default function UpgradePage() {
                   ? "Current plan"
                   : isFree
                     ? "Start free"
-                    : isExistingSubscriber
-                      ? `Switch to ${plan.name}`
-                      : trial && !annual
-                        ? `Start ${ELITE_TRIAL_DAYS}-day free trial`
-                        : `Start ${plan.name}`}
+                    : proFirstMonthOffer
+                      ? `Start for ${gbp(firstMonthAmount)}`
+                      : isExistingSubscriber
+                        ? `Switch to ${plan.name}`
+                        : trial && !annual
+                          ? `Start ${ELITE_TRIAL_DAYS}-day free trial`
+                          : `Start ${plan.name}`}
               </Button>
             </div>
           );

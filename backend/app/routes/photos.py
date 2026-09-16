@@ -17,7 +17,9 @@ from app.services.face_service import (
     calculate_jawline_score,
     calculate_eye_score,
     generate_overall_score,
-    get_face_shape
+    get_face_shape,
+    landmark_measurement,
+    unavailable_reason,
 )
 from app.services.face_analysis_service import get_category_breakdown
 from app.services.ai_service import analyze_face_with_deepseek, generate_fallback_analysis
@@ -384,7 +386,8 @@ async def analyze_photo(
     Run face analysis and return results FAST (<2s typical).
 
     Strategy:
-      1. Face detection + scoring (MediaPipe / mock) — always runs inline
+      1. Face detection + scoring — runs inline, and only on *real* MediaPipe
+         landmarks. Synthetic/degraded detection fails closed (422, no scores).
       2. Template-based AI analysis and 90-day plan — generated in <1ms
       3. Response returned immediately to user
       4. DeepSeek enrichment runs in the BACKGROUND after the response is sent
@@ -415,12 +418,32 @@ async def analyze_photo(
             detail=f"Failed to download image: {str(e)}"
         )
 
-    # Step 1: Detect face landmarks
+    # Step 1: Detect face landmarks.
+    #   Fail closed (DEF-014): `landmark_measurement` is "unavailable" when
+    #   MediaPipe is missing/OOM, or when the detector returned synthetic
+    #   geometry. Scoring synthetic landmarks is exactly how production stored
+    #   `symmetry_score = 0` while jawline/eyes looked plausible, so we record
+    #   the failure and write **no** scores at all.
     face_result = detect_face_landmarks(image_bytes)
-    if not face_result.get("success"):
+    measurement = landmark_measurement(face_result)
+    if measurement != "measured":
+        reason = unavailable_reason(face_result)
+        message = (
+            "We couldn't measure your facial features, so no scores were saved. "
+            "Please try again in a few minutes."
+        )
+        photo.analysis_status = "failed"
+        photo.analysis_details = {
+            "valid": True,
+            "error": reason,
+            "validation_error": message,
+            "landmark_measurement": "unavailable",
+        }
+        db.commit()
+        logger.warning(f"❌ Analysis {photo_id} not measured — {reason}")
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"Face detection failed: {face_result.get('error', 'No face found')}"
+            detail=message,
         )
 
     landmarks = face_result["landmarks"]
@@ -487,6 +510,9 @@ async def analyze_photo(
         "potential_score": compute_potential_score(overall_score),
         "raw_score": None,
         "model_used": False,
+        # Provenance: these numbers came from real MediaPipe landmarks. The
+        # results UI only prints a score when this says "measured" (DEF-014).
+        "landmark_measurement": "measured",
         "improvement_potential": analysis_data.get("improvement_potential", "Up to +8 points in 90 days"),
     }
 

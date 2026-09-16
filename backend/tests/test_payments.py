@@ -10,6 +10,7 @@ Covers the pieces of the Stripe flow that run locally without a Stripe account:
 """
 
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 
 from app.config import settings
 from app.dependencies import get_password_hash, is_premium
@@ -591,3 +592,193 @@ class TestExpiryEnforcement:
         u = _make_user(db_session, tier="free")
         assert get_tier(u) == "free"
         assert is_premium(u) is False
+
+
+# ── DEF-015: the £1 first-month offer must be server-authoritative ──────────
+# The upgrade page advertises the price the *checkout* will honour, and the
+# success page prints what Stripe actually charged. Both endpoints are covered
+# here with Stripe stubbed out, so the numbers can't drift from the copy.
+
+
+def _auth_headers(user):
+    from app.dependencies import create_access_token
+
+    return {"Authorization": f"Bearer {create_access_token(data={'sub': user.id})}"}
+
+
+class TestFirstMonthOfferEndpoint:
+    def _patch_stripe(self, monkeypatch, regular_minor=999, discount_minor=899):
+        import stripe
+
+        monkeypatch.setattr(settings, "STRIPE_SECRET_KEY", "sk_test")
+        monkeypatch.setattr(settings, "STRIPE_FIRST_MONTH_COUPON_ID", "FIRST_MONTH_1")
+        monkeypatch.setattr(
+            stripe.Price,
+            "retrieve",
+            lambda *a, **k: {"unit_amount": regular_minor, "currency": "gbp"},
+        )
+        monkeypatch.setattr(
+            stripe.Coupon,
+            "retrieve",
+            lambda *a, **k: {"amount_off": discount_minor, "currency": "gbp", "duration": "once"},
+        )
+
+    def test_eligible_free_user_is_offered_the_coupon_price(self, client, db_session, monkeypatch):
+        u = _make_user(db_session, email="offer-free@example.com", tier="free")
+        self._patch_stripe(monkeypatch)
+
+        body = client.get("/api/v1/payments/offer", headers=_auth_headers(u)).json()
+
+        assert body["eligible"] is True
+        assert body["reason"] == "eligible"
+        assert body["regular_amount"] == 9.99
+        assert body["first_month_amount"] == 1.0
+        assert body["source"] == "stripe"
+        assert body["verified"] is True
+
+    def test_used_offer_is_not_offered_again(self, client, db_session, monkeypatch):
+        u = _make_user(db_session, email="offer-used@example.com", tier="free")
+        u.has_used_first_month_offer = True
+        db_session.commit()
+        self._patch_stripe(monkeypatch)
+
+        body = client.get("/api/v1/payments/offer", headers=_auth_headers(u)).json()
+
+        assert body["eligible"] is False
+        assert body["reason"] == "used"
+
+    def test_subscriber_is_not_offered_the_first_month_deal(self, client, db_session, monkeypatch):
+        u = _make_user(db_session, email="offer-sub@example.com", tier="pro")
+        self._patch_stripe(monkeypatch)
+
+        body = client.get("/api/v1/payments/offer", headers=_auth_headers(u)).json()
+
+        assert body["eligible"] is False
+        assert body["reason"] == "already_subscribed"
+
+    def test_unconfigured_coupon_is_reported_as_such(self, client, db_session, monkeypatch):
+        u = _make_user(db_session, email="offer-unconf@example.com", tier="free")
+        self._patch_stripe(monkeypatch)
+        monkeypatch.setattr(settings, "STRIPE_FIRST_MONTH_COUPON_ID", "")
+
+        body = client.get("/api/v1/payments/offer", headers=_auth_headers(u)).json()
+
+        assert body["eligible"] is False
+        assert body["reason"] == "not_configured"
+
+    def test_stripe_outage_falls_back_to_config_prices(self, client, db_session, monkeypatch):
+        u = _make_user(db_session, email="offer-outage@example.com", tier="free")
+        self._patch_stripe(monkeypatch)
+        import stripe
+
+        def _boom(*a, **k):
+            raise RuntimeError("stripe unreachable")
+
+        monkeypatch.setattr(stripe.Price, "retrieve", _boom)
+
+        res = client.get("/api/v1/payments/offer", headers=_auth_headers(u))
+
+        assert res.status_code == 200
+        body = res.json()
+        assert body["eligible"] is True
+        assert body["source"] == "config"
+        assert body["verified"] is False
+        assert body["first_month_amount"] == 1.0
+
+
+class TestCheckoutReceiptEndpoint:
+    """Stripe stubs are attribute-only objects.
+
+    A real `StripeObject` is *not* a dict — `obj.get(...)` raises
+    "…'get' is a dict method, but a StripeObject is not a dict". Passing plain
+    dicts here hid exactly that crash in `GET /payments/checkout/{id}` (found by
+    the live test-mode run), so the stubs below deliberately expose only
+    attributes and item access.
+    """
+
+    def _session(self, user_id, *, amount_total=100, discount=899, first_month="true"):
+        def ns(**kwargs):
+            return SimpleNamespace(**kwargs)
+
+        return ns(
+            status="complete",
+            payment_status="paid",
+            currency="gbp",
+            amount_total=amount_total,
+            total_details=ns(amount_discount=discount),
+            metadata=ns(user_id=user_id, tier="pro", first_month_offer=first_month),
+            subscription=ns(
+                items=ns(
+                    data=[
+                        ns(price=ns(unit_amount=999, recurring=ns(interval="month")))
+                    ]
+                ),
+                current_period_end=1_800_000_000,
+            ),
+            customer_details=ns(email="buyer@example.com"),
+        )
+
+    def test_returns_the_actual_charge_and_next_payment(self, client, db_session, monkeypatch):
+        u = _make_user(db_session, email="receipt@example.com", tier="pro")
+        monkeypatch.setattr(settings, "STRIPE_SECRET_KEY", "sk_test")
+        import stripe
+
+        monkeypatch.setattr(
+            stripe.checkout.Session, "retrieve", lambda *a, **k: self._session(u.id)
+        )
+
+        res = client.get("/api/v1/payments/checkout/cs_test_1", headers=_auth_headers(u))
+
+        assert res.status_code == 200, res.text
+        body = res.json()
+        assert body["paid"] is True
+        assert body["amount_charged"] == 1.0
+        assert body["amount_discount"] == 8.99
+        assert body["first_month_offer"] is True
+        assert body["next_payment_amount"] == 9.99
+        assert body["next_payment_date"] is not None
+        assert body["interval"] == "month"
+        assert body["email"] == "buyer@example.com"
+
+    def test_full_price_session_reports_the_full_charge(self, client, db_session, monkeypatch):
+        """No coupon → the receipt must show £9.99, not the offer price."""
+        u = _make_user(db_session, email="receipt-full@example.com", tier="pro")
+        monkeypatch.setattr(settings, "STRIPE_SECRET_KEY", "sk_test")
+        import stripe
+
+        session = self._session(u.id, amount_total=999, discount=0, first_month="false")
+        monkeypatch.setattr(stripe.checkout.Session, "retrieve", lambda *a, **k: session)
+
+        body = client.get("/api/v1/payments/checkout/cs_test_full", headers=_auth_headers(u)).json()
+
+        assert body["amount_charged"] == 9.99
+        assert body["first_month_offer"] is False
+        assert body["next_payment_amount"] == 9.99
+
+    def test_another_users_session_is_not_readable(self, client, db_session, monkeypatch):
+        owner = _make_user(db_session, email="receipt-owner@example.com", tier="pro")
+        other = _make_user(db_session, email="receipt-other@example.com", tier="pro")
+        monkeypatch.setattr(settings, "STRIPE_SECRET_KEY", "sk_test")
+        import stripe
+
+        monkeypatch.setattr(
+            stripe.checkout.Session, "retrieve", lambda *a, **k: self._session(owner.id)
+        )
+
+        res = client.get("/api/v1/payments/checkout/cs_test_2", headers=_auth_headers(other))
+
+        assert res.status_code == 404
+
+    def test_unknown_session_is_a_404(self, client, db_session, monkeypatch):
+        u = _make_user(db_session, email="receipt-missing@example.com", tier="pro")
+        monkeypatch.setattr(settings, "STRIPE_SECRET_KEY", "sk_test")
+        import stripe
+
+        def _boom(*a, **k):
+            raise RuntimeError("no such session")
+
+        monkeypatch.setattr(stripe.checkout.Session, "retrieve", _boom)
+
+        res = client.get("/api/v1/payments/checkout/cs_missing", headers=_auth_headers(u))
+
+        assert res.status_code == 404

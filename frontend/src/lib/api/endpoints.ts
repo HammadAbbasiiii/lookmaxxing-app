@@ -79,6 +79,10 @@ import {
   type GlowupMovie,
   SubscriptionChangeSchema,
   type SubscriptionChange,
+  OfferSchema,
+  type Offer,
+  CheckoutSessionSchema,
+  type CheckoutSession,
 } from "@/lib/zod";
 
 // ── Auth ────────────────────────────────────────────────────────────
@@ -190,6 +194,7 @@ export async function getAnalysis(photoId: string): Promise<Analysis> {
     face_shape: null,
     is_baseline: false,
     analyzed_at: null,
+    measurement: { landmarks: "unknown", measured: false, reason: null, not_measured: [] },
   });
 }
 
@@ -506,6 +511,47 @@ export async function createCheckout(
     body: { tier, annual, first_month_offer: firstMonthOffer },
   });
   return decode(CheckoutSchema, data, { checkout_url: null });
+}
+
+/** Server-authoritative £1 first-month offer state (DEF-015). */
+export async function getOffer(): Promise<Offer> {
+  const data = await apiFetch<unknown>("/payments/offer");
+  return decode(OfferSchema, data, {
+    eligible: false,
+    reason: "not_configured",
+    tier: "pro",
+    interval: "month",
+    currency: "GBP",
+    first_month_amount: null,
+    first_month_amount_minor: null,
+    regular_amount: null,
+    regular_amount_minor: null,
+    source: "config",
+    verified: false,
+  });
+}
+
+/** What Stripe charged for a checkout session (success page). */
+export async function getCheckoutSession(sessionId: string): Promise<CheckoutSession> {
+  const data = await apiFetch<unknown>(
+    `/payments/checkout/${encodeURIComponent(sessionId)}`,
+  );
+  return decode(CheckoutSessionSchema, data, {
+    status: "open",
+    paid: false,
+    tier: "pro",
+    interval: null,
+    currency: "GBP",
+    amount_charged: null,
+    amount_charged_minor: null,
+    amount_discount: null,
+    amount_discount_minor: null,
+    first_month_offer: false,
+    next_payment_amount: null,
+    next_payment_amount_minor: null,
+    next_payment_date: null,
+    email: null,
+  });
 }
 
 const BILLING_UNAVAILABLE =

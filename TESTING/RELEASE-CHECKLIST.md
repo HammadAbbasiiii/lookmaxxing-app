@@ -68,10 +68,12 @@ Save → wait for the redeploy → then open the site. Symptom of skipping this:
 
 ### 4. Production smoke test (~15 min, on the deployed URL)
 - [ ] Site loads with no console errors and no CORS errors.
+- [ ] `GET /api/v1/health` reports `"mediapipe": {"available": true, "model_path_exists": true}` — if `available` is `false`, analyses will honestly report "not measured" instead of scoring anything (DEF-014), so this must be `true` before launch.
 - [ ] Sign up with a real email → onboarding reports **"Step 1 of 3"** → upload a photo → a score appears (proves Cloudinary + ML/DeepSeek on prod).
 - [ ] Free user: bottom nav shows 5 tabs (Home · Plan · Coach · Glow · Explore); `/glow-up` shows exactly **one** paywall card; Explore's Glow-Ups card opens `/glowups` and its back link returns to Explore.
 - [ ] A second upload as a free user shows the "You've used your free analysis" gate (paywall after value, never before).
-- [ ] Buy Pro with a real card (live mode has no test cards — use a real card and refund it in Stripe immediately), confirm the redirect lands on `/dashboard?upgraded=1` and the tier flips to Pro.
+- [ ] Buy Pro with a real card (live mode has no test cards — use a real card and refund it in Stripe immediately), confirm the redirect lands on `/upgrade/success?session_id=…` and that the receipt shows the **actual** charged amount (the first month is £1.00 with the coupon, then £9.99/month) and the tier flips to Pro.
+- [ ] Confirm the first-month price shown **before** paying matches the receipt: `/upgrade` (Monthly) must headline the same amount `GET /payments/offer` returns, and the CTA must read "Start for £1.00" (DEF-015).
 - [ ] Stripe → Webhooks → the endpoint shows `200`s for the 6 events, no 4xx/5xx.
 - [ ] Cancel from Settings → billing → stays Pro until period end, then drops to free (`customer.subscription.updated` / `deleted` paths).
 - [ ] "Forgot password" → the email actually arrives (requires `EMAIL_PROVIDER=smtp`).

@@ -18,6 +18,8 @@ from app.services.face_service import (
     calculate_eye_score,
     generate_overall_score,
     get_face_shape,
+    landmark_measurement,
+    unavailable_reason,
 )
 from app.services.face_analysis_service import get_category_breakdown
 from app.services.ai_service import generate_fallback_analysis
@@ -91,21 +93,23 @@ def run_analysis_background(photo_id: str, user_id: str, image_bytes: bytes, gen
         plan_data = {}
 
         landmarks = None
+        landmark_note = None
         try:
             face_result = detect_face_landmarks(image_bytes)
-            # `mock: True` means MediaPipe's graph could not be created at runtime
-            # (e.g. the memory guard on a small instance). Mock ellipse landmarks
-            # are identical for every image and produce meaningless category
-            # scores, so treat them as "no landmarks" and fall through to the
-            # honest heuristic breakdown below.
-            if face_result.get("success") and not face_result.get("mock"):
+            # A result that isn't a real measurement (MediaPipe missing/OOM, or
+            # synthetic geometry) must never be scored: the old pseudo-landmarks
+            # produced a symmetry score of exactly 0 (DEF-014). Fall through to
+            # the honest, explicitly-labelled heuristic breakdown below.
+            if landmark_measurement(face_result) == "measured":
                 landmarks = face_result.get("landmarks") or []
             else:
+                landmark_note = unavailable_reason(face_result)
                 logger.warning(
-                    f"Face landmark detection failed for {photo_id}: "
-                    f"{face_result.get('error') or 'mock landmarks (MediaPipe unavailable)'} — using heuristic category breakdown"
+                    f"Face landmark detection failed for {photo_id}: {landmark_note} "
+                    "— using heuristic category breakdown"
                 )
         except Exception as exc:
+            landmark_note = str(exc)
             logger.warning(f"Background face detection failed for {photo_id}: {exc}")
 
         if landmarks and len(landmarks) >= 100:
@@ -198,6 +202,28 @@ def run_analysis_background(photo_id: str, user_id: str, image_bytes: bytes, gen
             return obj
 
         # ── 5. Update photo record ───────────────────────────────
+        # An analysis with no score at all is NOT "completed": it is a failure the
+        # user must be told about, and it must not leave a plan behind (the old
+        # behaviour completed the row with score=NULL and generated a plan from a
+        # made-up 50, which reads on the client as a broken/empty report).
+        if holistic is None:
+            photo.analysis_status = "failed"
+            photo.analysis_details = _json_safe({
+                "valid": True,
+                "error": landmark_note or "No scoring model produced a result",
+                "validation_error": (
+                    "We couldn't measure your facial features, so no scores were saved. "
+                    "Please try again in a few minutes."
+                ),
+                "landmark_measurement": "unavailable",
+                "landmark_note": landmark_note,
+            })
+            db_bg.commit()
+            logger.warning(
+                f"❌ Background analysis could not measure photo {photo_id}: {landmark_note}"
+            )
+            return
+
         if holistic is not None:
             photo.score = _py(holistic)
         photo.symmetry_score = _py(symmetry_score)
@@ -214,6 +240,11 @@ def run_analysis_background(photo_id: str, user_id: str, image_bytes: bytes, gen
             "potential_score": compute_potential_score(holistic) if holistic is not None else None,
             "raw_score": raw_score,
             "model_used": model_used,
+            # Provenance for the results UI: "measured" means the scores came from
+            # real landmarks; "unavailable" means they are an explicitly-labelled
+            # heuristic estimate and must not be shown as measurements (DEF-014).
+            "landmark_measurement": "measured" if landmarks else "unavailable",
+            "landmark_note": landmark_note,
             "improvement_potential": analysis_data.get("improvement_potential", "Up to +8 points in 90 days"),
         })
         photo.analysis_status = "completed"

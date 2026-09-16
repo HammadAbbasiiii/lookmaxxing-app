@@ -19,6 +19,21 @@ client = OpenAI(
 )
 
 
+def _copy_score(value, default: float = 70.0) -> float:
+    """A number to *describe*, for template copy and AI prompts only.
+
+    Scores can be legitimately absent (analysis_details.landmark_measurement ==
+    "unavailable" → the stored value is NULL, never a fabricated 0). Those must
+    not be rendered as a measurement anywhere — but the copy/prompt generators
+    still need a number to branch on, and `None >= 75` raises TypeError. So we
+    substitute a neutral default **for wording only**; the API/UI never receives
+    it as a score.
+    """
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return float(value)
+    return default
+
+
 def analyze_face_with_deepseek(score_data: dict, image_url: str) -> dict:
     """
     Send face analysis to DeepSeek for detailed breakdown.
@@ -30,12 +45,12 @@ def analyze_face_with_deepseek(score_data: dict, image_url: str) -> dict:
     You are an expert facial aesthetics and grooming consultant.
     
     I have analyzed a user's face and gathered the following data:
-    - Overall attractiveness score: {score_data.get('overall_score', 70)}/100
-    - Symmetry score: {score_data.get('symmetry_score', 70)}/100
-    - Skin quality score: {score_data.get('skin_score', 70)}/100
-    - Jawline definition score: {score_data.get('jawline_score', 70)}/100
-    - Eye symmetry score: {score_data.get('eye_score', 70)}/100
-    - Face shape: {score_data.get('face_shape', 'Oval')}
+    - Overall attractiveness score: {_copy_score(score_data.get('overall_score'))}/100
+    - Symmetry score: {_copy_score(score_data.get('symmetry_score'))}/100
+    - Skin quality score: {_copy_score(score_data.get('skin_score'))}/100
+    - Jawline definition score: {_copy_score(score_data.get('jawline_score'))}/100
+    - Eye symmetry score: {_copy_score(score_data.get('eye_score'))}/100
+    - Face shape: {score_data.get('face_shape') or 'Oval'}
     
     Based on this data, provide:
     
@@ -99,12 +114,12 @@ def generate_fallback_analysis(score_data: dict) -> dict:
     Generate template-based analysis without calling DeepSeek.
     Returns immediately (<1ms) with sensible defaults based on scores.
     """
-    overall = score_data.get("overall_score", 70)
-    symmetry = score_data.get("symmetry_score", 70)
-    skin = score_data.get("skin_score", 70)
-    jawline = score_data.get("jawline_score", 70)
-    eyes = score_data.get("eye_score", 70)
-    face_shape = score_data.get("face_shape", "Oval")
+    overall = _copy_score(score_data.get("overall_score"))
+    symmetry = _copy_score(score_data.get("symmetry_score"))
+    skin = _copy_score(score_data.get("skin_score"))
+    jawline = _copy_score(score_data.get("jawline_score"))
+    eyes = _copy_score(score_data.get("eye_score"))
+    face_shape = score_data.get("face_shape") or "Oval"
 
     # Score-based templates
     if overall >= 80:

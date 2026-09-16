@@ -51,25 +51,53 @@ async def get_analysis(
     # client always gets real per-feature scores (e.g. Peak You "levers").
     details = photo.analysis_details if isinstance(photo.analysis_details, dict) else {}
     breakdown = normalize_breakdown(details.get("category_breakdown"))
+    # Both analysis paths record whether the face was actually measured. When it
+    # wasn't, the breakdown holds *estimates* — borrowing them here would put a
+    # number where a measurement belongs (the "plausible mock" problem).
+    landmark_measurement = details.get("landmark_measurement")
+    estimates_usable = landmark_measurement != "unavailable"
+
+    def _usable(value) -> float | None:
+        """A score is only usable when it is a positive number.
+
+        0 is never a real measurement (a stored 0 is a pre-DEF-014 row scored
+        from synthetic landmarks), so it becomes None → the UI renders "—".
+        """
+        if isinstance(value, (int, float)) and not isinstance(value, bool) and value > 0:
+            return float(value)
+        return None
 
     def cat(column, *keys):
-        if isinstance(column, (int, float)) and not isinstance(column, bool):
-            return float(column)
+        value = _usable(column)
+        if value is not None:
+            return value
+        if not estimates_usable:
+            return None
         for key in keys:
-            value = breakdown.get(key)
+            value = _usable(breakdown.get(key))
             if value is not None:
-                return float(value)
+                return value
         return None
+
+    scores = {
+        "overall": _usable(photo.score),
+        "symmetry": cat(photo.symmetry_score, "facial_harmony", "symmetry"),
+        "skin": cat(photo.skin_score, "skin_quality", "skin"),
+        "jawline": cat(photo.jawline_score, "jawline_definition", "jawline"),
+        "eyes": cat(photo.eye_score, "eye_appeal", "eyes"),
+    }
 
     return {
         "photo_id": photo.id,
         "file_url": photo.file_url,
-        "scores": {
-            "overall": photo.score,
-            "symmetry": cat(photo.symmetry_score, "facial_harmony", "symmetry"),
-            "skin": cat(photo.skin_score, "skin_quality", "skin"),
-            "jawline": cat(photo.jawline_score, "jawline_definition", "jawline"),
-            "eyes": cat(photo.eye_score, "eye_appeal", "eyes")
+        "scores": scores,
+        # Provenance so the UI can say *why* a row reads "not measured" instead of
+        # silently showing a 0 (DEF-014).
+        "measurement": {
+            "landmarks": landmark_measurement or "unknown",
+            "measured": landmark_measurement == "measured",
+            "reason": details.get("landmark_note") or details.get("error"),
+            "not_measured": [k for k, v in scores.items() if k != "overall" and v is None],
         },
         "face_shape": photo.face_shape,
         "is_baseline": photo.is_baseline,

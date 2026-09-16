@@ -58,6 +58,40 @@ try:
 except Exception as _mig_fmo_e:
     print(f"⚠️ users.has_used_first_month_offer migration skipped: {_mig_fmo_e}")
 
+# ── Data repair: drop impossible legacy scores (DEF-014) ─────────────────────
+# Before the fail-closed fix in face_service/photos, an analysis that could not
+# load the MediaPipe model scored *synthetic ellipse* landmarks: symmetry clamped
+# to exactly 0 while jawline/eyes landed in plausible ranges, so the row looked
+# measured. 0 is not a valid symmetry score for any real face, so null it out —
+# the results API then reports "not measured" and the UI shows "—" instead of a
+# number that reads as broken. Idempotent: runs once, matches nothing afterwards.
+try:
+    from sqlalchemy import inspect as _inspect_bad, text as _text_bad
+    _insp_bad = _inspect(engine)
+    if _insp_bad.has_table("photos"):
+        _bad_cols = {c["name"] for c in _insp_bad.get_columns("photos")}
+        # symmetry: <= 1 is impossible (proven mock-ellipse signature).
+        # the others: only a literal 0 is impossible.
+        _bad_fixes = {
+            "symmetry_score": "symmetry_score <= 1",
+            "skin_score": "skin_score <= 0",
+            "jawline_score": "jawline_score <= 0",
+            "eye_score": "eye_score <= 0",
+        }
+        _repaired = 0
+        for _bad_col, _bad_cond in _bad_fixes.items():
+            if _bad_col not in _bad_cols:
+                continue
+            with engine.begin() as _conn_bad:
+                _res_bad = _conn_bad.execute(
+                    _text_bad(f"UPDATE photos SET {_bad_col} = NULL WHERE {_bad_cond}")
+                )
+                _repaired += _res_bad.rowcount or 0
+        if _repaired:
+            print(f"✅ Repaired {_repaired} impossible legacy score(s) → NULL (not measured)")
+except Exception as _mig_bad_e:
+    print(f"⚠️ legacy score repair skipped: {_mig_bad_e}")
+
 # ── Migrate: add subscription-management columns (Stripe sub id + cancel flag) ──
 try:
     from sqlalchemy import inspect as _inspect_sub, text as _text_sub
@@ -217,7 +251,11 @@ _model_found = any(os.path.exists(p) for p in _model_paths)
 if _model_found:
     print(f"✅ MediaPipe model file found at startup")
 else:
-    print("⚠️ MediaPipe model file MISSING at startup — predictions will use mock landmarks")
+    print(
+        "⚠️ MediaPipe model file MISSING at startup — face landmarks cannot be "
+        "measured, so analyses will report 'not measured' instead of scores "
+        "(check /api/v1/health → mediapipe)"
+    )
 
 # Attempt to load MediaPipe early so we can see errors in Render logs
 if _model_found:

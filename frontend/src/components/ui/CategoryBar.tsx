@@ -7,12 +7,27 @@ interface CategoryBarProps {
   label: string;
   value: number | null | undefined;
   delayMs?: number;
+  /** Tooltip shown when there is no score — explains *why* (DEF-014). */
+  unmeasuredHint?: string;
 }
 
-/** Animated per-category score bar (§6.4 — animate width on mount). */
-export function CategoryBar({ label, value, delayMs = 0 }: CategoryBarProps) {
+/**
+ * Animated per-category score bar (§6.4 — animate width on mount).
+ *
+ * A score of 0 is never rendered as a measurement: 0 is physically impossible
+ * for a real face (a pre-DEF-014 analysis scored synthetic landmarks and clamped
+ * to exactly 0), so anything ≤ 0 reads "—" with an explanation instead of a
+ * number that looks like a broken result.
+ */
+export function CategoryBar({
+  label,
+  value,
+  delayMs = 0,
+  unmeasuredHint = "Not enough landmark data to measure this.",
+}: CategoryBarProps) {
   const [mounted, setMounted] = useState(false);
-  const pct = clamp(value ?? 0, 0, 100);
+  const measured = typeof value === "number" && Number.isFinite(value) && value > 0;
+  const pct = measured ? clamp(value, 0, 100) : 0;
 
   useEffect(() => {
     const t = setTimeout(() => setMounted(true), delayMs);
@@ -23,7 +38,14 @@ export function CategoryBar({ label, value, delayMs = 0 }: CategoryBarProps) {
     <div>
       <div className="mb-1 flex items-center justify-between text-sm">
         <span className="text-muted">{label}</span>
-        <span className="tabular font-medium text-ink">{value === null || value === undefined ? "—" : Math.round(value)}</span>
+        {measured ? (
+          <span className="tabular font-medium text-ink">{Math.round(value)}</span>
+        ) : (
+          <span className="font-medium text-muted" title={unmeasuredHint}>
+            —
+            <span className="sr-only"> not measured. {unmeasuredHint}</span>
+          </span>
+        )}
       </div>
       <div className="h-2 w-full overflow-hidden rounded-full bg-surface-2">
         <div

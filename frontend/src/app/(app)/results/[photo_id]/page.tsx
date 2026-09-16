@@ -95,6 +95,7 @@ export default function ResultsPage() {
   // simply doesn't render for lower tiers (no fake preview).
   const card = harmony.data?.glow_up_card;
   const headroom = overall != null && potential != null ? potential - overall : null;
+  const measurementUnavailable = a?.measurement?.landmarks === "unavailable";
 
   return (
     <div className="mx-auto max-w-md">
@@ -148,6 +149,15 @@ export default function ResultsPage() {
         {CATEGORIES.map((c, i) => (
           <CategoryBar key={c.key} label={c.label} value={a?.scores?.[c.key]} delayMs={i * 60} />
         ))}
+        {/* DEF-014: when the face couldn't be measured we say so once, in plain
+            language, instead of leaving four rows that read like broken scores. */}
+        {measurementUnavailable ? (
+          <p className="text-xs text-muted">
+            We couldn&apos;t read your facial landmarks, so these aren&apos;t measured yet.
+            Upload a clear, front-facing photo in good light and we&apos;ll score them.
+            {a?.measurement?.reason ? ` (${a.measurement.reason})` : ""}
+          </p>
+        ) : null}
       </div>
 
       {/* ── The ask: one card instead of two stacked walls, and it names the
