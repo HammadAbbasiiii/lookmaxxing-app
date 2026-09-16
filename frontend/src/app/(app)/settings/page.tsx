@@ -3,12 +3,12 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, CreditCard } from "lucide-react";
+import { AlertTriangle, CreditCard, Lock } from "lucide-react";
 import { toast } from "sonner";
 import { useMe } from "@/hooks/useMe";
 import { cancelSubscription, deleteAccount, putProfile, resumeSubscription, type ProfileUpdate } from "@/lib/api/endpoints";
 import { clearToken } from "@/lib/auth";
-import { COMMITMENT_OPTIONS, GENDER_OPTIONS, GOAL_OPTIONS, SKIN_CONCERN_OPTIONS, SKIN_TYPE_OPTIONS } from "@/lib/constants";
+import { COMMITMENT_OPTIONS, GENDER_OPTIONS, GOAL_OPTIONS, PLANS, SKIN_CONCERN_OPTIONS, SKIN_TYPE_OPTIONS } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { ApiError } from "@/lib/api/client";
 import { Button } from "@/components/ui/Button";
@@ -396,10 +396,34 @@ export default function SettingsPage() {
             <h2 className="font-display text-lg font-bold text-ink">
               Cancel {tier === "elite" ? "Elite" : "Pro"}?
             </h2>
-            <p className="mt-2 text-sm text-muted">
-              Keep access until the end of your billing period, or cancel immediately and lose access now.
+
+            {/* Loss aversion (§5): surface exactly what they'll lose, not just
+                what they'll stop paying — and keep "keep my plan" the primary. */}
+            <div className="mt-3 rounded-xl border border-border-soft bg-surface-2 p-3">
+              <p className="text-xs font-semibold uppercase tracking-widest text-muted">
+                You&apos;ll lose access to
+              </p>
+              <ul className="mt-2 space-y-1.5">
+                {(PLANS[tier === "elite" ? "elite" : "pro"].features as readonly string[]).map((f) => (
+                  <li key={f} className="flex items-start gap-2 text-sm text-ink">
+                    <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0 text-gold" aria-hidden />
+                    {f}
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <p className="mt-3 text-sm text-muted">
+              Keep access until your renewal date, or cancel now and lose it immediately.
             </p>
             <div className="mt-4 flex flex-col gap-2">
+              <Button
+                onClick={() => setCancelOpen(false)}
+                disabled={billingBusy !== null}
+                fullWidth
+              >
+                Keep my plan
+              </Button>
               <Button
                 variant="secondary"
                 onClick={() => doCancel(false)}
@@ -410,21 +434,13 @@ export default function SettingsPage() {
                 Cancel at period end
               </Button>
               <Button
-                variant="danger"
+                variant="ghost"
                 onClick={() => doCancel(true)}
                 disabled={billingBusy !== null}
                 loading={billingBusy === "cancel-now"}
                 fullWidth
               >
-                Cancel now
-              </Button>
-              <Button
-                variant="ghost"
-                onClick={() => setCancelOpen(false)}
-                disabled={billingBusy !== null}
-                fullWidth
-              >
-                Keep my plan
+                <span className="text-danger">Cancel now</span>
               </Button>
             </div>
           </div>

@@ -508,12 +508,6 @@ export async function createCheckout(
   return decode(CheckoutSchema, data, { checkout_url: null });
 }
 
-export async function testUpgrade(tier: "pro" | "elite"): Promise<{ success: boolean; tier: string }> {
-  const data = await apiFetch<unknown>("/payments/test-upgrade", { method: "POST", body: { tier } });
-  const root = data && typeof data === "object" ? (data as Record<string, unknown>) : {};
-  return { success: Boolean(root.success), tier: typeof root.tier === "string" ? root.tier : tier };
-}
-
 const BILLING_UNAVAILABLE =
   "This billing option isn't available yet. Please try again in a little while.";
 

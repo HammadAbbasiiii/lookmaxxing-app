@@ -3,6 +3,7 @@
 import pytest
 from fastapi import HTTPException
 
+from app.config import settings
 from app.dependencies import create_access_token, get_password_hash
 from app.models import Photo, User
 from app.services.entitlements_service import (
@@ -125,7 +126,8 @@ class TestCoachGating:
 
 
 class TestPayments:
-    def test_checkout_unconfigured(self, client, auth_token):
+    def test_checkout_unconfigured(self, client, auth_token, monkeypatch):
+        monkeypatch.setattr(settings, "STRIPE_SECRET_KEY", "")
         res = client.post(
             "/api/v1/payments/checkout",
             json={"tier": "pro", "annual": True},
@@ -148,16 +150,16 @@ class TestPayments:
         )
         assert res.status_code == 401
 
-    def test_test_upgrade_disabled(self, client, auth_token):
+    def test_test_upgrade_removed(self, client, auth_token):
         res = client.post(
             "/api/v1/payments/test-upgrade",
             json={"tier": "pro"},
             headers=_h(auth_token),
         )
-        assert res.status_code == 403
-        assert res.json()["detail"]["code"] == "test_payments_disabled"
+        assert res.status_code == 404
 
-    def test_webhook_unconfigured(self, client):
+    def test_webhook_unconfigured(self, client, monkeypatch):
+        monkeypatch.setattr(settings, "STRIPE_WEBHOOK_SECRET", "")
         res = client.post("/api/v1/payments/webhook")
         assert res.status_code == 503
 

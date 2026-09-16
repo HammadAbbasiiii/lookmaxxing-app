@@ -55,7 +55,7 @@ export function AvatarDrawer({ open, onClose }: AvatarDrawerProps) {
   return (
     <div
       className={cn(
-        "fixed inset-0 z-50 md:hidden",
+        "fixed inset-0 z-50 overflow-hidden md:hidden",
         open ? "pointer-events-auto" : "pointer-events-none",
       )}
       aria-hidden={!open}

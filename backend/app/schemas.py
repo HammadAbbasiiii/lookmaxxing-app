@@ -226,10 +226,6 @@ class CheckoutIn(BaseModel):
     first_month_offer: bool = False
 
 
-class TestUpgradeIn(BaseModel):
-    tier: str = Field(..., pattern="^(pro|elite)$")
-
-
 class CancelSubscriptionIn(BaseModel):
     # False → cancel at the end of the current billing period (access persists
     # until `subscription_end`). True → cancel immediately and revoke now.

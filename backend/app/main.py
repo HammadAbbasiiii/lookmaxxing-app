@@ -75,6 +75,29 @@ try:
 except Exception as _mig_sub_e:
     print(f"⚠️ users subscription columns migration skipped: {_mig_sub_e}")
 
+# ── Migrate: momentum-engine columns added after first deploy ──────────────
+# create_all() never alters existing tables, so add any later columns that are
+# missing on a pre-existing local/prod DB (transformations.movie_generated_at,
+# arc_states.xp_events). Idempotent — skipped when the columns already exist.
+try:
+    from sqlalchemy import inspect as _inspect_mom, text as _text_mom
+    _insp_mom = _inspect(engine)
+    _mom_additions = {
+        "transformations": {"movie_generated_at": "DATETIME"},
+        "arc_states": {"xp_events": "JSON"},
+    }
+    for _mom_tbl, _mom_cols in _mom_additions.items():
+        if not _insp_mom.has_table(_mom_tbl):
+            continue
+        _mom_existing = {c["name"] for c in _insp_mom.get_columns(_mom_tbl)}
+        for _mom_col, _mom_type in _mom_cols.items():
+            if _mom_col not in _mom_existing:
+                with engine.begin() as _conn_mom:
+                    _conn_mom.execute(_text_mom(f"ALTER TABLE {_mom_tbl} ADD COLUMN {_mom_col} {_mom_type}"))
+                print(f"✅ Migrated: added {_mom_tbl}.{_mom_col}")
+except Exception as _mig_mom_e:
+    print(f"⚠️ momentum schema migration skipped: {_mig_mom_e}")
+
 # ── Promote admin emails to is_admin=True + grant Elite (testing convenience) ──────
 # The owner/admin account defaults to Elite so every Pro/Elite surface is testable
 # without manual tier fiddling. To temporarily test free/pro gating, flip your own

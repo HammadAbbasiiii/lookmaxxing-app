@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/Input";
 import { Logo } from "@/components/layout/Logo";
 import { Spinner } from "@/components/ui/Skeleton";
 import { COMMITMENT_OPTIONS, GENDER_OPTIONS, GOAL_OPTIONS, SKIN_CONCERN_OPTIONS, SKIN_TYPE_OPTIONS } from "@/lib/constants";
-import { completeOnboarding, putProfile } from "@/lib/api/endpoints";
+import { completeOnboarding, putProfile, type ProfileUpdate } from "@/lib/api/endpoints";
 import { cn } from "@/lib/utils";
 
 const STEPS = ["Tell us about you", "Pick one goal", "Your skin type", "Skin concerns", "Consistency beats intensity"];
@@ -70,18 +70,23 @@ export default function OnboardingPage() {
   async function finish() {
     setSaving(true);
     const ageNum = parseInt(age, 10);
-    const goals = goal ? [goal] : undefined;
-    try {
-      await putProfile({
-        age: Number.isNaN(ageNum) ? undefined : ageNum,
-        gender: gender || undefined,
-        goals,
-        skin_type: skinType || undefined,
-        skin_concerns: skinConcerns.length ? skinConcerns : undefined,
-        commitment: commitment || undefined,
-      });
-    } catch {
-      toast.error("Couldn't save your details — you can update them later in Settings.");
+    const profile: ProfileUpdate = {
+      age: Number.isNaN(ageNum) ? undefined : ageNum,
+      gender: gender || undefined,
+      goals: goal ? [goal] : undefined,
+      skin_type: skinType || undefined,
+      skin_concerns: skinConcerns.length ? skinConcerns : undefined,
+      commitment: commitment || undefined,
+    };
+    // Skip the profile call entirely when every answer was skipped, so we never
+    // fire a 400 "No fields provided" (the wizard is allowed to be empty).
+    const hasProfile = Object.values(profile).some((v) => v !== undefined);
+    if (hasProfile) {
+      try {
+        await putProfile(profile);
+      } catch {
+        toast.error("Couldn't save your details — you can update them later in Settings.");
+      }
     }
     try {
       await completeOnboarding();

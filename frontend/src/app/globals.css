@@ -31,6 +31,14 @@
     -webkit-text-size-adjust: 100%;
   }
 
+  /* Prevent off-screen fixed elements (e.g. the closed mobile drawer) from
+     creating horizontal scroll on phones. `clip` (not `hidden`) so it never
+     becomes a scroll container and `position: sticky` keeps working. */
+  html,
+  body {
+    overflow-x: clip;
+  }
+
   body {
     background-color: var(--color-background);
     color: var(--color-ink);

@@ -55,8 +55,8 @@
 
 ## NOT TESTED (explicit)
 - Upload → Cloudinary → analysis → results (needs real image upload / Cloudinary).
-- Stripe payments success path (keys absent; endpoints honest-fail 503, which is
-  covered by backend tests).
+- Stripe payments success path — **now covered** (see “Payments lifecycle pass”
+  below). The honest-fail 503 path (no keys) remains covered by backend tests.
 - pip-audit (venv has no pip), OWASP ZAP DAST, CodeQL, k6 load, screen-reader
   pass, interactive Playwright MCP exploration.
 
@@ -66,3 +66,40 @@ functionality, authentication, authorization gating, security headers, momentum
 features, and the browser matrix all pass. Before a production deploy, complete
 the deploy gates in `RELEASE-CHECKLIST.md` (set SECRET_KEY / CORS / FRONTEND_URL
 in Render, plus Stripe, Cloudinary, SMTP, Redis — code-side hardening is done).
+## Payments lifecycle pass (API-only, no UI/browser)
+
+- **Date:** 2026-09-16
+- **Environment:** macOS, Python 3.12 venv, local SQLite (`lookmaxx.db`), backend on
+  `127.0.0.1:8000`, **real Stripe test mode** (`stripe` lib 15.6.1, account API
+  `2026-08-26.dahlia`).
+- **Method:** `backend/scripts/payments_e2e.py` drives the real Stripe test account
+  through `POST /payments/checkout` → completes the session → replays the resulting
+  events as **signed** webhooks (`stripe-signature`, test `STRIPE_WEBHOOK_SECRET`)
+  to the local endpoint, then asserts app state via `/auth/me` and `/entitlements`.
+  No browser involved.
+
+| Suite | Passed | Failed |
+|---|---|---|
+| `scripts/payments_e2e.py` (8 scenarios, 52 assertions) | 52 | 0 |
+| Backend pytest (full) | 295 | 0 |
+| Frontend `tsc --noEmit` | clean | — |
+| Frontend `next build` | clean | — |
+
+**Scenarios covered (all pass):** Free→Pro monthly (£1 first-month offer + coupon,
+offer flagged used), Pro→Elite annual upgrade (expiry extends ~365d), Elite→Pro
+annual downgrade, cancel-at-period-end (access persists, flag set), resume (flag
+cleared), cancel-immediately (revoked → free), re-subscribe after cancellation,
+forced end-of-period expiry (expired Pro reads as `free` everywhere and loses
+unlimited analyses).
+
+**Tests corrected:** `tests/test_premium_gating.py` — three assertions were stale
+against the current build: checkout/webhook “unconfigured” 503 checks now
+`monkeypatch` the setting to empty (keys are present in `.env`), and the removed
+test-upgrade endpoint is now asserted to 404 instead of 403.
+
+**Production note (`DEF-009`):** real *local* checkouts are charged by Stripe but
+their webhooks are delivered to the Render endpoint, so local app state does not
+update. Forward with `stripe listen --forward-to
+http://127.0.0.1:8000/api/v1/payments/webhook` (and use its `whsec_…`), or
+reconcile an affected user with `scripts/stripe_sync.py <email|customer_id>`.
+

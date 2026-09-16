@@ -11,6 +11,11 @@ interface PaywallLockProps {
   className?: string;
   /** Tier that unlocks this feature: "pro" (default) or "elite". */
   tier?: "pro" | "elite";
+  /**
+   * Optional specifics to list inside the card. Lets a screen show one
+   * consolidated ask instead of stacking several near-identical lock cards.
+   */
+  items?: readonly string[];
 }
 
 /**
@@ -18,7 +23,14 @@ interface PaywallLockProps {
  * The real data lives behind `require_pro` on the backend; this card just makes
  * the *desire* visible without ever revealing the locked content.
  */
-export function PaywallLock({ title, teaser, description, className, tier = "pro" }: PaywallLockProps) {
+export function PaywallLock({
+  title,
+  teaser,
+  description,
+  className,
+  tier = "pro",
+  items,
+}: PaywallLockProps) {
   const tierLabel = tier === "elite" ? "Elite" : "Pro";
   return (
     <div className={cn("relative overflow-hidden rounded-card card-border p-5", className)}>
@@ -40,6 +52,17 @@ export function PaywallLock({ title, teaser, description, className, tier = "pro
           </span>
         </div>
       </div>
+
+      {items?.length ? (
+        <ul className="mt-3 space-y-1.5">
+          {items.map((item) => (
+            <li key={item} className="flex items-start gap-2 text-sm text-ink">
+              <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0 text-gold" aria-hidden />
+              {item}
+            </li>
+          ))}
+        </ul>
+      ) : null}
 
       {description ? <p className="mt-3 text-xs text-muted">{description}</p> : null}
 

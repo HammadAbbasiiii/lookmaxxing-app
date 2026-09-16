@@ -4,10 +4,6 @@ Payments (Stripe) — the one place subscriptions get granted.
 Honesty rule (§12.4): we never fake a charge. In production, checkout requires a
 real STRIPE_SECRET_KEY; if it's missing the endpoint returns 503 with a clear
 code so the client can show a waitlist instead of a broken checkout.
-
-A test-only upgrade endpoint is available when `ALLOW_TEST_PAYMENTS=1` AND
-`ENVIRONMENT != "production"`, so the owner can preview Pro/Elite locally without
-touching Stripe.
 """
 
 from datetime import datetime, timedelta, timezone
@@ -19,7 +15,7 @@ from app.config import settings
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.models import AdminAction, StripeEvent, User
-from app.schemas import CancelSubscriptionIn, ChangePlanIn, CheckoutIn, TestUpgradeIn
+from app.schemas import CancelSubscriptionIn, ChangePlanIn, CheckoutIn
 
 router = APIRouter(prefix="/payments", tags=["Payments"])
 
@@ -94,7 +90,13 @@ def _tier_from_obj(obj: dict, default: str = "pro") -> str:
     for container in ("items", "lines"):
         data = (obj.get(container) or {}).get("data") or []
         for item in data:
-            tier = _tier_for_price((item.get("price") or {}).get("id"))
+            price_id = (item.get("price") or {}).get("id")
+            if not price_id:
+                # Stripe 2026+ invoice lines nest the price under
+                # `pricing.price_details.price` instead of a top-level `price`.
+                pricing = item.get("pricing") or {}
+                price_id = (pricing.get("price_details") or {}).get("price")
+            tier = _tier_for_price(price_id)
             if tier:
                 return tier
     metadata = obj.get("metadata") or {}
@@ -142,9 +144,31 @@ def _sub_item_ids(sub) -> list:
     return ids
 
 
+def _obj_period_end(obj: dict) -> datetime | None:
+    """Read the authoritative period end from a (webhook) subscription dict.
+
+    Stripe's 2026+ API versions moved ``current_period_end`` from the top-level
+    subscription object to each line item, so fall back to the first item's
+    period end. This keeps upgrade/downgrade/renewal expiry accurate.
+    """
+    end = obj.get("current_period_end")
+    if not end:
+        items = obj.get("items") or {}
+        data = items.get("data") or []
+        if data:
+            end = data[0].get("current_period_end")
+    return _unix_to_datetime(end)
+
+
 def _sub_period_end(sub) -> datetime | None:
     """The subscription's current period end (authoritative access expiry)."""
-    return _unix_to_datetime(_get(sub, "current_period_end", None))
+    end = _get(sub, "current_period_end", None)
+    if not end:
+        items = _get(sub, "items", None)
+        data = _get(items, "data", None) if items is not None else None
+        if data:
+            end = _get(data[0], "current_period_end", None)
+    return _unix_to_datetime(end)
 
 
 def _list_active_subscriptions(stripe, user: User) -> list:
@@ -461,7 +485,7 @@ async def stripe_webhook(
             grant_subscription(
                 db, user, _tier_from_obj(obj),
                 days=_plan_days(obj),
-                end_at=_unix_to_datetime(obj.get("current_period_end")),
+                end_at=_obj_period_end(obj),
                 event_id=event_id,
             )
 
@@ -502,7 +526,7 @@ async def stripe_webhook(
                 grant_subscription(
                     db, user, _tier_from_obj(obj),
                     days=_plan_days(obj),
-                    end_at=_unix_to_datetime(obj.get("current_period_end")),
+                    end_at=_obj_period_end(obj),
                     event_id=event_id,
                 )
             # `past_due` / `incomplete` → leave access in place; Stripe retries.
@@ -530,36 +554,6 @@ async def stripe_webhook(
     return {"success": True}
 
 
-@router.post("/test-upgrade")
-async def test_upgrade(
-    payload: TestUpgradeIn,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    """Dev/test only: flip the current user onto a paid tier without charging.
-
-    Refuses to run in production regardless of the flag, and refuses to run
-    anywhere unless ALLOW_TEST_PAYMENTS=1.
-    """
-    tier = payload.tier.lower()
-    allowed = settings.ALLOW_TEST_PAYMENTS and settings.ENVIRONMENT != "production"
-    if not allowed:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail={
-                "code": "test_payments_disabled",
-                "message": "Test upgrades are disabled in production.",
-            },
-        )
-    grant_subscription(db, user, tier, 365)
-    return {
-        "success": True,
-        "tier": tier,
-        "is_subscribed": user.is_subscribed,
-        "subscription_end": user.subscription_end.isoformat() if user.subscription_end else None,
-    }
-
-
 @router.post("/cancel")
 async def cancel_subscription(
     payload: CancelSubscriptionIn,
@@ -573,7 +567,7 @@ async def cancel_subscription(
     ``cancel_immediately=True`` deletes the subscription now and revokes access.
     """
     if not settings.STRIPE_SECRET_KEY:
-        # No live Stripe (local/dev, test-upgrade) — manage the local subscription
+        # No live Stripe (local/dev) — manage the local subscription
         # record directly so the user can always cancel, even before payments
         # are wired up. There's no Stripe subscription to modify here.
         if payload.cancel_immediately:
@@ -590,7 +584,7 @@ async def cancel_subscription(
     subs = _list_active_subscriptions(stripe, user)
     if not subs:
         # No live Stripe subscription, but the user may still be flagged paid
-        # locally (test-upgrade or a missed webhook) — revoke to stay honest.
+        # locally (or a missed webhook) — revoke to stay honest.
         revoke_subscription(db, user, reason="stripe_subscription_missing")
         return _status_response(user)
 
@@ -668,8 +662,8 @@ async def change_plan(
     """
     tier = payload.tier.lower()
     if not settings.STRIPE_SECRET_KEY:
-        # No live Stripe (local/dev) — swap the local subscription record directly
-        # (same path as test-upgrade), so plan changes work before payments are wired.
+        # No live Stripe (local/dev) — swap the local subscription record directly,
+        # so plan changes work before payments are wired.
         grant_subscription(db, user, tier, days=365 if payload.annual else 30)
         user.subscription_cancels_at_period_end = False
         db.commit()
@@ -708,7 +702,7 @@ async def change_plan(
         )
 
     try:
-        stripe.Subscription.modify(
+        updated = stripe.Subscription.modify(
             sub_id,
             items=[{"id": item_ids[0], "price": price_id}],
         )
@@ -718,10 +712,18 @@ async def change_plan(
             detail={"code": "stripe_error", "message": "Couldn't change your plan. Try again in a moment."},
         )
 
+    # Stripe prorates on the same subscription and re-anchors the period end for
+    # a monthly↔annual switch, so read the authoritative new expiry from the
+    # modify response rather than the pre-switch period end (which would
+    # otherwise under-grant annual upgrades by ~11 months).
+    if hasattr(updated, "to_dict"):
+        updated = updated.to_dict()
+    new_period_end = _obj_period_end(updated) or period_end
+
     grant_subscription(
         db, user, tier,
         days=365 if payload.annual else 30,
-        end_at=period_end,
+        end_at=new_period_end,
     )
     user.subscription_cancels_at_period_end = False
     db.commit()

@@ -67,9 +67,6 @@ class Settings:
     # 7-day free trial on Elite. Stripe collects the card up front and charges
     # after the trial ends.
     STRIPE_ELITE_TRIAL_DAYS: int = int(os.getenv("STRIPE_ELITE_TRIAL_DAYS", "7"))
-    # Dev/test-only: allows POST /payments/test-upgrade to flip a subscription
-    # without a real charge. Ignored when ENVIRONMENT == "production".
-    ALLOW_TEST_PAYMENTS: bool = os.getenv("ALLOW_TEST_PAYMENTS", "0") == "1"
 
     # Affiliate links (product recommendations). Central place for the Amazon
     # Associates tag so the owner can swap it in ONE place instead of editing
