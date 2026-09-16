@@ -12,11 +12,11 @@
 | Field | Value |
 |---|---|
 | Product | LookMaxx (web) |
-| Version | 1.1 |
+| Version | 1.2 |
 | Owner | Founder / solo builder |
-| Backend | ✅ Live at `https://lookmaxx-api.onrender.com/api/v1` (commit `56915f9`) |
-| Frontend | 🟡 Greenfield (`frontend/.gitkeep` only) |
-| Target | Web MVP → Vercel (free tier) |
+| Backend | ✅ Live at `https://lookmaxx-api.onrender.com/api/v1` — Render auto-deploys `main`; verified 2026-09-16 against the live OpenAPI (schema identical to `cd3c82b`) |
+| Frontend | 🟢 Built (`frontend/`, Next.js App Router) — route map in §7.1, nav in §7.2. Vercel deploy is a launch step (§18) |
+| Target | Web MVP → Vercel |
 
 **How to read this file**
 1. §1–§5 define *what* we're building and *why* (do not skip §5 Security).
@@ -351,26 +351,46 @@ Ship dark-first (it's the brand). Light theme is a Phase-2 nicety, not a blocker
 ## 7. Information architecture & global shell
 
 ### 7.1 Route map
-| Route | Auth | Purpose |
-|---|---|---|
-| `/` | ❌ | Landing (marketing + one CTA) |
-| `/signup` | ❌ | Create account |
-| `/login` | ❌ | Log in |
-| `/onboarding` | ✅ | 3 micro-steps, skippable |
-| `/upload` | ✅ | Capture/pick photo |
-| `/analyzing/[photo_id]` | ✅ | Poll analysis progress |
-| `/results/[photo_id]` | ✅ | Score + plan reveal |
-| `/app` (or `/dashboard`) | ✅ | Home: score, streak, next action |
-| `/plan` | ✅ | 90-day plan + daily tasks |
-| `/progress` | ✅ | Chart + before/after + milestones |
-| `/explore` | ✅ | Anonymized transformations + articles |
-| `/products` | ✅ | Affiliate recommendations |
-| `/upgrade` | ✅ | Paywall (3 tiers) |
-| `/settings` | ✅ | Profile, billing, delete account |
+**When a route ships, its row here is updated** — this table is reconciled against `frontend/src/app/**/page.tsx`. "Nav home" says where the route is entered from, because every surface has exactly one primary entry point (§7.2).
+
+| Route | Auth | Nav home | Purpose |
+|---|---|---|---|
+| `/` | ❌ | — | Landing (marketing + one CTA) |
+| `/login` | ❌ | — | Log in |
+| `/signup` | ❌ | — | Create account |
+| `/forgot-password` | ❌ | — | Request a reset link |
+| `/reset-password` | ❌ | — | Set a new password |
+| `/privacy`, `/terms` | ❌ | — | Legal |
+| `/onboarding` | ✅ | after signup | 3 micro-steps (identity → goal → skin), skippable |
+| `/upload` | ✅ | after onboarding · dashboard CTA · plan | Capture/pick photo |
+| `/analyzing/[photo_id]` | ✅ | after `/upload/save` | Poll analysis progress |
+| `/results/[photo_id]` | ✅ | auto-navigate on completion | Score + plan reveal |
+| `/dashboard` | ✅ | **tab: Home** | Home: score, streak, next action |
+| `/plan` | ✅ | **tab: Plan** | 90-day plan + daily tasks |
+| `/coach` | ✅ | **tab: Coach** | AI coach chat |
+| `/glow` | ✅ | **tab: Glow** | Daily glow ritual (sub-nav: Daily) |
+| `/explore` | ✅ | **tab: Explore** | Transformations + articles + community entry |
+| `/glow-up` | ✅ | Glow sub-nav: Insights | Product/skincare insights |
+| `/arc` | ✅ | Glow sub-nav: Journey | 90-day arc, quests, badges |
+| `/peak-you` | ✅ | Glow sub-nav: Simulator | Future-you simulation (premium) |
+| `/glowups` | ✅ | Explore → Glow-Ups card | Community feed of anonymized transformations |
+| `/progress` | ✅ | dashboard progress card | Chart + before/after + milestones |
+| `/products` | ✅ | `/results` CTA | Affiliate recommendations |
+| `/upgrade` | ✅ | free-tier nav chip · every paywall CTA | Paywall (tiers) |
+| `/settings` | ✅ | avatar menu | Profile, billing, delete account |
+| `/admin` + `/admin/{users,users/[id],products,activity,analytics}` | ✅ admin only | avatar menu (admins) | Internal operations dashboard |
 
 ### 7.2 Navigation (AppShell)
-- **Desktop:** top nav — logo → Dashboard · Plan · Progress · Explore · Products · (Pro badge) · avatar menu (Settings · Sign out).
-- **Mobile:** bottom tab bar — Dashboard · Plan · Progress · Explore · Settings (5 tabs). The active tab is gold; inactive is muted.
+**Single source of truth:** `frontend/src/lib/nav.ts` — `PRIMARY_TABS` (the 5 tabs), `GLOW_LINKS` (the Glow sub-nav), `isTabActive()`. **Both** `TopNav` (desktop) and `BottomNav` (mobile) render `PRIMARY_TABS`, so the two navigations cannot drift apart; add or rename a tab in one place only. `TAB_ICONS` keeps the lucide icon per href.
+
+- **Primary tabs (5):** `Home` → `/dashboard` · `Plan` → `/plan` · `Coach` → `/coach` · `Glow` → `/glow` · `Explore` → `/explore`. The active tab is gold, inactive is muted. Touch targets ≥44×44 px (§10).
+  - **Desktop:** top nav — logo → the 5 tabs (`hidden md:block`) → notification bell → free-tier "Upgrade" chip → avatar menu.
+  - **Mobile:** `BottomNav` — a 5-column grid, `md:hidden`, above `env(safe-area-inset-bottom)`.
+- **Why these five** (decided at launch, after the spec was first drafted): **Coach** and **Glow** are aspirational/emotional surfaces that earn a permanent slot. **Progress**, **Products** and **Settings** are functional, on-demand destinations and deliberately live off-nav. No tab is a container for unrelated features — a section's extra screens belong to its sub-nav instead (below).
+- **Glow sub-nav (`GlowSubNav`, 4 contextual tabs):** Daily → `/glow` · Insights → `/glow-up` · Journey → `/arc` · Simulator → `/peak-you`. The Glow tab stays lit across the whole section (`isTabActive("/glow")` delegates to `isGlowPath()`), including `/glow-up` and `/glowups` being *distinct* routes.
+- **Explore section:** `/glowups` (the community feed) belongs to **Explore** — it is not a primary tab and not in `GLOW_LINKS`; Explore carries a Glow-Ups card, and the feed's back link returns to `/explore`.
+- **Avatar menu (secondary destinations):** Profile (`/settings`) · Settings (`/settings`) · Upgrade/Subscription (`/upgrade`) · Admin dashboard (admin emails only) · Log out.
+- **Off-nav surfaces** (reached by in-page links, never a tab): `/progress` (dashboard progress card), `/products` (`/results` CTA), `/upload`, `/analyzing/[id]`, `/results/[id]`, `/settings`, `/upgrade`.
 - **Pro status chip:** if `subscription_tier === "free"`, a subtle "Upgrade" chip appears in the nav (social-proof + status pressure, not nagging).
 - **Offline banner:** a persistent thin banner appears when `navigator.onLine === false`, copy: *"You're offline — we'll sync when you're back."* It auto-hides on reconnect.
 
