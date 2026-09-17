@@ -649,15 +649,18 @@ async def get_checkout_session(
     # webhook arriving later cannot double-extend anything.
     if str(_get(session, "payment_status", "")) in ("paid", "no_payment_required"):
         granted_tier = str(_get(metadata, "tier", None) or "pro").lower()
-        if granted_tier in ("pro", "elite"):
+        # Prefer the subscription's own period end (a 7-day Elite trial grants
+        # 7 days, not 30) — the same source the webhook trusts.
+        end_at = (
+            _sub_period_end(sub) if (sub is not None and not isinstance(sub, str)) else None
+        )
+        # A session stays `paid` forever, so only reconcile a term that is still
+        # running: revisiting an old receipt after the subscription lapsed must
+        # not resurrect access.
+        if granted_tier in ("pro", "elite") and (
+            end_at is None or end_at > datetime.utcnow()
+        ):
             days = 365 if str(_get(metadata, "annual", "false")) == "true" else 30
-            # Prefer the subscription's own period end (a 7-day Elite trial grants
-            # 7 days, not 30) — the same source the webhook trusts.
-            end_at = (
-                _sub_period_end(sub)
-                if (sub is not None and not isinstance(sub, str))
-                else None
-            )
             was = ((user.subscription_tier or "free").lower(), bool(user.is_subscribed))
             grant_subscription(
                 db, user, granted_tier, days=days, end_at=end_at,

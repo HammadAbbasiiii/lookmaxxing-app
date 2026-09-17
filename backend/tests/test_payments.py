@@ -1112,6 +1112,27 @@ class TestCheckoutReconciliation:
         # ~7 days: the 30-day fallback would be four times this
         assert timedelta(days=6, hours=23) < remaining < timedelta(days=7, hours=1)
 
+    def test_a_lapsed_session_does_not_resurrect_access(
+        self, client, db_session, monkeypatch
+    ):
+        """A session stays `paid` forever — an old receipt must not re-grant.
+
+        The subscription lapsed (period end in the past) and was revoked; reading
+        the receipt again is not a reason to hand the tier back.
+        """
+        u = _make_user(db_session, email="reconcile-lapsed@example.com", tier="free")
+        lapsed = int((datetime.now(timezone.utc) - timedelta(days=20)).timestamp())
+        self._stub_retrieve(monkeypatch, self._session(u.id, period_end=lapsed))
+
+        res = client.get(
+            "/api/v1/payments/checkout/cs_test_lapsed", headers=_auth_headers(u)
+        )
+
+        assert res.status_code == 200, res.text
+        db_session.refresh(u)
+        assert u.subscription_tier == "free"
+        assert u.is_subscribed is False
+
     def test_reconciling_twice_neither_extends_nor_double_audits(
         self, client, db_session, monkeypatch
     ):

@@ -410,3 +410,87 @@ don't share; (3) the eligible free member still defaults to the **monthly** view
 its CTA states "Start for £1.00" — the price block is the regular price, the button is
 the amount charged.
 
+
+## Paid-but-Free: the webhook refused every event (2026-09-17, DEF-018)
+
+**Report:** "Stripe window shows the payment, but the backend never hits the webhook to
+upgrade the UI — payments are failing." In Stripe the catalogue looks healthy (4
+products/prices, `First Month £1` = £8.99 off once, **16 redemptions**, Active), so
+checkout itself is completing.
+
+**Root cause — reproduced on the live API, not inferred.** `render.yaml` sets
+`ENVIRONMENT=production`, and the deployed Stripe keys are **test** keys. The webhook's
+sandbox guard read the environment's *name*:
+
+```python
+if settings.ENVIRONMENT == "production" and event.get("livemode") is not True:
+    raise HTTPException(status_code=400, detail="Test-mode event rejected in production.")
+```
+
+Every test-mode event carries `livemode: false`, so **every** delivery was refused —
+including perfectly valid, correctly signed ones. The card was charged, the receipt was
+rendered from the real session, and the account stayed `free`, with nothing able to
+retry or notice.
+
+| Probe (deployed API, pre-fix) | Result |
+|---|---|
+| `POST /api/v1/payments/webhook` — synthetic `checkout.session.completed`, signed with the deployed `STRIPE_WEBHOOK_SECRET`, `livemode: false`, `metadata.tier=pro` | `400 {"detail":"Test-mode event rejected in production."}` |
+| Unsigned `POST …/webhook` (control) | `400 {"detail":"Invalid webhook signature."}` — i.e. **403 ≠ the guard**: the secret *is* configured, so the signed probe above really did pass signature verification and was refused only by the livemode guard |
+| `GET /api/v1/auth/me` for that user afterwards | `subscription_tier: "free"`, `is_subscribed: false` |
+| `/api/v1/health`, `render.yaml` | healthy; `ENVIRONMENT: production` declared in the blueprint |
+
+**Fix (4 parts).** (a) The guard now keys off the key the deployment authenticates with —
+`_deployment_is_live()` returns True only for `sk_live_…` — so a pre-launch production box
+on test keys processes its own sandbox traffic, while a live deployment still refuses any
+event Stripe did not mark `livemode: true`; rejections are logged with the event id. (b) A
+boot-time warning fires whenever production runs sandbox keys (the misconfiguration was
+silent before). (c) `GET /payments/checkout/{id}` now **reconciles the grant** from
+Stripe's own `payment_status` — owner-checked against `metadata.user_id` /
+`client_reference_id`, idempotent through `grant_subscription`, anchored to the
+subscription's real period end so a 7-day Elite trial is not recorded as 30 days, and
+granted only while that term is still running (revisiting a lapsed receipt must not
+resurrect access) — so the upgrade no longer hinges on a single delivery. (d) The success
+page invalidates the `me`/`entitlements` queries once the receipt reports `paid`: the top
+nav had cached the pre-payment tier and runs with `refetchOnWindowFocus: false`, so a
+correct grant still *looked* like "the UI never upgraded".
+
+| Check | Result |
+|---|---|
+| `backend/tests/test_payments.py` | **49 passed** (was 40; 9 new) |
+| New: sandbox event on a production box with test keys | 200 + `tier=pro`, offer consumed |
+| New: sandbox event with **live** keys | 400, user stays `free` (protection intact) |
+| New: live event with live keys | 200 + `tier=elite` |
+| New: reconciliation (6 tests) | paid session grants with no webhook at all; unpaid and abandoned (`status=open`) grant nothing; a 7-day trial end is kept (not 30 days); a **lapsed** subscription's old receipt does not resurrect access (a session stays `paid` forever, so only a still-running term is reconciled); re-reading the receipt neither extends nor double-audits |
+| **Regression proof** — the same tests against `7f09640` (pre-fix code) | 4 failed exactly as production did: `400`, `tier=free`, `assert 'free' == 'elite'`, `assert 0 == 1` (no audit row) |
+| Full backend suite (`python -m pytest`) | **337 passed** in 93 s |
+| `frontend` `tsc --noEmit` | clean |
+| Deploy verification (signed test-mode event against the redeployed API) | **200 `{"success": true}`**, then `GET /auth/me` → `subscription_tier: "pro"`, `is_subscribed: true` — the same request that returned 400 minutes earlier |
+
+**Backend tests are now runnable on this Mac (new).** The blocker was never the code: no
+venv existed and the pinned `mediapipe==0.10.21` has no wheel for Python 3.14/arm64. Its
+imports (like torch's) are lazy, so a throwaway venv without them runs the whole suite:
+
+```bash
+python3 -m venv /tmp/lmvenv
+/tmp/lmvenv/bin/pip install fastapi sqlalchemy stripe pytest httpx pydantic-settings \
+  'python-jose[cryptography]' 'passlib[bcrypt]' \
+  bcrypt==4.0.1 python-multipart python-dotenv email-validator \
+  cloudinary redis openai numpy Pillow opencv-python   # bcrypt must be <4.1 for passlib 1.7.4
+cd backend && /tmp/lmvenv/bin/python -m pytest -q
+```
+
+**For the dashboard (what to check for the 16 redemptions that were charged but not
+granted):** Developers → Webhooks → the endpoint → *Recent deliveries* should show the old
+attempts with a `400 Test-mode event rejected in production.` body — after this deploy,
+hit **Resend** on those events and each one grants, because the grant path is idempotent
+(`{"duplicate": true}` on a second delivery). If a delivery instead reports
+`Invalid webhook signature`, the `whsec_…` on Render belongs to a different endpoint; if
+there are no deliveries at all, the endpoint is not subscribed to
+`checkout.session.completed`.
+
+**Cards, in test mode:** only Stripe's test cards can be charged (`4242 4242 4242 4242`,
+any future expiry, any CVC/postcode; `4000 0000 0000 0002` always declines, and
+`4000 0025 0000 3155` forces 3-D Secure). A real card in test mode is expected to fail —
+that is the usual "the Stripe window won't take my payment" report, and it is unrelated to
+the webhook defect above.
+
