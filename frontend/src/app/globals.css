@@ -269,3 +269,65 @@ html {
     animation: none;
   }
 }
+
+/* ── Upgrade offer (DEF-017): banner entrance, card stagger, CTA pulse ──
+   The banner is the launch offer's only home now, so it has to read as the
+   loudest thing on the page; the cards settle in behind it. Durations stay
+   short (≤0.5s) so nothing delays the first tap, and every one of them is
+   switched off under `prefers-reduced-motion`. */
+@keyframes banner-in {
+  from {
+    opacity: 0;
+    transform: translateY(-14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes card-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes cta-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.03);
+  }
+}
+/* `backwards` (not `both`): the entrance state applies during the stagger delay,
+   then the element hands its `transform` back to normal styles — a `both` fill
+   would keep `translateY(0)` applied forever and silently kill the hover lift on
+   the cards below. */
+.animate-banner-in {
+  animation: banner-in 0.5s ease-out backwards;
+}
+.animate-card-in {
+  animation: card-in 0.45s ease-out backwards;
+}
+/* Finite on purpose. It breathes twice as the banner lands and then holds still:
+   an *endless* transform never satisfies Playwright's "element is stable" click
+   check (it times the CTA out), and a button that never stops moving is a tap
+   target that drifts under a thumb. The steady attention comes from the banner's
+   own gold glow and the pulsing flame, neither of which touches the hit box.
+   Applied to a wrapper, never to the button: the Button's `active:scale-[0.98]`
+   press feedback is a transform too, and an animation outranks it. */
+.animate-cta-pulse {
+  animation: cta-pulse 2s ease-in-out 2;
+}
+@media (prefers-reduced-motion: reduce) {
+  .animate-banner-in,
+  .animate-card-in,
+  .animate-cta-pulse {
+    animation: none;
+  }
+}

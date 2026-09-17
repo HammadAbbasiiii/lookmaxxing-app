@@ -341,3 +341,72 @@ live keys without recreating the coupon + prices makes this offer disappear for
 real users: `/payments/offer` degrades to `verified: false` and the card falls back
 to list pricing.
 
+
+## £1 offer banner + checkout error-handling pass (2026-09-17, DEF-017)
+
+**Report:** "the coupon on top horizontal format has disappeared" (the £1 offer had
+been buried inside the Pro card) **and** "clicking *Start for £1.00*, Stripe checkout
+fails".
+
+### Checkout was not broken — the probe was
+
+| Call (live, `https://lookmaxx-api.onrender.com/api/v1`) | Result |
+|---|---|
+| `POST /payments/checkout {tier: "pro", annual: false, first_month_offer: true}` | **HTTP 200 in 0.79 s**, `checkout_url: https://checkout.stripe.com/c/pay/cs_test_…#fidnandh…` |
+| `GET /payments/checkout/{session}` | `status: "open"`, `amount_charged: 1.0` (100 minor), `amount_discount: 8.99` (899 minor), `first_month_offer: true` |
+| The hosted page (clean browser context) | "LOOKMAXX · Subscribe to Pro Monthly · **£1.00** · Then £9.99 per month starting next month · Subtotal £9.99 · First Month £1 −£8.99 · **Total due today £1.00**" |
+
+The one failure seen — *"This link is incomplete"* with `CheckoutInitError: apiKey is
+not set` in the console — was self-inflicted: the first navigation dropped the URL's
+`#fidnandh…` fragment. That fragment is not session data; it decodes
+(`base64 → XOR 5`) to the account's checkout config
+`{"borderStyle":"default","gv":0,"apiKey":"pk_test_51UDnBm…","fromServer":true,…}`, so a
+URL without it carries no publishable key — hence Stripe's message. The same URL that
+failed then rendered correctly in a fresh tab, in a fresh context, and in a fresh
+context seeded with the identical cookies + localStorage (no service worker and no
+cache storage on the origin), i.e. tab state — not auth, CORS, the coupon, or the
+`/payments/checkout` contract. **Deployed Stripe is test mode** (`cs_test_…`,
+`pk_test_…`), which is why the coupon is honoured today.
+
+### The two real gaps the report exposed
+
+| Gap | Fix |
+|---|---|
+| `except Exception: raise HTTPException(502)` around `stripe.checkout.Session.create` logged **nothing** — "checkout failed" with no type, code or request id to debug from | `logger.exception(...)` records `type`, `code`, `param`, `request_id`; a rejection that names the coupon/discount is retried **once at list price** and answers `offer_applied: false`. A non-coupon failure is never retried (a dead API key still 502s) |
+| An *unverifiable* coupon (`verified: false` — the live-mode trap) still priced quietly | The banner renders only for `eligible && verified`; otherwise the page prints "The £1.00 first-month offer is temporarily unavailable — the plans below are at their regular price" |
+
+### Fix + evidence
+
+| Check | Result |
+|---|---|
+| `/upgrade` as an eligible free member, **zero interaction** | gold **banner above the cards**: "FIRST MONTH SPECIAL / Get started for £1.00 / …then £9.99/month from month 2", CTA "Start for £1.00" |
+| The three cards | Elite £19.99/mo · Pro **£9.99/mo** (billed monthly) · Free £0 — no £1 headline inside a card, no in-card "switch to monthly" button |
+| Banner CTA → Stripe (live click-through, localhost → Render) | `cs_test_…` checkout showing **Total due today £1.00**, "First Month £1 −£8.99" |
+| Banner CTA request body (asserted in the suite) | `{tier: "pro", annual: false, first_month_offer: true}` — the monthly plan the coupon prices, even for a visitor left on the annual toggle |
+| Annual view | banner still present (offer never hidden); Pro card shows £50.40/yr and CTA "Start Pro" — a button promising £1 while buying annual would be the DEF-015 mismatch again |
+| Existing Elite subscriber | "You're already on Elite." + **Current plan**, no banner |
+| Existing Pro subscriber (stubbed) | **Current plan** on Pro, "Switch to Elite" on Elite, no banner on either |
+| `e2e/score-clarity.spec.ts` (Chromium, API-stubbed) | **15/15 passed** (was 11) |
+| `backend/tests/test_payments.py::TestCheckoutCouponFallback` | **compiles** (`python3 -m py_compile`); **not runnable on this Mac** — no backend venv and `mediapipe` has no macOS-arm64 wheel |
+| `tsc --noEmit` | clean |
+
+Screenshots: `TESTING/screenshots/upgrade-banner-free.png`,
+`upgrade-banner-elite-subscriber.png`, `upgrade-stripe-checkout-pound.png` (the Stripe
+page the banner CTA opens: "Total due today £1.00").
+
+**Not re-run:** the £1 test charge itself. Stripe's hosted card fields sit in nested
+`js.stripe.com` frames behind hCaptcha, which defeated a bounded automation attempt
+(the account stayed `free`, `has_used_first_month_offer: false`). The grant path is
+covered by
+`test_payments.py::TestStripeWebhook::test_checkout_completed_grants_and_consumes_first_month_offer`.
+
+**Design deviations worth flagging:** (1) the CTA pulse is **finite (2 cycles)** — an
+endless `transform` animation fails Playwright's "element is stable" click check and
+leaves a tap target that never stops moving; the persistent attention comes from the
+banner's gold glow; (2) no click **ripple** — this UI has no ripple primitive, and
+adding one would introduce an interaction pattern the rest of the app's `Button`s
+don't share; (3) the eligible free member still defaults to the **monthly** view
+(DEF-016's fix), so the Pro card reads £9.99/mo rather than the annual £4.20/mo while
+its CTA states "Start for £1.00" — the price block is the regular price, the button is
+the amount charged.
+

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, Crown, Gift, ShieldCheck, Zap } from "lucide-react";
+import { ArrowRight, Check, Crown, Flame, ShieldCheck, Zap } from "lucide-react";
 import { toast } from "sonner";
 import { useMe } from "@/hooks/useMe";
 import { Button } from "@/components/ui/Button";
@@ -43,6 +43,19 @@ export default function UpgradePage() {
   const firstMonthAmount = offerData?.first_month_amount ?? null;
   const regularAmount = offerData?.regular_amount ?? PLANS.pro.monthly;
 
+  // DEF-017: the £1 offer is only advertised when Stripe confirmed it. On
+  // `verified: false` (the coupon/price couldn't be read — e.g. the coupon was
+  // never created in the live Stripe mode) the page says the offer is
+  // unavailable and checkout runs at list price: printing £1 and charging £9.99
+  // is the DEF-015 trust bug, and an unverified offer is never shown as a price.
+  const offerVerified = offerData?.verified === true;
+  const offerAvailable = offerEligible && offerVerified && firstMonthAmount != null;
+  const offerUnavailable = offerEligible && !offerVerified;
+  // Names the offer even when the server sent no amount (eligible, but the coupon
+  // couldn't be read): the launch configuration in config.py is £9.99 with £8.99
+  // off, so £1 is the documented figure this deployment is meant to honour.
+  const offerAmount = firstMonthAmount ?? 1;
+
   // The coupon is `duration=once` on the Pro *monthly* price, so a £1 first month
   // only exists in the monthly view. Leaving the annual default in place hid it
   // behind a small link: a brand-new member landed on £4.20/mo (list £9.99, struck)
@@ -63,7 +76,7 @@ export default function UpgradePage() {
 
   async function handleSelect(
     planKey: keyof typeof PLANS,
-    opts: { firstMonthOffer?: boolean } = {},
+    opts: { firstMonthOffer?: boolean; annual?: boolean } = {},
   ) {
     const plan = PLANS[planKey];
     if (plan.tier === "free") {
@@ -71,6 +84,9 @@ export default function UpgradePage() {
       return;
     }
     const firstMonthOffer = Boolean(opts.firstMonthOffer);
+    // The banner's CTA buys the *monthly* plan — the coupon is `duration=once` on
+    // the Pro monthly price — so it must not inherit a toggle left on annual.
+    const annualView = opts.annual ?? annual;
     track("upgrade_click", {
       metadata: {
         tier: plan.tier,
@@ -98,8 +114,16 @@ export default function UpgradePage() {
         return;
       }
 
-      const res = await createCheckout(plan.tier as "pro" | "elite", annual, firstMonthOffer);
+      const res = await createCheckout(plan.tier as "pro" | "elite", annualView, firstMonthOffer);
       if (res.checkout_url) {
+        if (firstMonthOffer && res.offer_applied === false) {
+          // Stripe refused the coupon (deleted/expired, or missing in this Stripe
+          // mode) and the session fell back to list price. We're about to leave
+          // the page, so log it instead of toasting into a page we no longer own.
+          console.warn(
+            "[upgrade] first-month coupon was not applied — checkout continues at list price",
+          );
+        }
         window.location.href = res.checkout_url;
       } else {
         toast.info(waitlistMessage(plan.name, user?.email));
@@ -116,6 +140,17 @@ export default function UpgradePage() {
     }
   }
 
+  /**
+   * The banner's CTA. Pins the *monthly* Pro checkout (the coupon is
+   * `duration=once` on the Pro monthly price) and moves the toggle to match, so
+   * the cards below can never contradict what the banner just sold.
+   */
+  async function handleFirstMonthOffer() {
+    setPricingTouched(true);
+    setAnnual(false);
+    await handleSelect("pro", { firstMonthOffer: true, annual: false });
+  }
+
   return (
     <div className="mx-auto max-w-4xl">
       <ScreenHeader
@@ -127,9 +162,70 @@ export default function UpgradePage() {
         }
       />
 
-      {/* DEF-015: the £1 offer lives *inside* the Pro card (below), not in a
-          banner above it. A banner next to a card headlining £9.99/mo is exactly
-          how "the UI showed £9.99 while Stripe charged £1" happened. */}
+      {/* DEF-017: the launch offer now gets the top of the page — full-width, with
+          its own CTA — instead of a line inside a £9.99 price card, where a
+          brand-new visitor read it as a footnote and concluded the offer was
+          missing. This does not reintroduce the DEF-015 mismatch: the banner is
+          the *only* place the £1 is claimed, it prints the follow-on price right
+          beside it, it renders solely for an offer Stripe has verified
+          (`verified: true`), and every card below stays at list price. */}
+      {offerAvailable ? (
+        <section
+          aria-labelledby="first-month-offer-title"
+          className="animate-banner-in mb-6 overflow-hidden rounded-card border border-gold/60 bg-gradient-to-r from-gold/25 via-gold/10 to-transparent p-5 shadow-[0_0_44px_-14px_rgba(212,175,55,0.55)] sm:p-6"
+        >
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
+            <div className="min-w-0">
+              <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-gold">
+                <Flame className="h-4 w-4 animate-pulse-glow" aria-hidden />
+                First month special
+              </p>
+              <h2
+                id="first-month-offer-title"
+                className="mt-1 font-display text-2xl font-bold text-ink"
+              >
+                Get started for {gbp(firstMonthAmount)}
+              </h2>
+              <p className="mt-1 text-sm text-muted">
+                Your first month is just {gbp(firstMonthAmount)}, then{" "}
+                <span className="font-medium text-ink">{gbp(regularAmount)}/month</span> from month
+                2. Cancel anytime.
+              </p>
+            </div>
+            <span className="animate-cta-pulse inline-block w-full shrink-0 sm:w-auto">
+              <Button
+                onClick={handleFirstMonthOffer}
+                size="lg"
+                className="w-full hover:shadow-[0_0_28px_-6px_rgba(212,175,55,0.75)] sm:w-auto"
+                disabled={busy !== null}
+                loading={busy === "pro"}
+              >
+                Start for {gbp(firstMonthAmount)}
+                <ArrowRight className="h-4 w-4" aria-hidden />
+              </Button>
+            </span>
+          </div>
+        </section>
+      ) : offerUnavailable ? (
+        /* Eligible, but Stripe couldn't confirm the coupon — the classic "the
+           offer exists in test mode only" case. Say so; never fake the price. */
+        <p
+          role="status"
+          className="mb-6 rounded-card border border-border-soft bg-surface-2 p-4 text-sm text-muted"
+        >
+          The {gbp(offerAmount)} first-month offer is temporarily unavailable — the plans below
+          are at their regular price.
+        </p>
+      ) : offerPending ? (
+        /* Same slot, reserved: without it the offer pops in and shoves the cards
+           down the moment the visitor starts reading them. */
+        <p
+          role="status"
+          className="mb-6 rounded-card border border-border-soft bg-surface-2 p-4 text-sm text-muted"
+        >
+          Checking your offer…
+        </p>
+      ) : null}
 
       {/* Annual / monthly toggle (anchor) */}
       <div className="mb-6 flex justify-center">
@@ -157,7 +253,7 @@ export default function UpgradePage() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-3">
-        {PLAN_ORDER.map((key) => {
+        {PLAN_ORDER.map((key, index) => {
           const plan = PLANS[key];
           const isPro = plan.tier === "pro";
           const isElite = plan.tier === "elite";
@@ -165,21 +261,25 @@ export default function UpgradePage() {
           const isCurrent = tier === plan.tier;
           const isExistingSubscriber = tier !== "free";
           const trial = isElite && ELITE_TRIAL_DAYS > 0;
-          // The £1 first month applies to Pro monthly only (the coupon is
-          // `duration=once`), and only while the server says this account is
-          // eligible — the headline price on the card is then £1, never £9.99.
-          const proFirstMonthOffer =
-            isPro && offerEligible && !annual && firstMonthAmount != null;
+          // DEF-017: the £1 first month is sold by the banner above, not by this
+          // card. The card keeps its list price and only its CTA states the offer
+          // amount — and only in the monthly view, because annual can't carry a
+          // `duration=once` coupon and a button promising £1 there would lie.
+          const proOfferCta = isPro && offerAvailable && firstMonthAmount != null;
 
           return (
             <div
               key={plan.tier}
               className={cn(
-                "relative flex flex-col rounded-card p-6",
+                // Staggered entrance (0.1s per card) + lift on hover. The
+                // animation uses `backwards` fill so the transform it finishes on
+                // is released and `hover:-translate-y-1` still works.
+                "animate-card-in relative flex flex-col rounded-card p-6 transition-all duration-200 hover:-translate-y-1",
                 isPro
-                  ? "border border-gold/60 bg-surface shadow-[0_0_40px_-12px_rgba(212,175,55,0.4)]"
-                  : "card-border",
+                  ? "border border-gold/60 bg-surface shadow-[0_0_40px_-12px_rgba(212,175,55,0.4)] hover:shadow-[0_0_52px_-10px_rgba(212,175,55,0.55)]"
+                  : "card-border hover:shadow-[0_10px_30px_-16px_rgba(0,0,0,0.8)]",
               )}
+              style={{ animationDelay: `${index * 100}ms` }}
             >
               <Badge
                 variant={isPro ? "gold" : isElite ? "success" : "muted"}
@@ -195,14 +295,7 @@ export default function UpgradePage() {
 
               <p className="mt-2 min-h-[40px] text-sm text-muted">{plan.blurb}</p>
 
-              {isPro && offerPending ? (
-                // Never print a price we may be about to replace. Until
-                // /payments/offer answers, an eligible member would otherwise
-                // watch £9.99 turn into £1.00 — the DEF-015 mismatch, as a flash.
-                <p className="mt-4 min-h-[40px] text-sm text-muted">
-                  Checking your price…
-                </p>
-              ) : plan.monthly > 0 ? (
+              {plan.monthly > 0 ? (
                 <div className="mt-4">
                   {annual ? (
                     <>
@@ -225,56 +318,25 @@ export default function UpgradePage() {
                     </>
                   ) : (
                     <>
-                      {/* Monthly. With the £1 first-month offer live, that is the
-                          headline and the regular price becomes the struck-through
-                          anchor — so the number on the card is the number charged. */}
-                      {proFirstMonthOffer ? (
-                        <>
-                          <p className="flex items-baseline gap-2">
-                            <span className="tabular font-display text-4xl font-bold text-ink">
-                              {gbp(firstMonthAmount)}
-                            </span>
-                            <span className="text-sm text-muted">first month</span>
-                            <s className="tabular text-sm text-muted">{gbp(regularAmount)}</s>
-                          </p>
-                          <p className="mt-1 flex items-center gap-1 text-xs font-medium text-gold">
-                            <Gift className="h-3.5 w-3.5" aria-hidden />
-                            Then {gbp(regularAmount)}/month from month 2 · cancel anytime
-                          </p>
-                        </>
-                      ) : (
-                        <>
-                          <p className="flex items-baseline gap-1">
-                            <span className="tabular font-display text-4xl font-bold text-ink">
-                              {gbp(plan.monthly)}
-                            </span>
-                            <span className="text-sm text-muted">/mo</span>
-                          </p>
-                          <p className="mt-1 text-xs text-muted">billed monthly</p>
-                        </>
-                      )}
+                      {/* Monthly list price. The £1 first month is the banner's job
+                          (DEF-017); keeping it off the price block is what makes
+                          this number the regular, always-true number. */}
+                      <p className="flex items-baseline gap-1">
+                        <span className="tabular font-display text-4xl font-bold text-ink">
+                          {gbp(plan.monthly)}
+                        </span>
+                        <span className="text-sm text-muted">/mo</span>
+                      </p>
+                      <p className="mt-1 text-xs text-muted">billed monthly</p>
                     </>
                   )}
 
-                  {/* Both notes sit outside the annual/monthly split: the offer
-                      must be visible in the default (annual) view too, otherwise
-                      an eligible user never learns the £1 month exists. */}
-                  {isPro && offerEligible && annual && firstMonthAmount != null ? (
-                    /* Annual is not eligible for the coupon, so the offer is
-                       surfaced as a real, actionable switch — not a buried link
-                       someone scanning a price card will never notice. */
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setPricingTouched(true);
-                        setAnnual(false);
-                      }}
-                      className="mt-3 flex w-full items-center justify-center gap-2 rounded-full border border-gold/60 bg-gold/10 px-4 py-2 text-sm font-semibold text-ink transition-colors hover:bg-gold/20"
-                    >
-                      <Gift className="h-4 w-4 text-gold" aria-hidden />
-                      Switch to monthly for a {gbp(firstMonthAmount)} first month
-                    </button>
-                  ) : null}
+                  {/* DEF-017: this view used to carry its own "switch to monthly
+                      for a £1 first month" button, because the offer was otherwise
+                      invisible from the annual view. The banner above is visible in
+                      every view and states the £1 outright — which is exactly what
+                      that button was compensating for — so the card stays a price
+                      card. */}
                   {isPro && offerUsed ? (
                     <p className="mt-1 text-xs text-muted">
                       Your £1 first month has already been used.
@@ -309,7 +371,7 @@ export default function UpgradePage() {
 
               <Button
                 onClick={() =>
-                  handleSelect(key, { firstMonthOffer: proFirstMonthOffer })
+                  handleSelect(key, { firstMonthOffer: proOfferCta && !annual })
                 }
                 variant={isPro ? "primary" : "secondary"}
                 fullWidth
@@ -321,7 +383,7 @@ export default function UpgradePage() {
                   ? "Current plan"
                   : isFree
                     ? "Start free"
-                    : proFirstMonthOffer
+                    : proOfferCta && !annual
                       ? `Start for ${gbp(firstMonthAmount)}`
                       : isExistingSubscriber
                         ? `Switch to ${plan.name}`

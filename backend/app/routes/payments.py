@@ -56,6 +56,19 @@ def _tier_for_price(price_id: str | None) -> str | None:
     return mapping.get(price_id)
 
 
+def _is_coupon_error(exc: Exception) -> bool:
+    """True when a Stripe rejection is about the discount we attached.
+
+    Stripe words these as `InvalidRequestError: No such coupon:
+    'FIRST_MONTH_1'` (sometimes with `param: discounts.0.coupon`). Matching on
+    the text keeps the list-price retry from masking unrelated failures — a dead
+    API key or a missing price must still surface as an error, not as a silently
+    full-priced checkout.
+    """
+    text = f"{exc} {getattr(exc, 'param', None) or ''}".lower()
+    return "coupon" in text or "discount" in text
+
+
 def _unix_to_datetime(ts) -> datetime | None:
     """Convert a Stripe unix timestamp to a naive UTC datetime (the app stores
     naive UTC everywhere, so we match that convention)."""
@@ -367,12 +380,17 @@ async def create_checkout(
         if user.subscription_customer_id
         else {"customer_email": user.email}
     )
-    try:
-        session = stripe.checkout.Session.create(
+    def _create_session(apply_discount: bool):
+        """Build the Checkout session, with or without the £1 coupon.
+
+        `discounts` is resolved per attempt so a coupon Stripe refuses can be
+        dropped without rebuilding anything else about the session.
+        """
+        return stripe.checkout.Session.create(
             mode="subscription",
             line_items=[{"price": price_id, "quantity": 1}],
             subscription_data=subscription_data,
-            discounts=discounts,
+            discounts=discounts if apply_discount else None,
             success_url=(
                 f"{settings.FRONTEND_URL}/upgrade/success"
                 "?session_id={CHECKOUT_SESSION_ID}"
@@ -387,13 +405,64 @@ async def create_checkout(
             },
             **customer_kwargs,
         )
-    except Exception:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail={"code": "stripe_error", "message": "Couldn't start checkout. Try again in a moment."},
-        )
 
-    return {"checkout_url": session.url}
+    try:
+        session = _create_session(first_month)
+    except Exception as exc:
+        # One handler for every Stripe failure, deliberately not keyed on Stripe's
+        # exception *classes* (those have moved between SDK majors): what decides
+        # the fallback is whether the rejection names the coupon we attached.
+        if not (first_month and _is_coupon_error(exc)):
+            logger.exception(
+                "Stripe rejected checkout (tier=%s annual=%s first_month=%s "
+                "type=%s code=%s param=%s request_id=%s)",
+                tier,
+                payload.annual,
+                first_month,
+                type(exc).__name__,
+                getattr(exc, "code", None),
+                getattr(exc, "param", None),
+                getattr(exc, "request_id", None),
+            )
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail={
+                    "code": "stripe_error",
+                    "message": "Couldn't start checkout. Try again in a moment.",
+                },
+            )
+        # The coupon exists in Stripe but Stripe won't apply it — typically it was
+        # created in the test account while this deployment runs on live keys.
+        # Losing the discount is survivable; losing the sale is not. Retry at list
+        # price, log loudly, and report `offer_applied: false`. /payments/offer
+        # already answers `verified: false` for the same misconfiguration, so the
+        # UI is telling the customer the truth rather than promising £1.
+        logger.warning(
+            "£1 coupon %s was rejected by Stripe (%s: %s) — retrying checkout at list price",
+            settings.STRIPE_FIRST_MONTH_COUPON_ID,
+            type(exc).__name__,
+            exc,
+        )
+        first_month = False
+        try:
+            session = _create_session(False)
+        except Exception as retry_exc:
+            logger.exception(
+                "Stripe checkout failed again on the list-price retry (tier=%s type=%s)",
+                tier,
+                type(retry_exc).__name__,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail={
+                    "code": "stripe_error",
+                    "message": "Couldn't start checkout. Try again in a moment.",
+                },
+            ) from retry_exc
+
+    # `offer_applied` distinguishes "£1 session" from "the coupon was dropped and
+    # this is a list-price session" — the client can't tell from the URL alone.
+    return {"checkout_url": session.url, "offer_applied": first_month}
 
 
 # ── Offer state + checkout receipt ──────────────────────────────────────────

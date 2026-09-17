@@ -540,6 +540,10 @@ export type Report = z.infer<typeof ReportSchema>;
 
 export const CheckoutSchema = z.object({
   checkout_url: z.string().nullable().catch(null),
+  // False when Stripe refused the £1 coupon and the session fell back to list
+  // price. The upgrade page logs it — the redirect happens immediately, so there
+  // is no page left to toast into.
+  offer_applied: z.boolean().catch(true),
 });
 export type Checkout = z.infer<typeof CheckoutSchema>;
 

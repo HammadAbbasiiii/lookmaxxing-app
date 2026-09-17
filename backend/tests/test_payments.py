@@ -782,3 +782,105 @@ class TestCheckoutReceiptEndpoint:
         res = client.get("/api/v1/payments/checkout/cs_missing", headers=_auth_headers(u))
 
         assert res.status_code == 404
+
+class TestCheckoutCouponFallback:
+    """A coupon Stripe refuses must cost the discount, not the sale (DEF-017).
+
+    The live-mode trap: `FIRST_MONTH_1` exists in the test account only, so a live
+    checkout either 502'd outright or — worse — took list price while the page
+    still advertised £1. The rejection is now caught, logged with its exact
+    type/code/param/request-id, and retried without the coupon.
+    """
+
+    def _patch_stripe(self, monkeypatch, *, error=None, fail_times=1):
+        import stripe
+
+        calls: list[dict] = []
+
+        def create(**kwargs):
+            calls.append(kwargs)
+            if len(calls) <= fail_times:
+                raise error if error is not None else stripe.StripeError(
+                    "No such coupon: 'FIRST_MONTH_1'"
+                )
+            return SimpleNamespace(url="https://checkout.stripe.com/c/pay/cs_test_stub#fid")
+
+        monkeypatch.setattr(settings, "STRIPE_SECRET_KEY", "sk_test")
+        monkeypatch.setattr(settings, "STRIPE_PRICE_PRO_MONTHLY", "price_pro_monthly")
+        monkeypatch.setattr(settings, "STRIPE_FIRST_MONTH_COUPON_ID", "FIRST_MONTH_1")
+        monkeypatch.setattr(stripe.checkout.Session, "create", create)
+        return calls
+
+    def _checkout(self, client, user):
+        return client.post(
+            "/api/v1/payments/checkout",
+            json={"tier": "pro", "annual": False, "first_month_offer": True},
+            headers=_auth_headers(user),
+        )
+
+    def test_a_rejected_coupon_is_retried_at_list_price(self, client, db_session, monkeypatch):
+        u = _make_user(db_session, email="coupon-fallback@example.com", tier="free")
+        calls = self._patch_stripe(monkeypatch)
+
+        res = self._checkout(client, u)
+
+        assert res.status_code == 200, res.text
+        body = res.json()
+        assert body["offer_applied"] is False
+        assert body["checkout_url"].startswith("https://checkout.stripe.com/")
+        # The coupon was attempted once, then dropped for the retry — and the
+        # session metadata must not claim the offer the customer isn't getting.
+        assert calls[0]["discounts"] == [{"coupon": "FIRST_MONTH_1"}]
+        assert calls[1]["discounts"] is None
+        assert calls[1]["metadata"]["first_month_offer"] == "false"
+
+    def test_an_accepted_coupon_reports_the_offer_as_applied(
+        self, client, db_session, monkeypatch
+    ):
+        u = _make_user(db_session, email="coupon-applied@example.com", tier="free")
+        calls = self._patch_stripe(monkeypatch, fail_times=0)
+
+        res = self._checkout(client, u)
+
+        assert res.status_code == 200, res.text
+        assert res.json()["offer_applied"] is True
+        assert len(calls) == 1
+        assert calls[0]["discounts"] == [{"coupon": "FIRST_MONTH_1"}]
+
+    def test_a_failure_that_is_not_the_coupon_is_not_retried(
+        self, client, db_session, monkeypatch
+    ):
+        import stripe
+
+        u = _make_user(db_session, email="coupon-hardfail@example.com", tier="free")
+        calls = self._patch_stripe(
+            monkeypatch,
+            fail_times=99,
+            error=stripe.AuthenticationError("Invalid API Key provided"),
+        )
+
+        res = self._checkout(client, u)
+
+        # A dead key is not something a retry can fix, and it must never be
+        # disguised as a full-price sale.
+        assert res.status_code == 502
+        assert res.json()["detail"]["code"] == "stripe_error"
+        assert len(calls) == 1
+
+    def test_an_expired_coupon_also_falls_back_at_list_price(
+        self, client, db_session, monkeypatch
+    ):
+        import stripe
+
+        u = _make_user(db_session, email="coupon-expired@example.com", tier="free")
+        calls = self._patch_stripe(
+            monkeypatch,
+            error=stripe.StripeError("This coupon has expired (param: discounts.0.coupon)"),
+        )
+
+        res = self._checkout(client, u)
+
+        assert res.status_code == 200, res.text
+        assert res.json()["offer_applied"] is False
+        assert len(calls) == 2
+

@@ -61,6 +61,10 @@ async function stubApi(
     receipt?: unknown;
     /** Hold /payments/offer open, to pin what the card shows while undecided. */
     offerDelayMs?: number;
+    /** Reply for POST /payments/checkout. Default `{}` → no URL → waitlist path. */
+    checkout?: unknown;
+    /** Collects POST /payments/checkout bodies, so a click can be asserted on. */
+    checkoutBodies?: unknown[];
   },
 ) {
   await page.route("**/api/v1/**", async (route) => {
@@ -81,6 +85,11 @@ async function stubApi(
       return json(handlers.offer ?? { eligible: false, reason: "not_configured" });
     }
     if (url.includes("/payments/checkout/")) return json(handlers.receipt ?? {});
+    // The POST carries no trailing slash; the receipt GET above does.
+    if (url.endsWith("/payments/checkout")) {
+      handlers.checkoutBodies?.push(route.request().postDataJSON());
+      return json(handlers.checkout ?? {});
+    }
     if (url.includes("/analysis/") && url.includes("/insights")) return json({});
     if (url.includes("/analysis/")) return json(handlers.analysis ?? {});
     if (url.includes("/status")) return json(STATUS);
@@ -184,25 +193,50 @@ test.describe("the £1 first month is server-authoritative (DEF-015)", () => {
     await page.addInitScript(() => window.localStorage.setItem("lookmaxx_token", "stub-token"));
   });
 
-  test("an eligible member lands on the £1 price with no interaction", async ({ page }) => {
+  test("an eligible member sees the £1 banner with no interaction (DEF-016)", async ({ page }) => {
     await stubApi(page, { offer: eligibleOffer });
     await page.goto("/upgrade");
 
+    // DEF-017: the launch offer is the page's loudest element, above the cards.
+    // The regression this guards is the offer *existing* but reading as a
+    // footnote inside a £9.99 price card.
+    const banner = page.getByRole("region", { name: /Get started for £1\.00/ });
+    await expect(banner).toBeVisible();
+    await expect(banner).toContainText("First month special");
+    await expect(banner).toContainText("then £9.99/month from month 2");
+    await expect(banner.getByRole("button", { name: "Start for £1.00" })).toBeVisible();
+
+    // …and the cards stay price cards: regular numbers, no £1 headline.
     const proCard = page.locator("div.rounded-card", {
       has: page.getByRole("heading", { name: "Pro" }),
     });
-    // The coupon prices the Pro *monthly* plan, so eligibility has to land there.
-    // Leaving the annual default in place is what made the launch offer look
-    // missing: the card headlined £4.20/mo (list £9.99, struck) + "Start Pro".
-    await expect(proCard).toContainText("£1.00");
-    await expect(proCard).toContainText("first month");
-    await expect(proCard).toContainText("Then £9.99/month from month 2");
-    // The CTA states the amount charged, matching the card headline.
+    await expect(proCard).toContainText("£9.99");
+    await expect(proCard).not.toContainText("first month");
+    // The card's CTA still states the amount charged — the number on the button
+    // is the number Stripe takes (DEF-015), even though the price block above it
+    // shows the regular monthly price.
     await expect(proCard.getByRole("button", { name: "Start for £1.00" })).toBeVisible();
-    await expect(proCard.getByRole("button", { name: "Start Pro" })).toHaveCount(0);
   });
 
-  test("choosing annual keeps the £1 offer one tap away", async ({ page }) => {
+  test("the banner CTA buys the monthly Pro plan with the coupon attached", async ({ page }) => {
+    const bodies: unknown[] = [];
+    await stubApi(page, { offer: eligibleOffer, checkoutBodies: bodies });
+    await page.goto("/upgrade");
+
+    const banner = page.getByRole("region", { name: /Get started for £1\.00/ });
+    await banner.getByRole("button", { name: "Start for £1.00" }).click();
+
+    // The coupon is `duration=once` on the Pro *monthly* price. Sending
+    // annual: true here is the bug that would charge £50.40 instead of £1.
+    expect(bodies).toHaveLength(1);
+    expect(bodies[0]).toEqual({ tier: "pro", annual: false, first_month_offer: true });
+
+    // The stub hands back no checkout URL (it must not send the test browser to
+    // the real checkout.stripe.com), so the page stops at the waitlist copy.
+    await expect(page.getByText(/waitlist/)).toBeVisible();
+  });
+
+  test("in the annual view the banner still sells the £1 first month", async ({ page }) => {
     await stubApi(page, { offer: eligibleOffer });
     await page.goto("/upgrade");
     await page.getByRole("button", { name: /^Annual/ }).click();
@@ -213,16 +247,13 @@ test.describe("the £1 first month is server-authoritative (DEF-015)", () => {
     // Annual figures, because an annual plan is not eligible for a
     // `duration=once` coupon — the card must not imply otherwise.
     await expect(proCard).toContainText("£50.40/yr");
-    await expect(proCard).not.toContainText("Then £9.99/month from month 2");
+    await expect(proCard).not.toContainText("first month");
+    // And its button must not promise £1 while it would buy the annual plan.
+    await expect(proCard.getByRole("button", { name: "Start Pro" })).toBeVisible();
 
-    // …and the offer is a real button, not a link nobody scanning a price scans.
-    const switchToMonthly = proCard.getByRole("button", {
-      name: /Switch to monthly for a £1\.00 first month/,
-    });
-    await expect(switchToMonthly).toBeVisible();
-
-    await switchToMonthly.click();
-    await expect(proCard.getByRole("button", { name: "Start for £1.00" })).toBeVisible();
+    // DEF-017: the offer no longer needs an in-card "switch to monthly" button —
+    // the banner is present in every view, so it is always one tap away.
+    await expect(page.getByRole("region", { name: /Get started for £1\.00/ })).toBeVisible();
   });
 
   test("a view the visitor picked is never overwritten by the eligibility default", async ({
@@ -237,24 +268,30 @@ test.describe("the £1 first month is server-authoritative (DEF-015)", () => {
     const proCard = page.locator("div.rounded-card", {
       has: page.getByRole("heading", { name: "Pro" }),
     });
+    // The banner lands in its own slot above the cards; the card it must never
+    // touch keeps showing the annual figures the visitor chose.
+    await expect(page.getByRole("region", { name: /Get started for £1\.00/ })).toBeVisible();
     await expect(proCard).toContainText("£50.40/yr");
-    await expect(proCard).not.toContainText("Then £9.99/month from month 2");
+    await expect(proCard).not.toContainText("first month");
   });
 
-  test("no price is printed until the server has answered", async ({ page }) => {
+  test("the offer slot holds its place, and the card price never changes", async ({ page }) => {
     await stubApi(page, { offer: eligibleOffer, offerDelayMs: 2500 });
     await page.goto("/upgrade");
 
     const proCard = page.locator("div.rounded-card", {
       has: page.getByRole("heading", { name: "Pro" }),
     });
-    // While /payments/offer is in flight neither price may be claimed: printing
-    // £9.99 and then replacing it with £1.00 is the DEF-015 mismatch as a flash.
-    await expect(proCard).toContainText("Checking your price…");
-    await expect(proCard).not.toContainText("9.99");
+    // While /payments/offer is in flight the offer slot says so, and the card is
+    // already showing the price it will keep. A card that flips £9.99 → £1.00 is
+    // the DEF-015 mismatch as a flash — which is why the offer never moves it.
+    await expect(page.getByText("Checking your offer…")).toBeVisible();
+    await expect(proCard).toContainText("£9.99");
+    await expect(page.getByRole("region", { name: /Get started for £1\.00/ })).toHaveCount(0);
 
-    await expect(proCard).toContainText("£1.00");
-    await expect(proCard).not.toContainText("Checking your price…");
+    await expect(page.getByRole("region", { name: /Get started for £1\.00/ })).toBeVisible();
+    await expect(page.getByText("Checking your offer…")).toHaveCount(0);
+    await expect(proCard).toContainText("£9.99");
   });
 
   test("a used offer is never advertised again", async ({ page }) => {
@@ -265,13 +302,38 @@ test.describe("the £1 first month is server-authoritative (DEF-015)", () => {
     await page.goto("/upgrade");
     await page.getByRole("button", { name: "Monthly", exact: true }).click();
 
+    await expect(page.getByRole("region", { name: /Get started for/ })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Start for £1.00" })).toHaveCount(0);
+
     const proCard = page.locator("div.rounded-card", {
       has: page.getByRole("heading", { name: "Pro" }),
     });
     await expect(proCard).toContainText("£9.99");
     await expect(proCard).toContainText("Your £1 first month has already been used.");
-    await expect(proCard).not.toContainText("Then £9.99/month from month 2");
-    await expect(proCard.getByRole("button", { name: "Start for £1.00" })).toHaveCount(0);
+  });
+
+  test("an offer Stripe can't confirm is announced as unavailable, never as £1", async ({
+    page,
+  }) => {
+    // The live-mode trap: the coupon exists in the test account only, so the
+    // account is eligible but the offer is unverifiable. Printing £1 here is how
+    // a customer walks into Stripe and gets billed £9.99 — say so instead.
+    await stubApi(page, {
+      offer: { ...eligibleOffer, verified: false, source: "config" },
+    });
+    await page.goto("/upgrade");
+    await page.getByRole("button", { name: "Monthly", exact: true }).click();
+
+    await expect(
+      page.getByText("The £1.00 first-month offer is temporarily unavailable"),
+    ).toBeVisible();
+    await expect(page.getByRole("button", { name: "Start for £1.00" })).toHaveCount(0);
+
+    const proCard = page.locator("div.rounded-card", {
+      has: page.getByRole("heading", { name: "Pro" }),
+    });
+    await expect(proCard).toContainText("£9.99");
+    await expect(proCard.getByRole("button", { name: "Start Pro" })).toBeVisible();
   });
 
   test("no offer configured means list pricing, with no £1 claim anywhere", async ({ page }) => {
@@ -281,6 +343,42 @@ test.describe("the £1 first month is server-authoritative (DEF-015)", () => {
 
     await expect(page.getByText("first month", { exact: false })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Start Pro" })).toBeVisible();
+  });
+
+  test("a Pro subscriber sees the Elite upgrade, never the launch offer", async ({ page }) => {
+    await stubApi(page, { me: { ...ME_FREE, subscription_tier: "pro", is_subscribed: true } });
+    await page.goto("/upgrade");
+    await page.getByRole("button", { name: "Monthly", exact: true }).click();
+
+    // No banner for a paying customer: the offer is a first-month acquisition
+    // price, and /payments/offer is not even consulted once tier !== free.
+    await expect(page.getByRole("region", { name: /Get started for/ })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Start for £1.00" })).toHaveCount(0);
+
+    const proCard = page.locator("div.rounded-card", {
+      has: page.getByRole("heading", { name: "Pro" }),
+    });
+    await expect(proCard.getByRole("button", { name: "Current plan" })).toBeVisible();
+
+    const eliteCard = page.locator("div.rounded-card", {
+      has: page.getByRole("heading", { name: "Elite" }),
+    });
+    await expect(eliteCard.getByRole("button", { name: "Switch to Elite" })).toBeVisible();
+  });
+
+  test("an Elite subscriber gets no upgrade CTA at all", async ({ page }) => {
+    await stubApi(page, { me: { ...ME_FREE, subscription_tier: "elite", is_subscribed: true } });
+    await page.goto("/upgrade");
+
+    await expect(page.getByText("You're already on Elite.")).toBeVisible();
+    await expect(page.getByRole("region", { name: /Get started for/ })).toHaveCount(0);
+
+    const eliteCard = page.locator("div.rounded-card", {
+      has: page.getByRole("heading", { name: "Elite" }),
+    });
+    await expect(eliteCard.getByRole("button", { name: "Current plan" })).toBeVisible();
+    // "Switch to Elite" must be gone: there is nothing above Elite to buy.
+    await expect(page.getByRole("button", { name: "Switch to Elite" })).toHaveCount(0);
   });
 });
 

@@ -510,7 +510,7 @@ export async function createCheckout(
     method: "POST",
     body: { tier, annual, first_month_offer: firstMonthOffer },
   });
-  return decode(CheckoutSchema, data, { checkout_url: null });
+  return decode(CheckoutSchema, data, { checkout_url: null, offer_applied: true });
 }
 
 /** Server-authoritative £1 first-month offer state (DEF-015). */
