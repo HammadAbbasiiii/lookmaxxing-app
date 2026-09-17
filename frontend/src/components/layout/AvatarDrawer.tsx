@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import {
   CreditCard,
@@ -26,17 +26,53 @@ export function AvatarDrawer({ open, onClose }: AvatarDrawerProps) {
   const { data: user } = useMe();
   const isAdmin = user?.is_admin === true;
   const isFree = (user?.subscription_tier ?? "free") === "free";
+  const panelRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     if (!open) return;
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
+    const panel = panelRef.current;
+    // A dialog with aria-modal="true" is a promise: focus goes in, stays in,
+    // and comes back. Without this a keyboard user tabbed *behind* the open
+    // drawer into the page underneath, which is invisible and unreachable.
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    panel?.querySelector<HTMLElement>("button")?.focus();
+
+    function focusables(): HTMLElement[] {
+      if (!panel) return [];
+      return Array.from(
+        panel.querySelectorAll<HTMLElement>(
+          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+        ),
+      ).filter((el) => el.offsetParent !== null);
     }
+
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        onClose();
+        return;
+      }
+      if (e.key !== "Tab") return;
+      const items = focusables();
+      if (items.length === 0) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      const active = document.activeElement;
+      const outside = !panel || !panel.contains(active);
+      if (!e.shiftKey && (active === last || outside)) {
+        e.preventDefault();
+        first.focus();
+      } else if (e.shiftKey && (active === first || outside)) {
+        e.preventDefault();
+        last.focus();
+      }
+    }
+
     document.addEventListener("keydown", onKey);
     document.body.style.overflow = "hidden";
     return () => {
       document.removeEventListener("keydown", onKey);
       document.body.style.overflow = "";
+      previouslyFocused?.focus?.();
     };
   }, [open, onClose]);
 
@@ -59,6 +95,12 @@ export function AvatarDrawer({ open, onClose }: AvatarDrawerProps) {
         open ? "pointer-events-auto" : "pointer-events-none",
       )}
       aria-hidden={!open}
+      // Closed, the drawer is parked one screen-width to the right. `pointer-events`
+      // alone does NOT take it out of the tab order, so without `inert` a keyboard
+      // or screen-reader user could reach an off-screen "Log out" and sign
+      // themselves out with nothing on screen to explain it (found by the
+      // adversarial suite: at 320px the button sits at x=337–576).
+      inert={!open}
     >
       <div
         className={cn(
@@ -68,6 +110,7 @@ export function AvatarDrawer({ open, onClose }: AvatarDrawerProps) {
         onClick={onClose}
       />
       <aside
+        ref={panelRef}
         className={cn(
           // pb keeps the Log out row clear of the iOS home indicator, which the
           // bottom tab bar (now covered) used to account for.

@@ -13,7 +13,7 @@ import {
 import { useMe } from "@/hooks/useMe";
 import { logout } from "@/lib/api/endpoints";
 import { clearToken } from "@/lib/auth";
-import { cn } from "@/lib/utils";
+import { cn, initialOf } from "@/lib/utils";
 import { PRIMARY_TABS, isTabActive, navTier } from "@/lib/nav";
 import { normalizeTier, tierLabel } from "@/lib/tiers";
 import { Logo } from "./Logo";
@@ -129,7 +129,7 @@ export function TopNav() {
                 aria-label="Account menu"
                 aria-expanded={menuOpen}
               >
-                {user?.full_name ? user.full_name.charAt(0).toUpperCase() : <UserIcon className="h-4 w-4" />}
+                {initialOf(user?.full_name) || <UserIcon className="h-4 w-4" />}
               </button>
 
               {menuOpen ? (
@@ -185,11 +185,16 @@ export function TopNav() {
             {/* Mobile avatar -> drawer */}
             <button
               type="button"
-              onClick={() => setDrawerOpen(true)}
+              onClick={() => setDrawerOpen((o) => !o)}
               className="flex h-9 w-9 items-center justify-center rounded-full bg-surface-2 text-sm font-semibold text-ink ring-1 ring-border-soft transition-colors hover:ring-gold/40 md:hidden"
               aria-label="Account menu"
+              // It opens a dialog, so it must announce that — and it toggles, so
+              // it must report its state. Both were missing, which left the
+              // mobile trigger indistinguishable from the desktop dropdown.
+              aria-haspopup="dialog"
+              aria-expanded={drawerOpen}
             >
-              {user?.full_name ? user.full_name.charAt(0).toUpperCase() : <UserIcon className="h-4 w-4" />}
+              {initialOf(user?.full_name) || <UserIcon className="h-4 w-4" />}
             </button>
           </div>
         </div>

@@ -651,3 +651,106 @@ in-flight states for check-in/plan edits, a first-run "Day 1" moment on the dash
 `view-transition` continuity between the photo grid and a single result.
 
 
+## 2026-09-17 — Operation Breakpoint: adversarial stress pass (frontend)
+
+**What this was.** An attempt to break the shipped app on purpose, as five users at once: the
+impatient double-tapper, the confused back-button masher, the careless one who loses signal
+mid-save, the power user who squeezes the window to 320px and tabs through every control, and the
+adversary who edits URLs and pastes 10,000 characters. The point was not to re-run the happy paths —
+the existing 70 tests already did that — but to find what nobody thought to check. A new suite
+(`frontend/e2e/stress-adversary.spec.ts`, 36 tests) is the instrument, and it stays as the
+regression guard for everything below.
+
+**Defects found and fixed.** Each was reproduced before it was changed.
+
+| # | Defect (how it was found) | Fix |
+|---|---|---|
+| 1 | **The closed account drawer was still keyboard-reachable.** It is parked one screen-width to the right with `pointer-events-none`, which stops a mouse but *not* the tab key. At 320px the suite measured the "Log out" button at x=337–576 on a 320px screen: invisible, focusable, and destructive — Enter on it signs the user out with nothing on screen to explain it. | `inert={!open}` on the drawer (React 19 renders it natively) |
+| 2 | **Signing out in one tab left the other tab in a zombie signed-in state.** Tab A kept a signed-in shell around a token that no longer existed; because `/auth/me` was still fresh in cache, nothing refetched and nothing redirected (reproduced: still on `/dashboard` after 20s of polling). | `onTokenChanged()` in `lib/auth.ts` — a `storage` listener, which the browser delivers only to *other* tabs — wired into `useRequireAuth` |
+| 3 | **The delete-account dialog could not be dismissed with Escape.** Cancel existed on screen, but a destructive dialog opened by a stray tap must also be escapable from the keyboard. | Escape handler in `settings/page.tsx`, inert while the delete is in flight |
+| 4 | **Onboarding could dead-end silently.** Step 1 requires a valid age *and* a gender; when either was missing the Next button was simply greyed out and the screen never said why. A disabled button with no explanation is indistinguishable from a broken app. | Live, non-nagging hint (`stepHint()`): silent on a pristine step, explicit once the user has typed an unusable age or still owes a choice |
+| 5 | **Emoji / astral names rendered a broken glyph.** `name.charAt(0)` splits a surrogate pair, so the avatar for a user named "🦁🚀" painted a lone `\ud83e`. | `initialOf()` in `lib/utils.ts` walks whole code points; used by both avatar triggers |
+| 6 | **Upload: re-picking the same photo was a silent dead end.** A file input fires `change` only when its value actually changes, so "remove photo → pick the same file again" did nothing at all. | The input's value is cleared the moment the file is read |
+| 7 | **The mobile account trigger announced nothing.** No `aria-expanded`, no `aria-haspopup`, and the same accessible name as the desktop dropdown — a screen reader heard two identical controls, one of which silently opened a dialog. | `aria-haspopup="dialog"` + `aria-expanded`; it now toggles instead of only opening |
+| 8 | **An undecodable image gave advice that cannot work.** A HEIC picked on desktop Chrome, or a file renamed to `.jpg`, fell through to "Something went wrong. Please try again." | `mapUploadError` names the real failure: "We couldn't read that photo. Try a JPG or PNG, or take a new photo." |
+| 9 | *(hardening, from "does it trap focus?")* The open drawer neither moved focus into itself nor trapped it, despite `aria-modal="true"` — Tab walked out the back into the page underneath. | Focus enters the drawer on open, Tab/Shift+Tab cycle inside it, focus returns to the trigger on close |
+| 10 | *(hardening)* Every pick leaked an object URL, and `reset()` dropped the preview without revoking it. | One `useEffect` owns the preview URL's lifetime: revoked on change and on unmount |
+| 11 | *(found by looking at the evidence, not the code)* **The landing screenshot was lying.** `visual.spec.ts` captured full-page shots immediately, racing the IntersectionObserver behind `Reveal`, so the recorded landing page showed **35 text blocks at `opacity: 0`** — half the page apparently blank. Measured on a real scroll-through: **0 invisible**. Users were never affected; the evidence was. | The capture helper now scrolls the page (instant steps + rAF) and back before shooting, so the screenshot shows what a person sees |
+| 12 | *(hardening, same investigation)* Under `prefers-reduced-motion` the `Reveal` only zeroed the `y` offset — content still waited out a 0.6s fade plus its delay before appearing, i.e. content depended on an entrance playing. | Reduced motion now removes the transition entirely (`duration: 0`), matching law 3 of the motion system: nothing on screen may depend on an animation |
+
+**On the landing page specifically** (the one screen a stranger sees first): 11 sections were checked for
+visibility on load, mid-scroll and settled. All content is visible to anyone who scrolls, the hero is
+visible on load, and a real-resolution crop of the hero's lower area confirmed the CTAs, trust chips
+and the "One free analysis" line are aligned. Two observations were left alone because they are not
+defects: the "No card required" chip and the "No card required to see your score" line say the same
+thing twice in adjacent rows (copy, not code), and a pre-existing screenshot artifact is now fixed by
+#11 rather than by changing the page.
+
+
+### What it tried to break and could not (all now pinned by tests)
+
+| Attack | Result |
+|---|---|
+| **Every screen at every size.** 7 viewports (320×568 → 2560×1440, plus a 683px "200% laptop zoom" proxy) × up to 20 routes each: 7 public surfaces everywhere, and all 13 authenticated screens at the mobile and desktop extremes | No horizontal overflow, no control pushed off-screen, no clipped tab bar, no uncaught JS error. The only offenders ever reported were the closed drawer's own off-canvas buttons — the defect in #1 above |
+| **A brand-new account opening all 13 screens**, every non-2xx response recorded | **No 5xx anywhere.** The only failures are 3 known 404s from `progress/photos/{compare,latest}` — "this user has no photos yet", rendered as empty states. That allowlist is pinned in the test, so a new unexpected 4xx (or any 5xx) fails the build |
+| **Double-tapping** Create account / Save changes / Analyze photo, with drained 500–600ms responses | Exactly one request each. React-hook-form's `isSubmitting` plus the `loading` prop already hold the line; the earlier suspicion of a duplicate-signup race was wrong |
+| **Losing signal mid-save** | Offline banner appears, the save fails with "Can't reach the server…", the button frees itself (no permanent spinner), and saving succeeds on reconnect |
+| **Deep links and hand-edited URLs** | `/settings` while signed out → `/login?next=%2Fsettings`, and the deep link **survives** the login round-trip. `/admin` as a normal member → "Admin access required" *and* `GET /analytics/admin/overview` returns 403. `/results/999999999` → "We couldn't find this photo." `<script>` in a photo id → no dialog, no execution. Unknown route → branded 404 with a way back |
+| **Browser Back / Forward** mid-flow, and **refresh** mid-onboarding | No broken page, no blank screen; the wizard returns usable and completable |
+| **Hostile input** | A 300-character email is refused client-side and never reaches the server. A 10,000-character password is refused with "Password is too long." and **zero** requests sent. Letters typed into a numeric age field never pass validation |
+| **A 200-character name** at 320px and 1440px | Layout intact; the app chrome truncates |
+
+### Deliberately NOT done
+
+- **No "fix" for a phantom bug.** With an over-long password already present, a programmatic click on
+  the signup consent box does not stick (a forced click does, and a normal password is fine —
+  measured, not guessed). There is no user-visible path: that state cannot be submitted, the box is
+  not covered (`elementFromPoint` at its centre returns the box itself), and tapping the surrounding
+  label still toggles it. It is documented here rather than papered over with a `force: true`.
+- **No change to the three "no photos yet" 404s.** A 404 for an empty collection is not ideal, but it
+  is handled everywhere it appears and changing the contract would touch every consumer of
+  `/progress/photos/*` for no user-visible gain. The allowlist test makes a *new* one impossible to
+  add silently.
+- **No speculative double-submit guards.** The triple-tap tests pass on the existing `isSubmitting`
+  and `loading` plumbing; adding "just in case" guards would be adding code nobody can prove is
+  needed.
+- **No attempt to make the results page stop fetching insights/harmony for a photo that 404s.** The
+  page fires its queries in parallel by design; gating them on a sibling's success would turn one
+  round trip into a waterfall on the paid path, which is a worse trade than a few 404s on a URL a
+  user had to hand-edit.
+
+### Harness traps hit on the way (worth knowing for the next run)
+
+1. **Editing files while a suite is running breaks it.** `next dev` watches the whole `frontend/`
+   directory, so writing a spec (or a screenshot artifact) triggers a recompile that can leave an
+   in-flight `page.goto` hanging. The first attempt at this suite "hung" at 2 tests for exactly this
+   reason. Run, then edit — or edit outside `frontend/`.
+2. **`setInputFiles` always fires `change`.** It cannot reproduce defect #6, because it dispatches the
+   event unconditionally. The test asserts the *mechanism* instead (the input's value is empty after
+   a pick), which is what makes a real re-pick work.
+3. **`scroll-behavior: smooth` (a deliberate app choice) defeats `scrollTo` in a test.** Measuring
+   "is content under the tab bar" needs `behavior: "instant"`, otherwise the measurement runs before
+   the scroll animation finishes and every below-the-fold element looks hidden.
+4. **Playwright's `getByRole("alert")` also matches Next's route announcer** — scope alert locators
+   to their text.
+
+
+### Evidence
+
+| Check | Result |
+|---|---|
+| `npm run typecheck` (`tsc --noEmit`) | **clean** after every change in this pass |
+| Playwright chromium, **full suite** (everything above + the 36 new adversarial tests) | **106 passed, 0 failed** (5.5 min) |
+| Playwright firefox + webkit, `--grep @critical` | **28 passed, 0 failed** (50 s) — includes the account-drawer geometry and behaviour tests, so `inert` and the new focus trap hold on all three engines |
+| Backend pytest (`pytest -q`, local SQLite) | **350 passed** (1 m 36 s). No backend file was touched in this pass — run for completeness, and because the stress suite asserts against real API behaviour |
+| New suite | `frontend/e2e/stress-adversary.spec.ts` — 36 tests, tagged `@stress` (deliberately **not** `@critical`: it is a slow, browser-heavy gauntlet, not a smoke gate) |
+| Files changed | `components/layout/AvatarDrawer.tsx`, `components/layout/TopNav.tsx`, `lib/auth.ts`, `lib/utils.ts`, `hooks/useRequireAuth.ts`, `app/(app)/upload/page.tsx`, `app/(app)/settings/page.tsx`, `app/onboarding/page.tsx` |
+
+### How to re-run it
+
+```bash
+cd frontend
+npx playwright test stress-adversary --project=chromium   # the gauntlet (~4 min)
+npx playwright test --project=chromium                   # + every other spec
+```
+

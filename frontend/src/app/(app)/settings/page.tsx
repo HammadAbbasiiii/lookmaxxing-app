@@ -62,9 +62,22 @@ export default function SettingsPage() {
     }
   }, [user, hydrated]);
 
+  // Escape must back out of a destructive dialog. It is opened by a stray tap
+  // more often than by intent, and "the Cancel button is somewhere over there"
+  // is not an answer a keyboard user should have to accept.
+  useEffect(() => {
+    if (!confirmOpen) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape" && !deleting) setConfirmOpen(false);
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [confirmOpen, deleting]);
+
   function toggleGoal(g: string) {
     setGoals((prev) => (prev.includes(g) ? prev.filter((x) => x !== g) : [...prev, g]));
   }
+
 
   function toggleSkinConcern(c: string) {
     setSkinConcerns((prev) => (prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c]));

@@ -28,3 +28,23 @@ export function emitUnauthorized(): void {
     window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
   }
 }
+
+/**
+ * Fires in *other* tabs when the stored session changes there (the browser only
+ * delivers `storage` events to tabs that did not make the change).
+ *
+ * Logging out in tab B used to leave tab A rendering a signed-in shell while
+ * every request behind it failed, because the token was gone from localStorage
+ * but tab A never re-read it: the cached `/auth/me` was still fresh, so nothing
+ * refetched and nothing redirected. Returns an unsubscribe function.
+ */
+export function onTokenChanged(handler: (token: string | null) => void): () => void {
+  if (typeof window === "undefined") return () => {};
+  const listener = (event: StorageEvent) => {
+    // A `null` key means the whole store was cleared (e.g. "clear site data").
+    if (event.key !== null && event.key !== TOKEN_KEY) return;
+    handler(getToken());
+  };
+  window.addEventListener("storage", listener);
+  return () => window.removeEventListener("storage", listener);
+}

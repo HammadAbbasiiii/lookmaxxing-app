@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import imageCompression from "browser-image-compression";
 import { Camera, ImagePlus, ShieldCheck, X } from "lucide-react";
@@ -44,6 +44,14 @@ export default function UploadPage() {
       (ent.data.limits.analyses.remaining ?? 1) === 0,
   );
 
+  // An object URL lives until it is revoked, and this screen is revisited: one
+  // leak per pick is a slow leak. Revoking here (rather than inline beside the
+  // state update) also covers "user navigates away mid-preview".
+  useEffect(() => {
+    if (!preview) return;
+    return () => URL.revokeObjectURL(preview);
+  }, [preview]);
+
   function reset() {
     setFile(null);
     setPreview(null);
@@ -65,7 +73,6 @@ export default function UploadPage() {
     }
 
     setFile(f);
-    if (preview) URL.revokeObjectURL(preview);
     setPreview(URL.createObjectURL(f));
   }
 
@@ -79,6 +86,13 @@ export default function UploadPage() {
     }
     if (e instanceof Error) {
       if (/too long|smaller photo|No connection|upload failed/i.test(e.message)) return e.message;
+      // The compressor throws exactly these when the browser cannot decode the
+      // bytes at all — a HEIC picked on desktop Chrome, or a file renamed to
+      // .jpg. "Something went wrong. Please try again." is a dead end: trying
+      // again with the same photo cannot work.
+      if (/not an image|not an instance of Blob|could not be decoded|InvalidStateError/i.test(e.message)) {
+        return "We couldn't read that photo. Try a JPG or PNG, or take a new photo.";
+      }
     }
     return "Something went wrong. Please try again.";
   }
@@ -197,7 +211,17 @@ export default function UploadPage() {
           type="file"
           accept="image/jpeg,image/png,image/heic"
           className="hidden"
-          onChange={(e) => onSelectFile(e.target.files?.[0] ?? null)}
+          onChange={(e) => {
+            const picked = e.target.files?.[0] ?? null;
+            // Reset the input's value the moment we have the file. A file input
+            // only fires `change` when its value actually changes, so without
+            // this a user who removes their photo and picks the *same* file
+            // again gets silence — a dead end that never appears in an
+            // automated run (setInputFiles always fires) and always appears in
+            // a real browser.
+            e.target.value = "";
+            onSelectFile(picked);
+          }}
         />
 
         <div className="mt-5 flex gap-3">

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { clearToken, getToken, UNAUTHORIZED_EVENT } from "@/lib/auth";
+import { clearToken, getToken, onTokenChanged, UNAUTHORIZED_EVENT } from "@/lib/auth";
 import { ApiError } from "@/lib/api/client";
 import { useMe } from "@/hooks/useMe";
 
@@ -42,7 +42,16 @@ export function useRequireAuth(): boolean {
     };
     if (authFailed) redirect();
     window.addEventListener(UNAUTHORIZED_EVENT, redirect);
-    return () => window.removeEventListener(UNAUTHORIZED_EVENT, redirect);
+    // …and for the same thing happening in another tab. Signing out in one tab
+    // must sign out everywhere: otherwise the other tab keeps a signed-in shell
+    // around a token that no longer exists, and every action in it fails.
+    const stopWatchingToken = onTokenChanged((token) => {
+      if (!token) redirect();
+    });
+    return () => {
+      window.removeEventListener(UNAUTHORIZED_EVENT, redirect);
+      stopWatchingToken();
+    };
   }, [hasToken, authFailed, router, pathname]);
 
   // Not "ready" until we've confirmed a token on the client.

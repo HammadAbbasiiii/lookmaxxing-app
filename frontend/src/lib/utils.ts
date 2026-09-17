@@ -91,6 +91,21 @@ export function titleCase(word: string): string {
   return word.charAt(0).toUpperCase() + word.slice(1);
 }
 
+/**
+ * The first *whole* character of a name, for avatars and monograms.
+ *
+ * `name.charAt(0)` splits an astral character in half — the first code unit of
+ * "🦁🚀" is a lone surrogate, which every browser paints as a broken "�". A
+ * name is user input and user input is emoji, so this walks whole code points
+ * (and skips a leading space) instead.
+ */
+export function initialOf(name: string | null | undefined): string {
+  const trimmed = (name ?? "").trim();
+  if (!trimmed) return "";
+  const [first] = Array.from(trimmed);
+  return (first ?? "").toUpperCase();
+}
+
 /** Format an ISO date as a short human label (e.g. "Aug 27"). */
 export function shortDate(iso: string | null | undefined): string {
   if (!iso) return "";

@@ -47,6 +47,24 @@ export default function OnboardingPage() {
     return true; // concerns are optional
   }
 
+  /**
+   * Step 1 blocks on two things at once (a usable age *and* a gender), and the
+   * only feedback a blocked user gets is a greyed-out Next button. If they have
+   * typed an age and still cannot continue, say why — a disabled button with no
+   * explanation reads as "this app is broken". Deliberately silent on a pristine
+   * step, so it informs without nagging.
+   */
+  function stepHint(): string {
+    if (step !== 0) return "";
+    if (!age) return "";
+    const ageNum = parseInt(age, 10);
+    if (Number.isNaN(ageNum)) return "";
+    if (ageNum < 13) return "LookMaxx is for 13+.";
+    if (ageNum > 99) return "Enter an age under 100.";
+    if (!gender) return "Pick the option that fits you to continue.";
+    return "";
+  }
+
   function next() {
     if (step === 0) {
       const ageNum = parseInt(age, 10);
@@ -268,6 +286,12 @@ export default function OnboardingPage() {
             </div>
           ) : null}
         </motion.div>
+
+        {stepHint() ? (
+          <p className="mt-4 text-center text-xs font-medium text-muted" role="status">
+            {stepHint()}
+          </p>
+        ) : null}
 
         <div className="mt-6 flex items-center gap-3">
           {step > 0 ? (
