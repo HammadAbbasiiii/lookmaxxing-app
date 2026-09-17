@@ -86,6 +86,14 @@ services:
         sync: false
       - key: STRIPE_PRICE_ELITE_ANNUAL
         sync: false
+      # The £1-first-month coupon (DEF-015/016). Without it /payments/offer still
+      # answers, but degrades to list pricing — the launch offer silently vanishes
+      # and no error surfaces. Must be recreated in LIVE mode when going live.
+      - key: STRIPE_FIRST_MONTH_COUPON_ID
+        sync: false
+      # Elite trial length in days (defaults to 7 when unset).
+      - key: STRIPE_ELITE_TRIAL_DAYS
+        sync: false
       # ── Email (password reset) ─────────────────────────────────────
       - key: EMAIL_PROVIDER
         sync: false
