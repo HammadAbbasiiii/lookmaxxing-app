@@ -331,3 +331,186 @@ html {
     animation: none;
   }
 }
+
+/* ══ Experience system v1 — one law of motion for the whole app ══════════
+   Justified in PSYCHOLOGY.md §2.3. Three laws, and every rule below obeys
+   all three:
+
+     1. RESPONSIVENESS — nothing on the critical path exceeds 260ms. Under
+        ~100ms a change reads as *instant* (the user attributes it to their own
+        action = causality); 150–260ms reads as deliberate; 300ms+ is reserved
+        for entrances that must be *noticed*, never for feedback.
+     2. NO LINGERING TRANSFORMS — entrance animations use `backwards` fill only,
+        so no `transform` survives them. A transform that sticks around becomes
+        a containing block for `position: fixed` children (it silently breaks
+        the mobile nav/drawer) and it never satisfies Playwright's "element is
+        stable" click check — the same trap documented for the upgrade banner.
+     3. EVERY RULE HAS A KILL SWITCH — each one is disabled under
+        `prefers-reduced-motion: reduce` (§13). Motion is never load-bearing:
+        with animations off, every screen is complete and correct, just still.
+*/
+:root {
+  --dur-press: 90ms; /* contact — must read as instant */
+  --dur-quick: 140ms; /* hover/colour changes */
+  --dur-base: 200ms; /* the house default (§2.3 band: 150–250ms) */
+  --dur-slow: 260ms; /* arrival, settle, release */
+  --ease-arrive: cubic-bezier(0.16, 1, 0.3, 1); /* decelerate = "arriving" */
+  --ease-exit: cubic-bezier(0.4, 0, 1, 1); /* accelerate = "leaving" */
+  /* 1.56 overshoot = a real spring on release. Bounce on *contact* would read
+     as hesitation, which is why press-down uses --ease-exit instead. */
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* ── Tap hygiene ──────────────────────────────────────────────────────
+   Kills the three things that make a web app feel like a website on a phone:
+   the 300ms double-tap-zoom delay, the grey tap flash, and accidental text
+   selection on a fast thumb. Costs nothing, feels native immediately. */
+a,
+button,
+[role="button"],
+summary,
+label[for],
+input[type="submit"] {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+/* ── Press physics ────────────────────────────────────────────────────
+   A press must be felt twice: compress on contact, spring back on release.
+   On touch there is no hover, so this is the only feedback a user gets before
+   the network answers — it is what makes a tap feel *heard*, and it measurably
+   reduces re-taps (users stop poking a button that already acknowledged them). */
+.press {
+  transition:
+    transform var(--dur-slow) var(--ease-spring),
+    box-shadow var(--dur-base) var(--ease-arrive),
+    border-color var(--dur-base) var(--ease-arrive),
+    background-color var(--dur-quick) var(--ease-arrive),
+    color var(--dur-quick) var(--ease-arrive);
+}
+.spring {
+  transition: transform var(--dur-slow) var(--ease-spring);
+}
+/* Desktop affection: a surface leans toward the pointer. Pointer-fine only —
+   `hover` on a touch device fires on tap and would leave things stuck lifted. */
+@media (hover: hover) and (pointer: fine) {
+  .press:hover {
+    transform: translateY(-1px);
+  }
+  .lift:hover {
+    transform: translateY(-4px);
+  }
+}
+/* Pressed state wins over hover (declared after it, same specificity). */
+.press:active,
+.press[data-pressed="true"] {
+  transform: scale(0.97);
+  transition-duration: var(--dur-press);
+  transition-timing-function: var(--ease-exit);
+}
+.lift:active {
+  transform: scale(0.99);
+}
+
+/* ── Arrival: route transitions (app/(app)/template.tsx, app/(auth)/template.tsx)
+   A screen should *arrive*, not hard-swap. 6px is deliberately below the
+   threshold that registers as "content moved" — it reads as the screen
+   settling into place, not as a slider. Because the fill is `backwards`, the
+   wrapper returns to a transform-free state the instant it finishes. */
+@keyframes screen-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+.screen-in {
+  animation: screen-in var(--dur-slow) var(--ease-arrive) backwards;
+}
+
+/* ── Live swap: rotating status copy (analyzing) ─────────────────────── */
+@keyframes swap-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+.swap-in {
+  animation: swap-in var(--dur-slow) var(--ease-arrive) backwards;
+}
+
+/* ── The landing: the score reveal (the product's emotional peak) ──────
+   Three beats, in this order and no other:
+     1. the ring fills and the number counts (the wait pays off),
+     2. the ring pops + one gold flare fires (the "hit" — 620/900ms, finite),
+     3. the verdict label rises in 340ms later (the meaning arrives *after*
+        the number, which is what makes it feel earned rather than printed).
+   `label-in` has no forwards fill: its natural state is the visible one, so a
+   reduced-motion user — or a screenshot — always gets the label. */
+@keyframes land-pop {
+  0% {
+    transform: scale(1);
+  }
+  32% {
+    transform: scale(1.035);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+@keyframes land-flare {
+  0% {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  30% {
+    opacity: 0.9;
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.16);
+  }
+}
+@keyframes label-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+.animate-land-pop {
+  animation: land-pop 620ms var(--ease-spring) 1;
+}
+.animate-land-flare {
+  animation: land-flare 900ms var(--ease-arrive) 1;
+}
+.animate-label-in {
+  animation: label-in 420ms var(--ease-arrive) 340ms backwards;
+}
+/* The flare itself (the animation above only moves/fades it). A radial gold
+   bloom the size of the ring — the visual equivalent of the "thunk" when a
+   luxury car door closes: one hit, then gone. */
+.land-flare {
+  background: radial-gradient(
+    circle,
+    rgba(229, 193, 88, 0.38) 0%,
+    rgba(212, 175, 55, 0.18) 45%,
+    transparent 72%
+  );
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .press,
+  .press:hover,
+  .press:active,
+  .press[data-pressed="true"],
+  .lift:hover,
+  .lift:active {
+    transform: none;
+  }
+  .screen-in,
+  .swap-in,
+  .animate-land-pop,
+  .animate-land-flare,
+  .animate-label-in {
+    animation: none;
+  }
+}

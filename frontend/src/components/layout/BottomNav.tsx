@@ -35,7 +35,11 @@ export function BottomNav() {
               key={tab.href}
               href={tab.href}
               className={cn(
-                "flex min-w-0 flex-col items-center gap-1 overflow-hidden px-0.5 py-2.5 text-[11px] font-medium leading-none transition-colors",
+                // `.press`: on a phone the tab bar is the most-tapped surface in
+                // the app, so it gets the same contact/release physics as every
+                // other actionable thing (§2.3). `touch-action: manipulation`
+                // (global) already removed the 300ms double-tap delay.
+                "press flex min-w-0 flex-col items-center gap-1 overflow-hidden px-0.5 py-2.5 text-[11px] font-medium leading-none",
                 active ? "text-gold" : "text-muted hover:text-ink",
               )}
               aria-current={active ? "page" : undefined}

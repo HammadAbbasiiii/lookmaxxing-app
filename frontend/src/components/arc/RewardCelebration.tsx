@@ -4,6 +4,7 @@ import { useEffect, useMemo } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Trophy } from "lucide-react";
 import type { ArcClaim } from "@/lib/zod";
+import { haptics } from "@/lib/haptics";
 
 const COLORS = ["#fbbf24", "#f59e0b", "#fde68a", "#ffffff", "#fcd34d", "#b45309"];
 
@@ -30,6 +31,14 @@ export function RewardCelebration({
     const t = setTimeout(onDone, 2800);
     return () => clearTimeout(t);
   }, [show, onDone]);
+
+  // A variable-ratio win should land in the body, not only on the screen: one
+  // short buzz at the moment the burst starts (Android only, gesture-gated —
+  // `lib/haptics.ts`). No buzz for a "common" drop, which is why the caller
+  // renders a toast instead of this overlay for those.
+  useEffect(() => {
+    if (show) haptics.celebrate();
+  }, [show]);
 
   const count = rarity === "legendary" ? 60 : rarity === "epic" ? 40 : 18;
   const particles = useMemo(

@@ -192,7 +192,7 @@ export default function ResultsPage() {
 
       <Link
         href="/peak-you"
-        className="mt-6 block rounded-card card-border p-5 transition-colors hover:border-gold/40"
+        className="press lift mt-6 block rounded-card card-border p-5 hover:border-gold/40"
       >
         <div className="flex items-center justify-between gap-3">
           <div>

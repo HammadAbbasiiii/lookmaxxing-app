@@ -1,7 +1,8 @@
 "use client";
 
-import type { ButtonHTMLAttributes } from "react";
+import type { ButtonHTMLAttributes, PointerEvent } from "react";
 import { Loader2 } from "lucide-react";
+import { haptics } from "@/lib/haptics";
 import { cn } from "@/lib/utils";
 
 type Variant = "primary" | "secondary" | "ghost" | "danger";
@@ -27,6 +28,13 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   size?: Size;
   loading?: boolean;
   fullWidth?: boolean;
+  /**
+   * Contact haptic on press-down. Defaults on for `primary` (the money/success
+   * path) and off elsewhere — buzzing every ghost link is noise, and a signal
+   * that fires on everything stops meaning anything. Android only, and gated
+   * on the user having touched the page at least once (`lib/haptics.ts`).
+   */
+  haptic?: boolean;
 }
 
 export function Button({
@@ -34,21 +42,35 @@ export function Button({
   size = "md",
   loading = false,
   fullWidth = false,
+  haptic,
   className,
   children,
   disabled,
+  onPointerDown,
   ...props
 }: ButtonProps) {
+  const wantsHaptic = haptic ?? variant === "primary";
+
+  function handlePointerDown(event: PointerEvent<HTMLButtonElement>) {
+    if (wantsHaptic && !disabled && !loading) haptics.tick();
+    onPointerDown?.(event);
+  }
+
   return (
     <button
       className={cn(
-        "inline-flex select-none items-center justify-center gap-2 font-medium transition-all duration-100 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50",
+        // `.press` (globals.css §2.3) owns `transform`: compress on contact
+        // (90ms, no bounce) and spring back with overshoot on release (260ms).
+        // One owner on purpose — a Tailwind `active:scale-*` alongside it would
+        // fight it in the cascade and produce a coin-flip of the two feels.
+        "press inline-flex select-none items-center justify-center gap-2 font-medium disabled:pointer-events-none disabled:opacity-50",
         VARIANT_CLASSES[variant],
         SIZE_CLASSES[size],
         fullWidth && "w-full",
         className,
       )}
       disabled={disabled || loading}
+      onPointerDown={handlePointerDown}
       {...props}
     >
       {loading ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : null}

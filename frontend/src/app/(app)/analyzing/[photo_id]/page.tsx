@@ -18,6 +18,26 @@ const COPY = [
 ];
 
 /**
+ * One calm sentence per server-confirmed stage, for screen readers only.
+ * The visible copy above rotates for flavour; announcing that rotation every
+ * 2.5s would make a screen reader unusable, so the *live region* below only
+ * ever speaks when the pipeline genuinely moves.
+ */
+const STAGE_ANNOUNCEMENT: Record<string, string> = {
+  pending: "Your photo is queued for analysis.",
+  processing: "Analysis in progress.",
+  completed: "Analysis complete.",
+};
+
+/**
+ * How long we stay silent before acknowledging that this is taking a while.
+ * The anxiety peak of this screen is not the first seconds — it's the moment
+ * silence starts to feel like failure (~20s), so that is exactly when we speak
+ * up with the one thing the user actually wants to know: nothing is lost.
+ */
+const SLOW_ANALYSIS_SEC = 20;
+
+/**
  * Pipeline stages the server actually reports. We map them to ring positions so
  * the UI only ever advances on a real state change — the previous implementation
  * interpolated from wall-clock time and hard-capped at 95%, which was simply a
@@ -35,6 +55,7 @@ export default function AnalyzingPage() {
   const photoId = Array.isArray(params.photo_id) ? params.photo_id[0] : params.photo_id;
 
   const [progress, setProgress] = useState(0);
+  const [stage, setStage] = useState<string | null>(null);
   const [elapsedSec, setElapsedSec] = useState(0);
   const [copyIndex, setCopyIndex] = useState(0);
   const [failed, setFailed] = useState(false);
@@ -73,6 +94,7 @@ export default function AnalyzingPage() {
         if (cancelled) return;
         // Advance the ring only on a stage the server actually confirms.
         setProgress(STAGE_PROGRESS[s.analysis_status] ?? 20);
+        setStage(s.analysis_status);
         if (s.analysis_status === "completed" || s.score != null) {
           router.replace(`/results/${photoId}`);
           return;
@@ -146,12 +168,36 @@ export default function AnalyzingPage() {
         </ProgressRing>
       </div>
 
-      <p className="mt-6 text-center font-display text-lg font-semibold text-ink">
+      {/* Screen-reader status: one calm sentence per *real* stage change. The
+          visible copy rotates every 2.5s for flavour — announcing that would
+          make the page unusable with a screen reader, so the rotation below is
+          deliberately not a live region. */}
+      <p className="sr-only" role="status" aria-live="polite">
+        {stage ? (STAGE_ANNOUNCEMENT[stage] ?? "") : ""}
+      </p>
+
+      {/* `key` remounts this line, so each rotation crossfades in (260ms) rather
+          than hard-swapping — the difference between "it's thinking" and "it
+          changed its mind". */}
+      <p
+        key={copyIndex}
+        className="swap-in mt-6 text-center font-display text-lg font-semibold text-ink"
+      >
         {COPY[copyIndex]}
       </p>
       <p className="mt-1 text-center text-sm text-muted">
         Usually under a minute. You can leave — your result will be waiting.
       </p>
+
+      {/* The anxiety peak of this screen isn't second one — it's the moment the
+          silence starts to feel like failure. Speak up exactly then, and answer
+          the only question the user actually has: is my photo lost? */}
+      {elapsedSec >= SLOW_ANALYSIS_SEC ? (
+        <p className="swap-in mt-4 max-w-xs text-center text-xs leading-relaxed text-muted">
+          Taking longer than usual — nothing is lost. Your photo stays private,
+          and your result will be waiting on your dashboard.
+        </p>
+      ) : null}
 
       <Button variant="ghost" className="mt-8" onClick={() => router.push("/dashboard")}>
         Cancel

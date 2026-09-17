@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { Share2, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/Button";
+import { haptics } from "@/lib/haptics";
 
 const META: Record<number, { emoji: string; title: string; badge: string }> = {
   7: { emoji: "🌱", title: "One Week Strong", badge: "Week One" },
@@ -29,6 +30,9 @@ export function MilestoneCelebration({ day }: { day: number }) {
     const key = `milestone_celebration_${day}`;
     if (typeof window !== "undefined" && !window.localStorage.getItem(key)) {
       setVisible(true);
+      // Day 7/30/60/90 is the one genuinely rare moment in the product, so it
+      // gets the reserved multi-pulse pattern — never the everyday tick.
+      haptics.celebrate();
     }
   }, [day, meta]);
 

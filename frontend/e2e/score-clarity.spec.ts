@@ -444,3 +444,48 @@ test.describe("the receipt shows what Stripe actually charged (DEF-015)", () => 
     await expect(page.getByText("Discount applied")).toHaveCount(0);
   });
 });
+
+test.describe("the score reveal survives reduced motion (experience system §2.3)", () => {
+  // The reveal sequences three beats: the ring fills and the number counts →
+  // the ring pops with a gold flare → the verdict label rises in 340ms later.
+  // Motion is never load-bearing (PSYCHOLOGY.md §2.3), so these pin the two
+  // ways that promise can silently break: the label rendered *before* the
+  // number (simultaneity instead of sequencing), and a reduced-motion user
+  // losing the label because someone changed the animation's fill mode.
+  const analysis = {
+    photo_id: "p1",
+    file_url: "",
+    scores: { overall: 71, symmetry: 68, skin: 74, jawline: 63, eyes: 70 },
+    face_shape: "oval",
+    is_baseline: true,
+    analyzed_at: "2026-09-17T00:00:00",
+    measurement: { landmarks: "available", measured: true, reason: null, not_measured: [] },
+  };
+
+  test.beforeEach(async ({ page }) => {
+    await page.addInitScript(() => window.localStorage.setItem("lookmaxx_token", "stub-token"));
+    await stubApi(page, { analysis });
+  });
+
+  test("the verdict never precedes the number it judges", async ({ page }) => {
+    await page.goto("/results/p1");
+
+    // Checked in the same tick as the first paint: a slow hydration can only
+    // make this pass (the label isn't mounted yet), so it fails for exactly one
+    // reason — the label being rendered alongside the ring.
+    await expect(page.getByText("Strong features")).toHaveCount(0);
+
+    // …and it does arrive, once the count has landed.
+    await expect(page.getByText("Strong features")).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText("71", { exact: true })).toBeVisible();
+  });
+
+  test("with reduced motion the score and its verdict are on screen at once", async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.goto("/results/p1");
+
+    // No count-up, no flare, no 340ms delay — but nothing is missing either.
+    await expect(page.getByText("71", { exact: true })).toBeVisible();
+    await expect(page.getByText("Strong features")).toBeVisible();
+  });
+});

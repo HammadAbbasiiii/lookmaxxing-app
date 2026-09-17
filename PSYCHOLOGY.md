@@ -63,10 +63,81 @@
 - Load via `next/font/google` (zero layout shift, self-hosted, no tracking).
 - Type scale (1.25 ratio): 12 / 14 / 16 / 20 / 25 / 31 / 39 / 48. The hero score can go up to **88px** bold.
 
-### 2.3 Motion (Framer Motion, 150–250ms)
-- Purposeful, never decorative: score count-up, progress-bar fill, streak pulse, before/after slider, page transitions.
-- Easing: `cubic-bezier(0.22, 1, 0.36, 1)` (ease-out-expo feel).
-- Respect `prefers-reduced-motion` (disable all non-essential animation).
+### 2.3 Motion — one law for the whole app ("weight, breath, reward")
+
+Motion is how a dark, still screen earns trust. It is never decoration: every
+animation either **confirms cause** (I pressed, it responded), **preserves
+context** (this screen came from that one), or **pays off tension** (the wait,
+the score). If an animation does none of the three, it does not ship.
+
+**The three laws** (implemented as tokens in `globals.css`; every rule obeys
+all three):
+
+1. **Responsiveness.** Nothing on the critical path exceeds **260ms**. Under
+   ~100ms a change reads as *instant* — the user credits their own action
+   (causality). 150–260ms reads as deliberate and calm. 300ms+ is reserved for
+   entrances that must be *noticed*, never for feedback.
+2. **No lingering transforms.** Entrances animate **opacity + ≤6px** with
+   `animation-fill-mode: backwards` and no forwards fill, so no `transform`
+   survives them. A transform that sticks around silently becomes a containing
+   block for `position: fixed` children (it breaks the mobile nav/drawer) and
+   never satisfies Playwright's "element is stable" click check.
+3. **Every rule has a kill switch.** All of it is disabled under
+   `prefers-reduced-motion: reduce`. Motion is never load-bearing: with
+   animations off every screen is complete and correct, just still.
+
+| Token | Value | Use |
+|---|---|---|
+| `--dur-press` | 90ms | Contact — must read as instant |
+| `--dur-quick` | 140ms | Hover / colour |
+| `--dur-base` | 200ms | House default (the §2.3 band) |
+| `--dur-slow` | 260ms | Arrival, settle, release |
+| `--ease-arrive` | `cubic-bezier(0.16, 1, 0.3, 1)` | Decelerate = "arriving" |
+| `--ease-exit` | `cubic-bezier(0.4, 0, 1, 1)` | Accelerate = "leaving" |
+| `--ease-spring` | `cubic-bezier(0.34, 1.56, 0.64, 1)` | 1.56 overshoot = physical release |
+
+**Physical surfaces (`.press`, `.lift`).** A press is felt *twice*: compress on
+contact (90ms, `--ease-exit`, **no bounce** — bounce on contact reads as
+hesitation) and spring back on release (260ms, `--ease-spring`). On touch there
+is no hover, so this is the only feedback a user gets before the network
+answers — it is what makes a tap feel *heard*, and it stops re-tapping. Applied
+to `Button`, interactive `Card`s, mobile tabs and next-step links. Pair with
+`touch-action: manipulation` (kills the 300ms double-tap delay) — the two
+together are most of the difference between "website" and "app" on a phone.
+
+**Continuity (`.screen-in`, `template.tsx`).** A screen *arrives*, it does not
+hard-swap: 260ms, opacity + 6px, CSS-only (zero JS), applied once per segment in
+`app/(app)/template.tsx` and `app/(auth)/template.tsx`. 6px is deliberately
+below the threshold that registers as "content moved" — it reads as the page
+settling, not as a slider.
+
+**Sequencing beats simultaneity (the reveal).** At the emotional peak (the
+score) the three beats are ordered and never simultaneous: the ring fills and the
+number counts → the ring pops with **one** gold flare (620/900ms, finite) → the
+verdict label rises in **340ms later**. Showing number and meaning together makes
+a score read as *printed*; letting the number land first and answering "what does
+it mean?" is what makes it feel *earned* (§4 peak-end). The label's animation has
+no forwards fill, so a reduced-motion user — or a screenshot — always gets it.
+
+**Honesty over theatre.** Progress only ever advances on a server-confirmed
+stage; the `analyzing` screen shows a real elapsed timer, crossfades its rotating
+copy (260ms) instead of hard-swapping, announces stage changes to screen readers
+through a single `role="status"` region, and at **20s** — the point where silence
+starts to feel like failure — says the one thing that matters: *nothing is lost*.
+Fabricated progress bars are banned: they buy one calm minute and cost all trust.
+
+**Haptics (`lib/haptics.ts`).** Android-only reinforcement, ≤26ms, never the
+only signal. Gated on `navigator.userActivation.hasBeenActive` (no buzzing a
+stranger's phone from a landing page) and on `prefers-reduced-motion` (a user who
+asked the OS for calm gets calm in every channel). `tick()` on primary presses,
+`success()` when a score lands, `celebrate()` reserved for Day 7/30/60/90 so it
+stays special.
+
+**Still Framer Motion** (`MotionConfig reducedMotion="user"`) for component-level
+choreography that needs real springs or exit animations — drawers, celebrations,
+confetti. CSS owns the system layer (entrances, press, flares) so it costs no JS
+and cannot delay a tap; a second, drifting set of tokens is the thing to avoid.
+
 
 ### 2.4 Layout & spacing
 - 8px grid. Max content width `1200px`. Cards `radius 16px`, buttons `radius 12px`, pills `radius 999px`.
