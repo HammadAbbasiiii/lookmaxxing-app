@@ -507,3 +507,92 @@ webhook signature` (secret still from test mode) or `No such price`/`No such cou
 `offer_applied: false`). `GET /payments/offer` returning `verified: true` is the cheapest
 end-to-end check that the live coupon is reachable.
 
+
+## Annual plans un-sellable: a stale price id behind a 502 (2026-09-17, DEF-019)
+
+**Report.** Monthly Pro and monthly Elite sold fine (UI updated, Stripe charged), but **no
+annual plan could be bought** — checkout *and* the in-place plan switch answered
+`502 {"code":"stripe_error","message":"Couldn't start checkout. Try again in a moment."}`.
+
+**Reproduced on the live API** with a throwaway account (`backend/scripts/check_plans.py`,
+which creates the account, starts one checkout per plan, then deletes it — no payment is
+completed and nothing is charged):
+
+| Plan | Pre-fix (as deployed) | After the config fix (expected) |
+|---|---|---|
+| pro monthly | `200` — session `cs_test_…` returned | `200` |
+| **pro annual** | **`502 stripe_error`** | `200` |
+| elite monthly | `200` — session `cs_test_…` returned | `200` |
+| **elite annual** | **`502 stripe_error`** | `200` |
+
+**Root cause — the deployed value, not the request.** The two annual env vars still named
+the prices Stripe **archived** when the yearly prices were recreated in the dashboard:
+
+| Env var | Value on the Render service (stale) | State in Stripe | Value in `backend/.env` (correct) | State in Stripe |
+|---|---|---|---|---|
+| `STRIPE_PRICE_PRO_ANNUAL` | `price_1UDwIN…` ("Pro Annual") | `active: false`, `interval=month` | `price_1UEg5QQvp3Tt1VqmQmk0jHdr` | active, **£50.40/year** |
+| `STRIPE_PRICE_ELITE_ANNUAL` | `price_1UDwJS…` ("Elite Annual") | `active: false`, `interval=month` | `price_1UEg5RQvp3Tt1Vqm0s0piUAC` | active, **£100.80/year** |
+| `STRIPE_PRICE_PRO_MONTHLY` | unchanged | active, £9.99/month | same | active |
+| `STRIPE_PRICE_ELITE_MONTHLY` | unchanged | active, £19.99/month | same | active |
+
+The monthly ids were never touched, which is precisely why only annual broke. Creating a
+session directly against each id reproduces Stripe's own words:
+
+| Price id used | `stripe.checkout.Session.create` result |
+|---|---|
+| `price_1UDwIN…`, `price_1UDwJS…` (stale annual ids) | `InvalidRequestError: The price specified is inactive. This field only accepts active prices.` |
+| `price_1UEg5Q…`, `price_1UEg5R…` (the ids in `.env`) | **session created** — the code path was never the problem |
+| an id that never existed | `InvalidRequestError: No such price: 'price_1XXXX…'` |
+
+Nothing surfaced it: there was no boot check, and the copy told the customer to retry
+something no retry could fix.
+
+
+**Fix (4 parts).** (a) A Stripe rejection that names the **price** is no longer reported as
+transient: it returns `plan_unavailable` (502) with honest copy — "This plan isn't available
+right now — try a monthly plan, or contact support and we'll sort it out." — plus an ERROR
+log naming the env var, its value and the interval that plan needs. (b) `plan_price_report()`
+verifies all four ids against Stripe (exists / active / bills on the plan's own interval) and
+`log_price_config_problems()` logs every bad one; that runs **at boot in production** (daemon
+thread, read-only, cannot delay or break startup) and is exposed as the admin-only
+`GET /payments/config-check`. (c) An offline boot warning in every environment for an unset
+or non-`price_…` value. (d) `scripts/check_plans.py <base-url>` (the table above) and an
+`LOOKMAXX_API_URL` override on `scripts/payments_e2e.py`.
+
+| Check | Result |
+|---|---|
+| `backend/tests/test_payments.py` | **61 passed** (was 49; 12 new) |
+| New: config check names a superseded annual id | `STRIPE_PRICE_PRO_ANNUAL → Pro annual: inactive in Stripe (superseded price id)`, monthly still `ok` |
+| New: a month-interval price in the annual slot | flagged `bills every month, not every year` |
+| New: unset / `prod_…` / `pk_…` values | named **without calling Stripe** (`calls == []`) |
+| New: deleted id, and a 4-plan Stripe outage | reported per plan with Stripe's reason; never raises |
+| New: annual checkout on a dead price | `502 plan_unavailable`, no "Try again in a moment", log names `STRIPE_PRICE_PRO_ANNUAL`, exactly **one** Stripe attempt |
+| New: transient failure (dead API key) | still `502 stripe_error` + "Try again in a moment" — unchanged on purpose |
+| New: failed annual plan switch | `502 plan_unavailable`; the user stays `pro` / `is_subscribed: true` |
+| **Regression proof** — the new tests against pre-fix `HEAD` | **11 of 12 fail** exactly as production did (`assert 'stripe_error' == 'plan_unavailable'`; `config-check` → `404`; helpers absent). The one that passes is the transient-failure test, which pins the deliberately unchanged copy. |
+| Full backend suite (`python -m pytest`) | **350 passed** in 92 s |
+| `python backend/scripts/check_plans.py https://lookmaxx-api.onrender.com` | **2 of 4 plans** can start a checkout (both annual fail), exit code 1 — re-run after the env fix; it must report 4/4 |
+
+**Operator step (Stripe/Render dashboard — not code).** Repoint `STRIPE_PRICE_PRO_ANNUAL`
+and `STRIPE_PRICE_ELITE_ANNUAL` on the Render service at the two ids in `backend/.env`
+(`price_1UEg5QQvp3Tt1VqmQmk0jHdr`, `price_1UEg5RQvp3Tt1Vqm0s0piUAC`), let it redeploy, then
+re-run `check_plans.py` → 4/4. `backend/render.yaml` already declares both variables
+(`sync: false`, so the *value* lives in the dashboard) — the declaration was never the gap.
+
+**Why this stayed invisible for a whole launch cycle.** A price id is not a stable handle:
+recreating a price to fix its interval or currency issues a **new** id and archives the old
+one, and the app's only record of it is an env var. The affected plan then stops selling
+silently while every other plan keeps working, and the customer is told to retry. The boot
+check, the admin config check and `check_plans.py` now answer "which plans can this box
+actually sell?" before a customer has to ask.
+
+**Unrelated flake fixed while here (DEF-020).** The first full-suite run after this change
+reported `1 failed, 349 passed` — `test_security.py::TestJwtSecurity::test_tampered_signature_rejected`,
+a test with no connection to payments. It flipped the **last** base64url character of the
+JWT, but the final character of a 43-character (256-bit) signature carries only 4
+significant bits, so the flip decoded to the **identical** signature in **25/300 tokens
+(~8%)** — the test then asserted `401` against a perfectly valid token, and the code was
+never at fault (the same suite reported `350 passed` for identical code minutes earlier).
+It now tampers a fully significant character and asserts the decoded bytes really changed:
+7 passed across 5 consecutive runs.
+

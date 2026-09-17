@@ -18,6 +18,8 @@ from app.models import AdminAction, StripeEvent, User
 from app.routes.payments import (
     _tier_for_price,
     grant_subscription,
+    log_price_config_problems,
+    plan_price_report,
     revoke_subscription,
 )
 from app.services.entitlements_service import get_tier
@@ -707,6 +709,18 @@ def _auth_headers(user):
     return {"Authorization": f"Bearer {create_access_token(data={'sub': user.id})}"}
 
 
+def _invalid_request(message):
+    """Stripe's InvalidRequestError needs an explicit `param` in newer SDK majors.
+
+    Stripe itself raises it with `param` set (e.g. `param: line_items.0.price` for
+    a dead price), so passing None keeps the tests representative across the SDK
+    versions `stripe>=9.0.0` resolves to.
+    """
+    import stripe
+
+    return stripe.InvalidRequestError(message, None)
+
+
 class TestFirstMonthOfferEndpoint:
     def _patch_stripe(self, monkeypatch, regular_minor=999, discount_minor=899):
         import stripe
@@ -1154,3 +1168,345 @@ class TestCheckoutReconciliation:
         )
         assert len(audits) == 1
 
+
+
+# ── DEF-019: a plan billed from a dead Stripe price ─────────────────────────
+# Both annual plans pointed at price ids that had been superseded (and archived)
+# in Stripe, so monthly sold while annual answered 502 "Couldn't start checkout.
+# Try again in a moment." — advice a retry could never satisfy — and nothing in
+# the product named the env var at fault. These tests pin the diagnosis (the
+# config check names the variable) and the customer-visible change (a dead price
+# reports as unavailable, not as a transient failure).
+
+
+class TestPriceConfigurationReport:
+    """`plan_price_report()` / GET /payments/config-check, with Stripe stubbed."""
+
+    @staticmethod
+    def _healthy():
+        return {
+            "price_pro_monthly": {"interval": "month", "amount": 999},
+            "price_pro_annual": {"interval": "year", "amount": 5040},
+            "price_elite_monthly": {"interval": "month", "amount": 1999},
+            "price_elite_annual": {"interval": "year", "amount": 10080},
+        }
+
+    def _patch_plans(self, monkeypatch, table, *, key="sk_test"):
+        """Point all four settings at stubbed ids; `table` decides what Stripe says.
+
+        An entry may be a dict of price fields or an exception to raise, which is
+        how the "id no longer exists" case is reproduced.
+        """
+        import stripe
+
+        monkeypatch.setattr(settings, "STRIPE_SECRET_KEY", key)
+        monkeypatch.setattr(settings, "STRIPE_PRICE_PRO_MONTHLY", "price_pro_monthly")
+        monkeypatch.setattr(settings, "STRIPE_PRICE_PRO_ANNUAL", "price_pro_annual")
+        monkeypatch.setattr(settings, "STRIPE_PRICE_ELITE_MONTHLY", "price_elite_monthly")
+        monkeypatch.setattr(settings, "STRIPE_PRICE_ELITE_ANNUAL", "price_elite_annual")
+
+        def retrieve(price_id):
+            entry = table.get(price_id)
+            if isinstance(entry, Exception):
+                raise entry
+            if entry is None:
+                raise _invalid_request(f"No such price: '{price_id}'")
+            return {
+                "id": price_id,
+                "active": entry.get("active", True),
+                "unit_amount": entry.get("amount", 999),
+                "currency": "gbp",
+                "recurring": {"interval": entry.get("interval", "month")},
+            }
+
+        monkeypatch.setattr(stripe.Price, "retrieve", retrieve)
+        return table
+
+    def _auth_admin(self, db_session):
+        admin = _make_user(db_session, email="prices-admin@example.com", tier="free")
+        admin.is_admin = True
+        db_session.commit()
+        return _auth_headers(admin)
+
+    def test_a_superseded_annual_price_is_named_by_the_config_check(
+        self, client, db_session, monkeypatch
+    ):
+        table = self._healthy()
+        # The production shape: the annual id on the box still names the price
+        # Stripe archived when the yearly price was recreated in the dashboard.
+        table["price_pro_annual"] = {"active": False, "interval": "year"}
+        self._patch_plans(monkeypatch, table)
+
+        res = client.get(
+            "/api/v1/payments/config-check", headers=self._auth_admin(db_session)
+        )
+
+        assert res.status_code == 200, res.text
+        body = res.json()
+        assert body["ok"] is False
+        assert len(body["problems"]) == 1
+        assert "STRIPE_PRICE_PRO_ANNUAL" in body["problems"][0]
+        assert "inactive" in body["problems"][0]
+        # Monthly is untouched — the failure is per plan, which is exactly why it
+        # hid behind a working product for a whole launch cycle.
+        assert body["stripe_key_mode"] == "test"
+        pro_monthly = next(
+            p for p in body["plans"] if p["env_var"] == "STRIPE_PRICE_PRO_MONTHLY"
+        )
+        assert pro_monthly["ok"] is True
+
+    def test_a_month_interval_price_in_the_annual_slot_is_flagged(self, monkeypatch):
+        table = self._healthy()
+        # The original mistake this account made with annual pricing: a price
+        # created with the default monthly interval, sold as an annual plan.
+        table["price_elite_annual"] = {"interval": "month"}
+        self._patch_plans(monkeypatch, table)
+
+        report = plan_price_report()
+
+        assert report["ok"] is False
+        assert report["problems"] == [
+            "STRIPE_PRICE_ELITE_ANNUAL → Elite annual: bills every month, not every year"
+        ]
+
+    def test_an_unset_or_mistyped_price_id_is_named_without_asking_stripe(
+        self, monkeypatch
+    ):
+        import stripe
+
+        calls = []
+
+        def retrieve(price_id):  # pragma: no cover — must never run
+            calls.append(price_id)
+            raise AssertionError("a config-only problem must not call Stripe")
+
+        monkeypatch.setattr(stripe.Price, "retrieve", retrieve)
+        monkeypatch.setattr(settings, "STRIPE_SECRET_KEY", "sk_test")
+        monkeypatch.setattr(settings, "STRIPE_PRICE_PRO_MONTHLY", "")
+        monkeypatch.setattr(settings, "STRIPE_PRICE_PRO_ANNUAL", "prod_VEP6UdPpsAmlLI")
+        monkeypatch.setattr(settings, "STRIPE_PRICE_ELITE_MONTHLY", "")
+        monkeypatch.setattr(settings, "STRIPE_PRICE_ELITE_ANNUAL", "pk_test_123")
+
+        report = plan_price_report()
+
+        assert calls == []
+        assert report["ok"] is False
+        assert "STRIPE_PRICE_PRO_MONTHLY → Pro monthly: not set" in report["problems"]
+        assert (
+            "STRIPE_PRICE_PRO_ANNUAL → Pro annual: not a price id (expected 'price_…')"
+            in report["problems"]
+        )
+
+    def test_a_deleted_price_is_reported_with_the_stripe_reason(self, monkeypatch):
+        import stripe
+
+        table = self._healthy()
+        table["price_elite_annual"] = _invalid_request(
+            "No such price: 'price_elite_annual'"
+        )
+        self._patch_plans(monkeypatch, table)
+
+        report = plan_price_report()
+
+        assert report["ok"] is False
+        assert len(report["problems"]) == 1
+        assert "STRIPE_PRICE_ELITE_ANNUAL" in report["problems"][0]
+        assert "No such price" in report["problems"][0]
+
+    def test_a_stripe_outage_is_reported_per_plan_and_never_raised(self, monkeypatch):
+        import stripe
+
+        self._patch_plans(monkeypatch, self._healthy())
+
+        def boom(price_id):
+            raise stripe.APIConnectionError("Network error")
+
+        monkeypatch.setattr(stripe.Price, "retrieve", boom)
+
+        report = plan_price_report()  # must not raise
+
+        assert report["ok"] is False
+        assert len(report["problems"]) == 4
+
+    def test_a_healthy_configuration_reports_the_amounts_stripe_will_charge(
+        self, monkeypatch
+    ):
+        self._patch_plans(monkeypatch, self._healthy())
+
+        report = plan_price_report()
+
+        assert report["ok"] is True
+        assert report["problems"] == []
+        pro_annual = next(
+            p for p in report["plans"] if p["env_var"] == "STRIPE_PRICE_PRO_ANNUAL"
+        )
+        assert (pro_annual["amount_minor"], pro_annual["currency"]) == (5040, "GBP")
+        assert pro_annual["expected_interval"] == "year"
+
+    def test_the_boot_check_logs_the_variable_to_fix(self, monkeypatch, caplog):
+        import logging
+
+        table = self._healthy()
+        table["price_pro_annual"] = {"active": False, "interval": "year"}
+        self._patch_plans(monkeypatch, table)
+
+        with caplog.at_level(logging.ERROR):
+            problems = log_price_config_problems()
+
+        assert problems and "STRIPE_PRICE_PRO_ANNUAL" in problems[0]
+        assert "STRIPE_PRICE_PRO_ANNUAL" in caplog.text
+        assert "inactive" in caplog.text
+
+    def test_config_check_is_admin_only(self, client, db_session):
+        u = _make_user(db_session, email="prices-user@example.com", tier="free")
+
+        assert client.get("/api/v1/payments/config-check").status_code == 401
+        assert (
+            client.get(
+                "/api/v1/payments/config-check", headers=_auth_headers(u)
+            ).status_code
+            == 403
+        )
+
+
+
+
+class TestDeadPriceCheckout:
+    """The customer-visible half of DEF-019: a dead price is not a transient error.
+
+    Before this, an annual purchase answered 502 `stripe_error` with "Couldn't
+    start checkout. Try again in a moment." — so the customer retried forever
+    against a Stripe id that had been archived, and no log named the env var.
+    """
+
+    def _patch_checkout(self, monkeypatch, error):
+        import stripe
+
+        calls = []
+
+        def create(**kwargs):
+            calls.append(kwargs)
+            raise error
+
+        monkeypatch.setattr(settings, "STRIPE_SECRET_KEY", "sk_test")
+        monkeypatch.setattr(settings, "STRIPE_PRICE_PRO_MONTHLY", "price_pro_monthly")
+        monkeypatch.setattr(settings, "STRIPE_PRICE_PRO_ANNUAL", "price_pro_annual")
+        monkeypatch.setattr(settings, "STRIPE_PRICE_ELITE_MONTHLY", "price_elite_monthly")
+        monkeypatch.setattr(settings, "STRIPE_PRICE_ELITE_ANNUAL", "price_elite_annual")
+        monkeypatch.setattr(stripe.checkout.Session, "create", create)
+        return calls
+
+    def _checkout(self, client, user, tier="pro", annual=True):
+        return client.post(
+            "/api/v1/payments/checkout",
+            json={"tier": tier, "annual": annual, "first_month_offer": False},
+            headers=_auth_headers(user),
+        )
+
+    def test_an_annual_checkout_on_an_inactive_price_says_unavailable(
+        self, client, db_session, monkeypatch, caplog
+    ):
+        import logging
+
+        import stripe
+
+        u = _make_user(db_session, email="dead-annual@example.com", tier="free")
+        calls = self._patch_checkout(
+            monkeypatch,
+            _invalid_request(
+                "The price specified is inactive. This field only accepts active prices."
+            ),
+        )
+
+        with caplog.at_level(logging.ERROR):
+            res = self._checkout(client, u)
+
+        assert res.status_code == 502, res.text
+        detail = res.json()["detail"]
+        assert detail["code"] == "plan_unavailable"
+        # Retrying cannot fix a stale id, so the copy must not promise it will.
+        assert "Try again in a moment" not in detail["message"]
+        assert "monthly plan" in detail["message"]
+        # The log is what the operator reads: it must name the variable to repoint.
+        assert "STRIPE_PRICE_PRO_ANNUAL" in caplog.text
+        assert "price_pro_annual" in caplog.text
+        assert len(calls) == 1  # no pointless retry
+
+    def test_a_deleted_annual_price_is_reported_the_same_way(
+        self, client, db_session, monkeypatch
+    ):
+        import stripe
+
+        u = _make_user(db_session, email="deleted-annual@example.com", tier="free")
+        self._patch_checkout(
+            monkeypatch, _invalid_request("No such price: 'price_pro_annual'")
+        )
+
+        res = self._checkout(client, u, tier="elite")
+
+        assert res.status_code == 502
+        assert res.json()["detail"]["code"] == "plan_unavailable"
+
+    def test_a_transient_stripe_failure_still_says_try_again(
+        self, client, db_session, monkeypatch
+    ):
+        import stripe
+
+        u = _make_user(db_session, email="transient-annual@example.com", tier="free")
+        self._patch_checkout(
+            monkeypatch, stripe.AuthenticationError("Invalid API Key provided")
+        )
+
+        res = self._checkout(client, u)
+
+        # A dead key or a Stripe blip is genuinely worth retrying — the copy has to
+        # keep saying so, or we would train customers to give up on real outages.
+        assert res.status_code == 502
+        detail = res.json()["detail"]
+        assert detail["code"] == "stripe_error"
+        assert "Try again in a moment" in detail["message"]
+
+    def test_an_annual_plan_switch_on_a_dead_price_leaves_the_plan_unchanged(
+        self, client, db_session, monkeypatch
+    ):
+        import stripe
+
+        u = _make_user(db_session, email="dead-switch@example.com", tier="pro")
+        u.subscription_customer_id = "cus_1"
+        u.subscription_stripe_id = "sub_1"
+        db_session.commit()
+        monkeypatch.setattr(settings, "STRIPE_SECRET_KEY", "sk_test")
+        monkeypatch.setattr(settings, "STRIPE_PRICE_ELITE_ANNUAL", "price_elite_annual")
+
+        subs = [
+            {
+                "id": "sub_1",
+                "status": "active",
+                "created": 1,
+                "items": {"data": [{"id": "si_1", "price": {"id": "price_pro_monthly"}}]},
+            }
+        ]
+
+        def _list(*a, **k):
+            return type("ListObj", (), {"data": subs})()
+
+        def _modify(sub_id, **kwargs):
+            raise _invalid_request(
+                "The price specified is inactive. This field only accepts active prices."
+            )
+
+        monkeypatch.setattr(stripe.Subscription, "list", _list)
+        monkeypatch.setattr(stripe.Subscription, "modify", _modify)
+
+        res = client.post(
+            "/api/v1/payments/change-plan",
+            json={"tier": "elite", "annual": True},
+            headers=_auth_headers(u),
+        )
+
+        assert res.status_code == 502, res.text
+        assert res.json()["detail"]["code"] == "plan_unavailable"
+        db_session.refresh(u)
+        # The switch failed, so access must not have moved: still Pro, still paid.
+        assert u.subscription_tier == "pro"
+        assert u.is_subscribed is True

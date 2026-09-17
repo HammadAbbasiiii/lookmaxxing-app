@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import get_db
-from app.dependencies import get_current_user
+from app.dependencies import get_current_user, require_admin
 from app.models import AdminAction, StripeEvent, User
 from app.schemas import (
     CancelSubscriptionIn,
@@ -95,6 +95,157 @@ if settings.ENVIRONMENT == "production" and settings.STRIPE_SECRET_KEY and not _
         "Checkout will move test money only, and the £1 coupon/prices must be recreated "
         "with live keys before real customers can pay."
     )
+
+
+# ── Price configuration the deployment bills from (DEF-019) ─────────────────
+# A Stripe price id is not a stable handle: recreating a price in the dashboard —
+# to fix its interval, currency, or a discount — issues a NEW id and ARCHIVES the
+# old one. The id lives in an env var, so nothing in the app notices the value
+# went stale: the plan simply stops selling. That is exactly what happened to
+# both annual plans — the ids on the Render service still named the superseded
+# (now inactive) prices, so every annual checkout answered `stripe_error`
+# "Couldn't start checkout. Try again in a moment." (advice a retry could never
+# satisfy) while monthly kept working, and no log named the variable at fault.
+# These helpers make the deployment answer that question about itself.
+_PLAN_PRICES = (
+    # (tier, annual, env var, human label, the interval that plan must bill on)
+    ("pro", False, "STRIPE_PRICE_PRO_MONTHLY", "Pro monthly", "month"),
+    ("pro", True, "STRIPE_PRICE_PRO_ANNUAL", "Pro annual", "year"),
+    ("elite", False, "STRIPE_PRICE_ELITE_MONTHLY", "Elite monthly", "month"),
+    ("elite", True, "STRIPE_PRICE_ELITE_ANNUAL", "Elite annual", "year"),
+)
+
+
+def _price_env_var(tier: str, annual: bool) -> str:
+    """The env var a plan is billed from — so log lines can name it."""
+    for _t, _a, var, _label, _interval in _PLAN_PRICES:
+        if _t == tier and _a == bool(annual):
+            return var
+    return "STRIPE_PRICE_?"
+
+
+def _is_price_error(exc: Exception) -> bool:
+    """True when Stripe rejected the *price* we tried to bill from.
+
+    `The price specified is inactive. This field only accepts active prices.` and
+    `No such price: 'price_…'` both mean the configured id is dead — a retry
+    cannot fix that, so the customer must not be told to try again (DEF-019).
+    """
+    text = f"{exc} {getattr(exc, 'param', None) or ''}".lower()
+    return "price" in text
+
+
+# Offline sanity check at boot, in every environment: an unset id, or a value
+# that isn't a price id at all, is caught without touching the network.
+for _tier, _annual, _var, _label, _interval in _PLAN_PRICES:
+    _value = str(getattr(settings, _var, "") or "")
+    if _value and not _value.startswith("price_"):
+        logger.warning(
+            "%s does not look like a Stripe price id ('%s') — %s checkout will fail.",
+            _var,
+            _value[:12],
+            _label,
+        )
+
+del _tier, _annual, _var, _label, _interval, _value
+
+
+def plan_price_report() -> dict:
+    """What this deployment will actually bill from — verified against Stripe.
+
+    Read-only and never raises: an unreachable Stripe is reported as an error on
+    each plan instead of a 500, because the caller decides how loud to be (the
+    admin endpoint reports it, the boot check logs it).
+    """
+    plans: list[dict] = []
+    problems: list[str] = []
+    for tier, annual, var, label, interval in _PLAN_PRICES:
+        price_id = str(getattr(settings, var, "") or "")
+        entry: dict = {
+            "plan": label,
+            "tier": tier,
+            "billing": "annual" if annual else "monthly",
+            "env_var": var,
+            "price_id": price_id,
+            "expected_interval": interval,
+            "ok": False,
+        }
+        if not price_id:
+            entry["error"] = "not set"
+        elif not price_id.startswith("price_"):
+            # A product id (prod_…), or something else, pasted into the price slot.
+            entry["error"] = "not a price id (expected 'price_…')"
+        elif not settings.STRIPE_SECRET_KEY:
+            entry["error"] = "STRIPE_SECRET_KEY is not set"
+        else:
+            try:
+                import stripe
+
+                stripe.api_key = settings.STRIPE_SECRET_KEY
+                price = stripe.Price.retrieve(price_id)
+                recurring = _get(price, "recurring", None) or {}
+                entry.update(
+                    active=bool(_get(price, "active", False)),
+                    bills_every=_get(recurring, "interval", None),
+                    amount_minor=_get(price, "unit_amount", None),
+                    currency=str(_get(price, "currency", "") or "").upper(),
+                )
+                if not entry["active"]:
+                    entry["error"] = "inactive in Stripe (superseded price id)"
+                elif entry["bills_every"] != interval:
+                    entry["error"] = (
+                        f"bills every {entry['bills_every'] or 'one-off'}, "
+                        f"not every {interval}"
+                    )
+                else:
+                    entry["ok"] = True
+            except Exception as exc:  # noqa: BLE001 — reported, never raised
+                entry["error"] = f"{type(exc).__name__}: {exc}"[:200]
+        if not entry["ok"]:
+            problems.append(f"{var} → {label}: {entry.get('error') or 'unusable'}")
+        plans.append(entry)
+    return {"ok": not problems, "plans": plans, "problems": problems}
+
+
+def log_price_config_problems() -> list[str]:
+    """Log every dead price id loudly, naming the env var to fix (never raises)."""
+    try:
+        report = plan_price_report()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Stripe price configuration check failed to run: %s", exc)
+        return []
+    for problem in report["problems"]:
+        logger.error(
+            "Stripe price configuration problem — %s. Checkout for that plan fails "
+            "with 'plan_unavailable' until the env var points at an ACTIVE price "
+            "with the right billing interval.",
+            problem,
+        )
+    return report["problems"]
+
+
+def _verify_prices_on_boot() -> None:
+    """Production only, in a daemon thread: name every dead price id in the log.
+
+    A misconfigured price is invisible from the outside (DEF-019), and boot is the
+    only moment we can look for it with no customer waiting. The thread keeps a
+    slow or unreachable Stripe from delaying startup; the work is read-only.
+    """
+    if not (settings.STRIPE_SECRET_KEY and settings.ENVIRONMENT == "production"):
+        return
+    import threading
+
+    def _run() -> None:
+        for problem in log_price_config_problems():
+            print(f"❌ Stripe price configuration: {problem}", flush=True)
+
+    try:
+        threading.Thread(target=_run, name="stripe-price-check", daemon=True).start()
+    except Exception as exc:  # noqa: BLE001 — never block boot on diagnostics
+        logger.warning("Could not start the Stripe price check: %s", exc)
+
+
+_verify_prices_on_boot()
 
 
 def _unix_to_datetime(ts) -> datetime | None:
@@ -441,6 +592,35 @@ async def create_checkout(
         # exception *classes* (those have moved between SDK majors): what decides
         # the fallback is whether the rejection names the coupon we attached.
         if not (first_month and _is_coupon_error(exc)):
+            if _is_price_error(exc):
+                # The id in the env var no longer resolves (deleted, or superseded
+                # and archived — DEF-019). No retry can help, so the customer is
+                # told the truth instead of "try again in a moment", and the log
+                # names the exact variable to repoint.
+                var = _price_env_var(tier, bool(payload.annual))
+                other_interval = "monthly" if payload.annual else "annual"
+                logger.error(
+                    "Stripe rejected the %s price (%s=%s): %s — every %s checkout "
+                    "fails with 'plan_unavailable' until that env var points at an "
+                    "ACTIVE price with a '%s' interval. Check GET /payments/config-check.",
+                    "annual" if payload.annual else "monthly",
+                    var,
+                    price_id,
+                    exc,
+                    "annual" if payload.annual else "monthly",
+                    "year" if payload.annual else "month",
+                )
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail={
+                        "code": "plan_unavailable",
+                        "message": (
+                            f"This plan isn't available right now — try a "
+                            f"{other_interval} plan, or contact support and we'll "
+                            "sort it out."
+                        ),
+                    },
+                ) from exc
             logger.exception(
                 "Stripe rejected checkout (tier=%s annual=%s first_month=%s "
                 "type=%s code=%s param=%s request_id=%s)",
@@ -569,6 +749,32 @@ async def get_offer(user: User = Depends(get_current_user)):
         "regular_amount_minor": regular_minor,
         "source": source,
         "verified": verified,
+    }
+
+
+@router.get("/config-check")
+async def payments_config_check(admin: User = Depends(require_admin)):
+    """Which plans this deployment can actually sell (admin-only, read-only).
+
+    A dead price id is invisible from every other angle: the upgrade page renders,
+    the other plans sell, and only the affected plan answers 502 — with no hint
+    that an env var is stale (DEF-019). This reports, per plan, the env var, the
+    id, and what Stripe says about it, so a launch/interval switch can be verified
+    in one request instead of a failed purchase.
+    """
+    report = plan_price_report()
+    return {
+        "environment": settings.ENVIRONMENT,
+        "stripe_key_mode": (
+            "live"
+            if _deployment_is_live()
+            else "test"
+            if settings.STRIPE_SECRET_KEY
+            else "unconfigured"
+        ),
+        "ok": report["ok"],
+        "problems": report["problems"],
+        "plans": report["plans"],
     }
 
 
@@ -1033,7 +1239,32 @@ async def change_plan(
             sub_id,
             items=[{"id": item_ids[0], "price": price_id}],
         )
-    except Exception:
+    except Exception as exc:
+        if _is_price_error(exc):
+            # Same dead-price case as checkout (DEF-019): this branch is what an
+            # existing subscriber hits when switching to an annual plan.
+            var = _price_env_var(tier, bool(payload.annual))
+            other_interval = "monthly" if payload.annual else "annual"
+            logger.error(
+                "Stripe rejected the %s price (%s=%s) while changing plan: %s — the "
+                "switch fails with 'plan_unavailable' until that env var points at "
+                "an ACTIVE price with a '%s' interval.",
+                "annual" if payload.annual else "monthly",
+                var,
+                price_id,
+                exc,
+                "year" if payload.annual else "month",
+            )
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail={
+                    "code": "plan_unavailable",
+                    "message": (
+                        "Couldn't switch to this plan right now — your current plan "
+                        f"is unchanged. Try a {other_interval} plan, or contact support."
+                    ),
+                },
+            ) from exc
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail={"code": "stripe_error", "message": "Couldn't change your plan. Try again in a moment."},

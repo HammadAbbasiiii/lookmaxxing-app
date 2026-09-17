@@ -129,7 +129,29 @@ class TestSecretsNeverLeak:
 
 class TestJwtSecurity:
     def test_tampered_signature_rejected(self, client, auth_token):
-        tampered = auth_token[:-1] + ("a" if auth_token[-1] != "a" else "b")
+        """Tamper the *decoded* signature, not just the last character (DEF-020).
+
+        A 32-byte HMAC is 43 base64url characters whose final character carries
+        only 4 significant bits — flipping it often decodes to the identical
+        signature, in which case this test asserted 401 against a token that was
+        still perfectly valid (measured: 25/300 tokens, ~8%). Tampering a fully
+        significant character (index 10) and asserting the decoded bytes really
+        changed makes the check deterministic.
+        """
+        import base64
+
+        def signature_bytes(token: str) -> bytes:
+            b64 = token.split(".")[2]
+            return base64.urlsafe_b64decode(b64 + "=" * (-len(b64) % 4))
+
+        header, payload, signature = auth_token.split(".")
+        position = 10
+        replacement = "a" if signature[position] != "a" else "b"
+        tampered_sig = signature[:position] + replacement + signature[position + 1 :]
+        tampered = f"{header}.{payload}.{tampered_sig}"
+
+        assert signature_bytes(tampered) != signature_bytes(auth_token)
+
         res = client.get("/api/v1/auth/me", headers=_h(tampered))
         assert res.status_code == 401
 

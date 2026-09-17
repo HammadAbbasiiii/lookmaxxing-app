@@ -9,8 +9,18 @@ cancel at period end, resume, cancel immediately, re-subscribe, end-of-period ex
 
 Run:  cd backend && .venv/bin/python scripts/payments_e2e.py
 
-Requires: backend running on 127.0.0.1:8000, and STRIPE_SECRET_KEY /
-STRIPE_WEBHOOK_SECRET / STRIPE_PRICE_* in backend/.env (Stripe test mode).
+Point it at a deployment instead of localhost:
+
+  LOOKMAXX_API_URL=https://lookmaxx-api.onrender.com .venv/bin/python scripts/payments_e2e.py
+
+⚠️ This script *replays signed webhooks*, so against a deployed box it mutates the
+throwaway account it creates (which is the point). To only ask "can this box even
+start a checkout for each plan?" — the read-only DEF-019 question — use
+`scripts/check_plans.py` instead.
+
+Requires: backend running on 127.0.0.1:8000 (or LOOKMAXX_API_URL), and
+STRIPE_SECRET_KEY / STRIPE_WEBHOOK_SECRET / STRIPE_PRICE_* in backend/.env
+(Stripe test mode).
 """
 import json, os, sys, time, hmac, hashlib, urllib.request, urllib.parse
 import stripe
