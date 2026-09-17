@@ -462,9 +462,11 @@ correct grant still *looked* like "the UI never upgraded".
 | New: live event with live keys | 200 + `tier=elite` |
 | New: reconciliation (6 tests) | paid session grants with no webhook at all; unpaid and abandoned (`status=open`) grant nothing; a 7-day trial end is kept (not 30 days); a **lapsed** subscription's old receipt does not resurrect access (a session stays `paid` forever, so only a still-running term is reconciled); re-reading the receipt neither extends nor double-audits |
 | **Regression proof** — the same tests against `7f09640` (pre-fix code) | 4 failed exactly as production did: `400`, `tier=free`, `assert 'free' == 'elite'`, `assert 0 == 1` (no audit row) |
-| Full backend suite (`python -m pytest`) | **337 passed** in 93 s |
+| Full backend suite (`python -m pytest`) | **338 passed** in 92 s |
 | `frontend` `tsc --noEmit` | clean |
-| Deploy verification (signed test-mode event against the redeployed API) | **200 `{"success": true}`**, then `GET /auth/me` → `subscription_tier: "pro"`, `is_subscribed: true` — the same request that returned 400 minutes earlier |
+| `frontend/e2e/score-clarity.spec.ts` (Chromium, API stubbed, re-run after the success-page change) | **15/15 passed** in 26 s — including the two receipt tests that exercise the new cache invalidation |
+| Deploy verification (post-fix, same signed sandbox event, against the redeployed API) | **`200 {"success": true}`**, then `GET /auth/me` → `subscription_tier: "pro"`, `is_subscribed: true` — where minutes earlier the identical request returned `400` and left the user `free` |
+| Deploy verification, replaying the same `event.id` | `200 {"success": true, "duplicate": true}`, tier unchanged — `stripe_events` idempotency holds in production |
 
 **Backend tests are now runnable on this Mac (new).** The blocker was never the code: no
 venv existed and the pinned `mediapipe==0.10.21` has no wheel for Python 3.14/arm64. Its
@@ -493,4 +495,15 @@ any future expiry, any CVC/postcode; `4000 0000 0000 0002` always declines, and
 `4000 0025 0000 3155` forces 3-D Secure). A real card in test mode is expected to fail —
 that is the usual "the Stripe window won't take my payment" report, and it is unrelated to
 the webhook defect above.
+
+**When the launch switches to live keys (next step), the guard switches on with them.**
+`sk_live_…` makes the webhook refuse anything Stripe did not mark `livemode: true`, which
+is the point — but the live-mode endpoint has a **different** `whsec_…` than the test one,
+so `STRIPE_WEBHOOK_SECRET` must be replaced in the same deploy as `STRIPE_SECRET_KEY`, and
+the four `STRIPE_PRICE_*` ids plus the `FIRST_MONTH_1` coupon must be recreated in live
+mode (test-mode ids do not exist there). Symptoms if that is done piecemeal: `Invalid
+webhook signature` (secret still from test mode) or `No such price`/`No such coupon`
+(ids still from test mode — checkout then 502s, or falls back to list price with
+`offer_applied: false`). `GET /payments/offer` returning `verified: true` is the cheapest
+end-to-end check that the live coupon is reachable.
 
