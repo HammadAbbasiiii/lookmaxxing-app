@@ -91,16 +91,37 @@ class TestSubscriptionLifecycle:
 
 
 class TestStripeWebhook:
-    def _post_webhook(self, client, event_type, obj, monkeypatch, event_id=None):
+    def _post_webhook(
+        self,
+        client,
+        event_type,
+        obj,
+        monkeypatch,
+        event_id=None,
+        livemode=None,
+        secret_key="sk_test",
+        environment=None,
+    ):
+        """Deliver an event that has already passed signature verification.
+
+        `livemode` is the flag Stripe puts on every event — sandbox traffic is
+        `livemode: false`. `secret_key` and `environment` let a test pin the
+        deployment to live keys or to a production box, which is exactly the
+        combination DEF-018 was about.
+        """
         import stripe
 
         monkeypatch.setattr(settings, "STRIPE_WEBHOOK_SECRET", "whsec_test")
-        monkeypatch.setattr(settings, "STRIPE_SECRET_KEY", "sk_test")
+        monkeypatch.setattr(settings, "STRIPE_SECRET_KEY", secret_key)
+        if environment is not None:
+            monkeypatch.setattr(settings, "ENVIRONMENT", environment)
 
         def _construct_event(payload, sig, secret):
             event = {"type": event_type, "data": {"object": obj}}
             if event_id:
                 event["id"] = event_id
+            if livemode is not None:
+                event["livemode"] = livemode
             return event
 
         monkeypatch.setattr(stripe.Webhook, "construct_event", _construct_event)
@@ -131,6 +152,86 @@ class TestStripeWebhook:
         assert u.has_used_first_month_offer is True
         assert u.subscription_customer_id == "cus_123"
         assert u.subscription_stripe_id == "sub_123"
+
+    def test_a_sandbox_event_grants_on_a_production_box_running_test_keys(
+        self, client, db_session, monkeypatch
+    ):
+        """DEF-018 — the reason this repo's checkout "didn't work" in production.
+
+        Render sets `ENVIRONMENT=production` while Stripe is still in test mode,
+        so every real test payment arrives with `livemode: false`. Keying the
+        sandbox guard off the environment *name* 400'd all of them: the customer
+        was charged (£1.00, coupon redeemed — 16 redemptions on the coupon), the
+        receipt appeared, and the account stayed Free forever.
+        """
+        u = _make_user(db_session, email="sandbox-on-prod@example.com", tier="free")
+        res = self._post_webhook(
+            client,
+            "checkout.session.completed",
+            {
+                "metadata": {"user_id": u.id, "tier": "pro", "first_month_offer": "true"},
+                "customer": "cus_sandbox",
+                "subscription": "sub_sandbox",
+            },
+            monkeypatch,
+            livemode=False,
+            secret_key="sk_test_51UDnBmExample",
+            environment="production",
+        )
+
+        assert res.status_code == 200, res.text
+        db_session.refresh(u)
+        assert u.subscription_tier == "pro"
+        assert u.is_subscribed is True
+        assert u.has_used_first_month_offer is True
+
+    def test_a_sandbox_event_is_still_refused_when_the_deployment_is_live(
+        self, client, db_session, monkeypatch
+    ):
+        """With live keys, live access is only ever granted by live traffic."""
+        u = _make_user(db_session, email="sandbox-on-live@example.com", tier="free")
+        res = self._post_webhook(
+            client,
+            "checkout.session.completed",
+            {
+                "metadata": {"user_id": u.id, "tier": "pro"},
+                "customer": "cus_sandbox",
+                "subscription": "sub_sandbox",
+            },
+            monkeypatch,
+            livemode=False,
+            secret_key="sk_live_51UDnBmExample",
+            environment="production",
+        )
+
+        assert res.status_code == 400
+        db_session.refresh(u)
+        assert u.subscription_tier == "free"
+        assert u.is_subscribed is False
+
+    def test_a_live_event_still_grants_when_the_deployment_is_live(
+        self, client, db_session, monkeypatch
+    ):
+        """The guard must not block the traffic it exists to protect."""
+        u = _make_user(db_session, email="live-event@example.com", tier="free")
+        res = self._post_webhook(
+            client,
+            "checkout.session.completed",
+            {
+                "metadata": {"user_id": u.id, "tier": "elite", "annual": "true"},
+                "customer": "cus_live",
+                "subscription": "sub_live",
+            },
+            monkeypatch,
+            livemode=True,
+            secret_key="sk_live_51UDnBmExample",
+            environment="production",
+        )
+
+        assert res.status_code == 200, res.text
+        db_session.refresh(u)
+        assert u.subscription_tier == "elite"
+        assert u.is_subscribed is True
 
     def test_subscription_created_syncs_stripe_id_cancel_flag_and_term(
         self, client, db_session, monkeypatch
@@ -883,4 +984,152 @@ class TestCheckoutCouponFallback:
         assert res.status_code == 200, res.text
         assert res.json()["offer_applied"] is False
         assert len(calls) == 2
+
+
+class TestCheckoutReconciliation:
+    """The receipt must not be the only thing that knows the customer paid.
+
+    DEF-018: the upgrade depended entirely on one webhook delivery. When that
+    delivery was refused (sandbox traffic on a production box) the customer was
+    charged, Stripe emailed a receipt, and the account stayed Free — and nothing
+    in the app could ever notice or retry. `GET /payments/checkout/{id}` now
+    reconciles the grant from Stripe's own `payment_status` for the session's
+    owner. These tests pin that it grants only for a paid session, only to its
+    owner, with the trial's real end date, and idempotently.
+    """
+
+    def _stub_retrieve(self, monkeypatch, session):
+        import stripe
+
+        monkeypatch.setattr(settings, "STRIPE_SECRET_KEY", "sk_test")
+        monkeypatch.setattr(stripe.checkout.Session, "retrieve", lambda *a, **k: session)
+
+    def _session(
+        self,
+        user_id,
+        *,
+        payment_status="paid",
+        tier="pro",
+        annual="false",
+        first_month="true",
+        period_end=None,
+    ):
+        """Attribute-only stub — a real StripeObject is not a dict (see
+        TestCheckoutReceiptEndpoint for the crash this convention prevents)."""
+        def ns(**kwargs):
+            return SimpleNamespace(**kwargs)
+
+        return ns(
+            status="complete",
+            payment_status=payment_status,
+            currency="gbp",
+            amount_total=100,
+            total_details=ns(amount_discount=899),
+            metadata=ns(
+                user_id=user_id, tier=tier, annual=annual, first_month_offer=first_month
+            ),
+            subscription=ns(
+                items=ns(data=[ns(price=ns(unit_amount=999, recurring=ns(interval="month")))]),
+                current_period_end=period_end
+                if period_end is not None
+                else int((datetime.now(timezone.utc) + timedelta(days=30)).timestamp()),
+            ),
+            customer_details=ns(email="buyer@example.com"),
+        )
+
+    def test_a_paid_session_grants_without_any_webhook(
+        self, client, db_session, monkeypatch
+    ):
+        u = _make_user(db_session, email="reconcile-paid@example.com", tier="free")
+        self._stub_retrieve(monkeypatch, self._session(u.id))
+
+        res = client.get(
+            "/api/v1/payments/checkout/cs_test_reconcile", headers=_auth_headers(u)
+        )
+
+        assert res.status_code == 200, res.text
+        db_session.refresh(u)
+        assert u.subscription_tier == "pro"
+        assert u.is_subscribed is True
+        assert u.subscription_end is not None
+        # The £1 offer is spent the moment the discounted session is paid, even
+        # when we learn about it here rather than from Stripe's webhook.
+        assert u.has_used_first_month_offer is True
+
+    def test_an_unpaid_session_grants_nothing(self, client, db_session, monkeypatch):
+        u = _make_user(db_session, email="reconcile-unpaid@example.com", tier="free")
+        self._stub_retrieve(monkeypatch, self._session(u.id, payment_status="unpaid"))
+
+        res = client.get(
+            "/api/v1/payments/checkout/cs_test_unpaid", headers=_auth_headers(u)
+        )
+
+        assert res.status_code == 200, res.text
+        assert res.json()["paid"] is False
+        db_session.refresh(u)
+        assert u.subscription_tier == "free"
+        assert u.is_subscribed is False
+        assert u.has_used_first_month_offer is False
+
+    def test_an_abandoned_session_grants_nothing(self, client, db_session, monkeypatch):
+        """`open` means the card form was never completed — no access."""
+        u = _make_user(db_session, email="reconcile-open@example.com", tier="free")
+        session = self._session(u.id, payment_status="unpaid")
+        session.status = "open"
+        self._stub_retrieve(monkeypatch, session)
+
+        client.get("/api/v1/payments/checkout/cs_test_open", headers=_auth_headers(u))
+
+        db_session.refresh(u)
+        assert u.subscription_tier == "free"
+        assert u.is_subscribed is False
+
+    def test_a_trial_grant_uses_the_trial_end_not_thirty_days(
+        self, client, db_session, monkeypatch
+    ):
+        """Elite's 7-day free trial must not be recorded as a 30-day term."""
+        u = _make_user(db_session, email="reconcile-trial@example.com", tier="free")
+        trial_end = int((datetime.now(timezone.utc) + timedelta(days=7)).timestamp())
+        self._stub_retrieve(
+            monkeypatch,
+            self._session(
+                u.id,
+                tier="elite",
+                first_month="false",
+                payment_status="no_payment_required",
+                period_end=trial_end,
+            ),
+        )
+
+        res = client.get(
+            "/api/v1/payments/checkout/cs_test_trial", headers=_auth_headers(u)
+        )
+
+        assert res.status_code == 200, res.text
+        db_session.refresh(u)
+        assert u.subscription_tier == "elite"
+        remaining = u.subscription_end - datetime.utcnow()
+        # ~7 days: the 30-day fallback would be four times this
+        assert timedelta(days=6, hours=23) < remaining < timedelta(days=7, hours=1)
+
+    def test_reconciling_twice_neither_extends_nor_double_audits(
+        self, client, db_session, monkeypatch
+    ):
+        u = _make_user(db_session, email="reconcile-idempotent@example.com", tier="free")
+        self._stub_retrieve(monkeypatch, self._session(u.id))
+
+        client.get("/api/v1/payments/checkout/cs_test_idem", headers=_auth_headers(u))
+        db_session.refresh(u)
+        first_end = u.subscription_end
+
+        client.get("/api/v1/payments/checkout/cs_test_idem", headers=_auth_headers(u))
+        db_session.refresh(u)
+
+        assert u.subscription_end == first_end
+        audits = (
+            db_session.query(AdminAction)
+            .filter_by(entity_id=u.id, action="grant_subscription")
+            .all()
+        )
+        assert len(audits) == 1
 

@@ -1,9 +1,9 @@
 "use client";
 
-import { Suspense } from "react";
+import { Suspense, useEffect } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, Crown, Receipt } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
@@ -20,6 +20,13 @@ import { normalizeTier, tierLabel } from "@/lib/tiers";
  * confirmation can't contradict the invoice. Previously nothing handled the
  * redirect at all (`/dashboard?upgraded=1`), so a user who paid £1 landed on a
  * page still quoting £9.99.
+ *
+ * Reading the session also *grants* the tier server-side (DEF-018): the upgrade
+ * used to hinge on one webhook delivery, so a refused or delayed event meant a
+ * charged customer sitting on Free with nothing able to notice. Because this
+ * read can change the user's tier, it refreshes the `me`/`entitlements` cache
+ * when Stripe reports the payment as paid — otherwise the top nav keeps showing
+ * the tier it fetched before the grant and "the UI never upgraded".
  */
 function gbp(amount: number): string {
   return `£${amount.toFixed(2)}`;
@@ -46,6 +53,19 @@ function ReceiptContent() {
     retry: 1,
     staleTime: 30_000,
   });
+
+  const queryClient = useQueryClient();
+  const paid = receipt.data?.paid === true;
+
+  // This read is also what grants the tier server-side (DEF-018), so the cached
+  // pre-payment `me`/`entitlements` answers have to go: without this the top nav
+  // keeps rendering "Free" (its query resolved before the grant and it has
+  // `refetchOnWindowFocus: false`) and the upgrade looks like it never happened.
+  useEffect(() => {
+    if (!paid) return;
+    queryClient.invalidateQueries({ queryKey: ["me"] });
+    queryClient.invalidateQueries({ queryKey: ["entitlements"] });
+  }, [paid, queryClient]);
 
   if (!sessionId) {
     return (

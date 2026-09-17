@@ -69,6 +69,34 @@ def _is_coupon_error(exc: Exception) -> bool:
     return "coupon" in text or "discount" in text
 
 
+def _deployment_is_live() -> bool:
+    """True when this API is wired to *live* Stripe keys.
+
+    The webhook refuses sandbox events so a test event can never grant live
+    access. That protection is a property of the key we authenticate to Stripe
+    with — not of the environment's *name* — and keying it off
+    `ENVIRONMENT == "production"` broke every real test payment on the
+    pre-launch box: Render sets `ENVIRONMENT=production` while Stripe is still
+    in test mode, so every event arrives with `livemode: false`, got a 400, and
+    the customer was charged while their account stayed Free (DEF-018 — the £1
+    coupon showed 16 redemptions and not one grant).
+
+    With a live key the guard still holds: live access is only ever granted by
+    an event Stripe marked `livemode: true`.
+    """
+    return str(settings.STRIPE_SECRET_KEY or "").startswith("sk_live_")
+
+
+# Boot-time visibility for the exact misconfiguration above: production with
+# sandbox keys is legitimate pre-launch, but it must never be silent.
+if settings.ENVIRONMENT == "production" and settings.STRIPE_SECRET_KEY and not _deployment_is_live():
+    logger.warning(
+        "Stripe is in TEST mode on a production deployment (key starts with 'sk_test'). "
+        "Checkout will move test money only, and the £1 coupon/prices must be recreated "
+        "with live keys before real customers can pay."
+    )
+
+
 def _unix_to_datetime(ts) -> datetime | None:
     """Convert a Stripe unix timestamp to a naive UTC datetime (the app stores
     naive UTC everywhere, so we match that convention)."""
@@ -548,6 +576,7 @@ async def get_offer(user: User = Depends(get_current_user)):
 async def get_checkout_session(
     session_id: str,
     user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
     """What the customer was actually charged for a checkout session.
 
@@ -608,6 +637,43 @@ async def get_checkout_session(
                 if recurring is not None:
                     interval = _get(recurring, "interval", None)
         next_date = _sub_period_end(sub)
+
+    # ── Reconcile the grant here too, not only in the webhook (DEF-018) ─────
+    # The upgrade used to depend entirely on one webhook delivery: if the endpoint
+    # was misconfigured, the signing secret mismatched, or the box was down, the
+    # customer paid, Stripe emailed a receipt, and the account stayed Free with
+    # nothing to reconcile it. This route is reachable only by the session's owner
+    # (checked above) and `payment_status` is Stripe's own verdict that the money
+    # arrived, so granting here is the same decision the webhook would have made —
+    # just not hostage to delivery. `grant_subscription` is idempotent, so the
+    # webhook arriving later cannot double-extend anything.
+    if str(_get(session, "payment_status", "")) in ("paid", "no_payment_required"):
+        granted_tier = str(_get(metadata, "tier", None) or "pro").lower()
+        if granted_tier in ("pro", "elite"):
+            days = 365 if str(_get(metadata, "annual", "false")) == "true" else 30
+            # Prefer the subscription's own period end (a 7-day Elite trial grants
+            # 7 days, not 30) — the same source the webhook trusts.
+            end_at = (
+                _sub_period_end(sub)
+                if (sub is not None and not isinstance(sub, str))
+                else None
+            )
+            was = ((user.subscription_tier or "free").lower(), bool(user.is_subscribed))
+            grant_subscription(
+                db, user, granted_tier, days=days, end_at=end_at,
+                event_id=f"checkout:{session_id}",
+            )
+            if was != ((user.subscription_tier or "free").lower(), bool(user.is_subscribed)):
+                logger.info(
+                    "Granted %s from checkout session %s (webhook-independent reconcile)",
+                    granted_tier,
+                    session_id,
+                )
+            if first_month and not user.has_used_first_month_offer:
+                # Mirror the webhook: the one-time offer is spent the moment the
+                # discounted session is paid, however we learned about it.
+                user.has_used_first_month_offer = True
+                db.commit()
 
     details = _get(session, "customer_details", None)
     email = _get(details, "email", None) if details is not None else None
@@ -691,9 +757,21 @@ async def stripe_webhook(
     if event_type not in HANDLED_EVENTS:
         return {"success": True, "ignored": event_type}
 
-    # 3) Never let a sandbox/test-mode event grant live access.
-    if settings.ENVIRONMENT == "production" and event.get("livemode") is not True:
-        raise HTTPException(status_code=400, detail="Test-mode event rejected in production.")
+    # 3) Never let a sandbox event grant *live* access. The test is the key this
+    #    deployment authenticates with (see `_deployment_is_live`), not the
+    #    environment name: a pre-launch production box on `sk_test_…` has no live
+    #    access to protect, and rejecting its events left every real test payment
+    #    charged but ungranted (DEF-018).
+    if _deployment_is_live() and event.get("livemode") is not True:
+        logger.warning(
+            "Rejected sandbox webhook %s (%s): this deployment is on a live Stripe key",
+            event.get("id"),
+            event_type,
+        )
+        raise HTTPException(
+            status_code=400,
+            detail="Test-mode event rejected: this deployment is configured with live Stripe keys.",
+        )
 
     # 4) Idempotency — Stripe redelivers events; process each event id once.
     event_id = event.get("id")
