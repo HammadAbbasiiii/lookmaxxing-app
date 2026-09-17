@@ -281,3 +281,63 @@ today, so tier labelling (not gating) was corrected this pass.
 **Not re-run:** the full Chromium/Firefox/WebKit suites (the local `:3000` server
 is a stale production build and its `:8000` API a stale checkout; both need a
 restart before a whole-suite pass). New totals would be 53 Chromium tests.
+
+## £1 offer visibility pass (2026-09-17, DEF-016)
+
+**Report:** "the £1 first-month coupon is missing for new users — it shows the full
+price instead" (local `:3000` → Render API).
+
+### What the API actually said (live, brand-new free account)
+
+Reproduced against production with an account created minutes earlier
+(`cline-verify-20260917@mailinator.com`):
+
+| Call | Result |
+|---|---|
+| `GET /payments/offer` | `eligible: true`, `reason: "eligible"`, `source: "stripe"`, `verified: true`, `first_month_amount: 1.0` (100 minor), `regular_amount: 9.99` (999 minor) |
+| `GET /auth/me` | `subscription_tier: "free"`, `is_subscribed: false`, `has_used_first_month_offer: false` |
+| `POST /payments/checkout {tier: "pro", annual: false, first_month_offer: true}` | `cs_test_…` → `GET /payments/checkout/{id}`: `amount_charged: 1.0`, `amount_discount: 8.99`, `first_month_offer: true` |
+
+So the coupon **`FIRST_MONTH_1` is live in the deployed Stripe account and is being
+honoured** (£8.99 off a £999 price = £1.00 charged), eligibility is **per account**
+(two abandoned, unpaid test sessions did *not* consume it — the flag is only set on
+`checkout.session.completed`, `payments.py:651`), and the server-side guard
+(`payments.py:349`) refuses the coupon to anyone who has used it. **Nothing on the
+backend was wrong**, and no env var needs changing for this to work.
+
+### Root cause
+
+`/upgrade` opened on the **annual** view (`useState(true)`), while the coupon is
+`duration=once` on the Pro **monthly** price. An eligible new member's first paint
+was therefore the annual card — £4.20/mo headline, £9.99/mo struck through, CTA
+"Start Pro" — with the £1 offer demoted to a small underlined link beneath it. The
+£1 *was* reachable (clicking **Monthly** rendered £1.00 correctly), but the default
+state that a new user actually lands on advertised list price.
+
+The existing tests missed it because all three offer tests clicked **Monthly** first:
+they asserted a view the tester had to go and find.
+
+### Fix + evidence
+
+| Check | Result |
+|---|---|
+| Landing `/upgrade` as an eligible free member, **zero interaction** | **£1.00 first month**, £9.99 struck, "Then £9.99/month from month 2 · cancel anytime", CTA **"Start for £1.00"** |
+| Choosing *Annual* yourself | annual figures (£50.40/yr) plus a visible gold button "Switch to monthly for a £1.00 first month"; the manual choice is **not** reverted when eligibility resolves later |
+| While `/payments/offer` is in flight | the Pro card reads "Checking your price…" — £9.99 is never printed and then replaced |
+| `e2e/score-clarity.spec.ts --grep server-authoritative` (Chromium) | **6/6 passed** (landing £1, annual still surfaces it, view choice respected, no price before the answer, used offer, unconfigured) |
+| `tsc --noEmit` | clean |
+
+Run note: the offer tests are fully API-stubbed, so they do not need the backend.
+This Mac can no longer start the API-driven suite (`../backend/.venv` is gone and
+`mediapipe 0.10.21` has no macOS-arm64 wheel), so the 4 offer tests were run with
+`reuseExistingServer` and a stand-in server answering `GET /api/v1/health` on
+`:8000`; the landing/annual assertions above are live browser runs against Render.
+
+### Go-live note (still yours to do)
+
+Production is on **test-mode** Stripe keys — every session the deployed API creates
+is `cs_test_…`, and `FIRST_MONTH_1` exists only in the *test* account. Moving to
+live keys without recreating the coupon + prices makes this offer disappear for
+real users: `/payments/offer` degrades to `verified: false` and the card falls back
+to list pricing.
+

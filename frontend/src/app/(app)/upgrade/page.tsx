@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, Crown, Gift, ShieldCheck, Zap } from "lucide-react";
@@ -18,6 +18,9 @@ import { normalizeTier, tierLabel } from "@/lib/tiers";
 
 export default function UpgradePage() {
   const [annual, setAnnual] = useState(true);
+  // Flipped once the visitor picks a view themselves: the eligibility default
+  // below must never yank the toggle out from under them.
+  const [pricingTouched, setPricingTouched] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const router = useRouter();
   const qc = useQueryClient();
@@ -39,6 +42,16 @@ export default function UpgradePage() {
   const offerUsed = offerData?.reason === "used";
   const firstMonthAmount = offerData?.first_month_amount ?? null;
   const regularAmount = offerData?.regular_amount ?? PLANS.pro.monthly;
+
+  // The coupon is `duration=once` on the Pro *monthly* price, so a £1 first month
+  // only exists in the monthly view. Leaving the annual default in place hid it
+  // behind a small link: a brand-new member landed on £4.20/mo (list £9.99, struck)
+  // with a "Start Pro" button and concluded the launch offer was missing. Land an
+  // eligible visitor on the price they can actually buy it at.
+  const offerPending = offer.isLoading && tier === "free";
+  useEffect(() => {
+    if (offerEligible && !pricingTouched) setAnnual(false);
+  }, [offerEligible, pricingTouched]);
 
   function gbp(amount: number): string {
     return `£${amount.toFixed(2)}`;
@@ -127,7 +140,10 @@ export default function UpgradePage() {
               <button
                 key={mode}
                 type="button"
-                onClick={() => setAnnual(mode === "annual")}
+                onClick={() => {
+                  setPricingTouched(true);
+                  setAnnual(mode === "annual");
+                }}
                 className={cn(
                   "rounded-full px-4 py-1.5 text-sm font-medium transition-colors",
                   active ? "gold-gradient text-black" : "text-muted hover:text-ink",
@@ -179,7 +195,14 @@ export default function UpgradePage() {
 
               <p className="mt-2 min-h-[40px] text-sm text-muted">{plan.blurb}</p>
 
-              {plan.monthly > 0 ? (
+              {isPro && offerPending ? (
+                // Never print a price we may be about to replace. Until
+                // /payments/offer answers, an eligible member would otherwise
+                // watch £9.99 turn into £1.00 — the DEF-015 mismatch, as a flash.
+                <p className="mt-4 min-h-[40px] text-sm text-muted">
+                  Checking your price…
+                </p>
+              ) : plan.monthly > 0 ? (
                 <div className="mt-4">
                   {annual ? (
                     <>
@@ -237,13 +260,19 @@ export default function UpgradePage() {
                       must be visible in the default (annual) view too, otherwise
                       an eligible user never learns the £1 month exists. */}
                   {isPro && offerEligible && annual && firstMonthAmount != null ? (
+                    /* Annual is not eligible for the coupon, so the offer is
+                       surfaced as a real, actionable switch — not a buried link
+                       someone scanning a price card will never notice. */
                     <button
                       type="button"
-                      onClick={() => setAnnual(false)}
-                      className="mt-1 flex items-center gap-1 text-left text-xs font-medium text-gold underline underline-offset-2"
+                      onClick={() => {
+                        setPricingTouched(true);
+                        setAnnual(false);
+                      }}
+                      className="mt-3 flex w-full items-center justify-center gap-2 rounded-full border border-gold/60 bg-gold/10 px-4 py-2 text-sm font-semibold text-ink transition-colors hover:bg-gold/20"
                     >
-                      <Gift className="h-3.5 w-3.5" aria-hidden />
-                      Prefer {gbp(firstMonthAmount)} for your first month? Switch to monthly
+                      <Gift className="h-4 w-4 text-gold" aria-hidden />
+                      Switch to monthly for a {gbp(firstMonthAmount)} first month
                     </button>
                   ) : null}
                   {isPro && offerUsed ? (

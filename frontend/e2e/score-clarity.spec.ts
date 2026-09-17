@@ -54,7 +54,14 @@ const STATUS = {
 
 async function stubApi(
   page: Page,
-  handlers: { me?: unknown; analysis?: unknown; offer?: unknown; receipt?: unknown },
+  handlers: {
+    me?: unknown;
+    analysis?: unknown;
+    offer?: unknown;
+    receipt?: unknown;
+    /** Hold /payments/offer open, to pin what the card shows while undecided. */
+    offerDelayMs?: number;
+  },
 ) {
   await page.route("**/api/v1/**", async (route) => {
     const url = route.request().url();
@@ -68,6 +75,9 @@ async function stubApi(
 
     if (url.includes("/auth/me")) return json(handlers.me ?? ME_FREE);
     if (url.includes("/payments/offer")) {
+      if (handlers.offerDelayMs) {
+        await new Promise((resolve) => setTimeout(resolve, handlers.offerDelayMs));
+      }
       return json(handlers.offer ?? { eligible: false, reason: "not_configured" });
     }
     if (url.includes("/payments/checkout/")) return json(handlers.receipt ?? {});
@@ -174,29 +184,77 @@ test.describe("the £1 first month is server-authoritative (DEF-015)", () => {
     await page.addInitScript(() => window.localStorage.setItem("lookmaxx_token", "stub-token"));
   });
 
-  test("eligible users see £1 as the Pro price, not £9.99", async ({ page }) => {
+  test("an eligible member lands on the £1 price with no interaction", async ({ page }) => {
     await stubApi(page, { offer: eligibleOffer });
     await page.goto("/upgrade");
-    await page.getByRole("button", { name: "Monthly", exact: true }).click();
 
     const proCard = page.locator("div.rounded-card", {
       has: page.getByRole("heading", { name: "Pro" }),
     });
+    // The coupon prices the Pro *monthly* plan, so eligibility has to land there.
+    // Leaving the annual default in place is what made the launch offer look
+    // missing: the card headlined £4.20/mo (list £9.99, struck) + "Start Pro".
     await expect(proCard).toContainText("£1.00");
     await expect(proCard).toContainText("first month");
     await expect(proCard).toContainText("Then £9.99/month from month 2");
     // The CTA states the amount charged, matching the card headline.
     await expect(proCard.getByRole("button", { name: "Start for £1.00" })).toBeVisible();
+    await expect(proCard.getByRole("button", { name: "Start Pro" })).toHaveCount(0);
   });
 
-  test("the annual view still surfaces the monthly-only offer", async ({ page }) => {
+  test("choosing annual keeps the £1 offer one tap away", async ({ page }) => {
     await stubApi(page, { offer: eligibleOffer });
     await page.goto("/upgrade");
+    await page.getByRole("button", { name: /^Annual/ }).click();
 
-    // Annual is the default; the offer must not be silently hidden behind it.
-    await expect(
-      page.getByRole("button", { name: /Prefer £1.00 for your first month/ }),
-    ).toBeVisible();
+    const proCard = page.locator("div.rounded-card", {
+      has: page.getByRole("heading", { name: "Pro" }),
+    });
+    // Annual figures, because an annual plan is not eligible for a
+    // `duration=once` coupon — the card must not imply otherwise.
+    await expect(proCard).toContainText("£50.40/yr");
+    await expect(proCard).not.toContainText("Then £9.99/month from month 2");
+
+    // …and the offer is a real button, not a link nobody scanning a price scans.
+    const switchToMonthly = proCard.getByRole("button", {
+      name: /Switch to monthly for a £1\.00 first month/,
+    });
+    await expect(switchToMonthly).toBeVisible();
+
+    await switchToMonthly.click();
+    await expect(proCard.getByRole("button", { name: "Start for £1.00" })).toBeVisible();
+  });
+
+  test("a view the visitor picked is never overwritten by the eligibility default", async ({
+    page,
+  }) => {
+    // The offer resolves *after* the click, which is exactly when a naive effect
+    // would flip the toggle back to monthly and silently re-price the card.
+    await stubApi(page, { offer: eligibleOffer, offerDelayMs: 1200 });
+    await page.goto("/upgrade");
+    await page.getByRole("button", { name: /^Annual/ }).click();
+
+    const proCard = page.locator("div.rounded-card", {
+      has: page.getByRole("heading", { name: "Pro" }),
+    });
+    await expect(proCard).toContainText("£50.40/yr");
+    await expect(proCard).not.toContainText("Then £9.99/month from month 2");
+  });
+
+  test("no price is printed until the server has answered", async ({ page }) => {
+    await stubApi(page, { offer: eligibleOffer, offerDelayMs: 2500 });
+    await page.goto("/upgrade");
+
+    const proCard = page.locator("div.rounded-card", {
+      has: page.getByRole("heading", { name: "Pro" }),
+    });
+    // While /payments/offer is in flight neither price may be claimed: printing
+    // £9.99 and then replacing it with £1.00 is the DEF-015 mismatch as a flash.
+    await expect(proCard).toContainText("Checking your price…");
+    await expect(proCard).not.toContainText("9.99");
+
+    await expect(proCard).toContainText("£1.00");
+    await expect(proCard).not.toContainText("Checking your price…");
   });
 
   test("a used offer is never advertised again", async ({ page }) => {
